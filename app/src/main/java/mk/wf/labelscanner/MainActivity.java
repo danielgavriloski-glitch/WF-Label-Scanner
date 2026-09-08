@@ -1,147 +1,180 @@
 package mk.wf.labelscanner;
 
 import android.Manifest;
-import android.app.Activity;
-import android.content.Intent;
+import android.app.*;
+import android.content.*;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.net.Uri;
+import android.media.ToneGenerator;
+import android.media.AudioManager;
 import android.os.Bundle;
-import android.provider.MediaStore;
-import android.view.View;
+import android.view.*;
 import android.widget.*;
+import androidx.camera.core.*;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
+import androidx.core.content.ContextCompat;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.*;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Locale;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.regex.*;
 
 public class MainActivity extends Activity {
-    private static final int CAMERA=10, SAVE=11, PERM=12;
-    private EditText orderNo, size, quantity, boxes, rawText;
-    private TextView status, total;
-    private ImageView preview;
+    private static final int PERM=20,SAVE=21;
+    private PreviewView camera;
+    private TextView state,count,list;
+    private EditText activeOrder;
     private final ArrayList<Row> rows=new ArrayList<>();
+    private final ExecutorService executor=Executors.newSingleThreadExecutor();
+    private final TextRecognizer recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+    private boolean processing=false;
+    private String lastCandidate="",lastAccepted="";
+    private int stable=0;
+    private long lastTime=0;
     private String pendingXls="";
 
     static class Row {
-        String order,size,qty,boxes,text;
-        Row(String o,String s,String q,String b,String t){order=o;size=s;qty=q;boxes=b;text=t;}
+        String nalog,paket,artikal,boja,golemina,kolicina,kutii,raw;
+        Row(String n,String p,String a,String b,String g,String k,String ku,String r){
+            nalog=n;paket=p;artikal=a;boja=b;golemina=g;kolicina=k;kutii=ku;raw=r;
+        }
     }
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        ScrollView scroll=new ScrollView(this);
-        LinearLayout root=new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL); root.setPadding(28,28,28,40);
-        root.setBackgroundColor(Color.rgb(245,247,250)); scroll.addView(root);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(20,20,20,24); root.setBackgroundColor(Color.rgb(244,247,250));
 
-        TextView title=new TextView(this); title.setText("WF LABEL SCANNER"); title.setTextSize(25);
-        title.setTextColor(Color.rgb(20,55,85)); title.setPadding(0,0,0,20); root.addView(title);
+        TextView title=tv("WF AUTO SCAN",25); title.setTextColor(Color.rgb(18,67,96)); root.addView(title);
+        state=tv("Насочи ја камерата кон една етикета",17); root.addView(state);
 
-        orderNo=field("Број на налог"); root.addView(orderNo);
-        status=label("Нема активен налог"); root.addView(status);
-        Button start=button("ЗАПОЧНИ НАЛОГ"); root.addView(start);
-        start.setOnClickListener(v->{
-            if(orderNo.getText().toString().trim().isEmpty()){toast("Внеси број на налог");return;}
-            status.setText("Активен налог: "+orderNo.getText()); rows.clear(); updateTotal();
+        activeOrder=new EditText(this); activeOrder.setHint("Налог (само ако го нема на етикетата)");
+        activeOrder.setSingleLine(); activeOrder.setBackgroundColor(Color.WHITE); root.addView(activeOrder);
+
+        camera=new PreviewView(this); camera.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,0,1.05f); cp.setMargins(0,14,0,10);
+        camera.setLayoutParams(cp); root.addView(camera);
+
+        count=tv("Скенирани пакети: 0",18); root.addView(count);
+        list=tv("Сè уште нема скенирано.",15);
+        ScrollView sv=new ScrollView(this); sv.addView(list);
+        sv.setLayoutParams(new LinearLayout.LayoutParams(-1,0,.75f)); root.addView(sv);
+
+        LinearLayout buttons=new LinearLayout(this);
+        Button undo=btn("Врати последен"); Button excel=btn("Креирај Excel");
+        buttons.addView(undo,new LinearLayout.LayoutParams(0,-2,1)); buttons.addView(excel,new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(buttons);
+        undo.setOnClickListener(v->{if(!rows.isEmpty()){rows.remove(rows.size()-1);lastAccepted="";refresh();}});
+        excel.setOnClickListener(v->exportXls());
+        setContentView(root);
+
+        if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED) startCamera();
+        else requestPermissions(new String[]{Manifest.permission.CAMERA},PERM);
+    }
+
+    private void startCamera(){
+        ListenableFuture<ProcessCameraProvider> f=ProcessCameraProvider.getInstance(this);
+        f.addListener(()->{
+            try{
+                ProcessCameraProvider provider=f.get();
+                Preview preview=new Preview.Builder().build(); preview.setSurfaceProvider(camera.getSurfaceProvider());
+                ImageAnalysis analysis=new ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
+                analysis.setAnalyzer(executor,this::analyze);
+                provider.unbindAll();
+                provider.bindToLifecycle(androidx.lifecycle.ProcessLifecycleOwner.get(),
+                    CameraSelector.DEFAULT_BACK_CAMERA,preview,analysis);
+            }catch(Exception e){runOnUiThread(()->state.setText("Камерата не може да стартува")); }
+        },ContextCompat.getMainExecutor(this));
+    }
+
+    @androidx.camera.core.ExperimentalGetImage
+    private void analyze(ImageProxy proxy){
+        if(processing||proxy.getImage()==null){proxy.close();return;}
+        processing=true;
+        InputImage img=InputImage.fromMediaImage(proxy.getImage(),proxy.getImageInfo().getRotationDegrees());
+        recognizer.process(img).addOnSuccessListener(this::consider)
+            .addOnCompleteListener(x->{processing=false;proxy.close();});
+    }
+
+    private void consider(com.google.mlkit.vision.text.Text result){
+        String raw=result.getText().trim();
+        if(raw.length()<12){runOnUiThread(()->state.setText("Барам јасна етикета..."));return;}
+        String normalized=raw.replaceAll("\\s+"," ").toUpperCase(Locale.ROOT);
+        if(normalized.equals(lastCandidate)) stable++; else {lastCandidate=normalized;stable=1;}
+        if(stable<2){runOnUiThread(()->state.setText("Препознавам... држи мирно"));return;}
+        if(normalized.equals(lastAccepted)||System.currentTimeMillis()-lastTime<1800)return;
+
+        Row row=parse(raw);
+        if(row.golemina.isEmpty()&&row.kolicina.isEmpty()){
+            runOnUiThread(()->state.setText("Етикета најдена, но нема големина/количина"));return;
+        }
+        lastAccepted=normalized; lastTime=System.currentTimeMillis(); stable=0;
+        runOnUiThread(()->{
+            rows.add(row);
+            new ToneGenerator(AudioManager.STREAM_NOTIFICATION,90).startTone(ToneGenerator.TONE_PROP_BEEP,180);
+            state.setText("✓ Додаден пакет "+row.paket+" — тргни ја етикетата");
+            refresh();
         });
-
-        preview=new ImageView(this); preview.setAdjustViewBounds(true); preview.setMinimumHeight(220); root.addView(preview);
-        Button camera=button("СЛИКАЈ ЕТИКЕТА"); root.addView(camera);
-        camera.setOnClickListener(v->openCamera());
-
-        rawText=field("Прочитан текст од етикета"); rawText.setMinLines(4); root.addView(rawText);
-        size=field("Големина"); root.addView(size);
-        quantity=field("Количина / пара"); quantity.setInputType(2); root.addView(quantity);
-        boxes=field("Број на кутии"); boxes.setInputType(2); root.addView(boxes);
-
-        Button add=button("ПОТВРДИ ПАКЕТ"); root.addView(add);
-        add.setOnClickListener(v->addRow());
-        total=label("Скенирани пакети: 0"); total.setTextSize(18); root.addView(total);
-
-        Button review=button("ПРЕГЛЕД"); root.addView(review);
-        review.setOnClickListener(v->showReview());
-        Button export=button("КРЕИРАЈ EXCEL"); root.addView(export);
-        export.setOnClickListener(v->exportXls());
-        setContentView(scroll);
     }
 
-    private EditText field(String hint){
-        EditText e=new EditText(this); e.setHint(hint); e.setTextSize(17); e.setPadding(16,18,16,18);
-        e.setBackgroundColor(Color.WHITE); LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
-        p.setMargins(0,0,0,14); e.setLayoutParams(p); return e;
+    private Row parse(String raw){
+        String flat=raw.replace('\n',' ');
+        String nalog=find(flat,"(?:НАЛОГ|NALOG|ORDER|AUFTRAG|ORD)\\s*[:#.-]?\\s*([A-Z0-9/-]{2,})");
+        if(nalog.isEmpty())nalog=activeOrder.getText().toString().trim();
+        String paket=find(flat,"(?:ПАКЕТ|PAKET|PACKAGE|PACK)\\s*[:#.-]?\\s*([A-Z0-9/-]+)");
+        String artikal=find(flat,"(?:АРТИКАЛ|ARTIKAL|ARTICLE|ARTIKEL|ITEM)\\s*[:#.-]?\\s*([A-Z0-9._/-]+)");
+        String boja=find(flat,"(?:БОЈА|BOJA|COLOR|COLOUR|FARBE)\\s*[:#.-]?\\s*([A-ZÄÖÜa-zäöü]+)");
+        String golemina=find(flat,"(?:ГОЛЕМИНА|GOLEMINA|SIZE|GRÖSSE|GROESSE)\\s*[:#.-]?\\s*(XS|S|M|L|XL|[2-9]XL|[2-6][0-9])");
+        if(golemina.isEmpty())golemina=find(flat,"\\b(XS|XL|[2-9]XL|[2-6][0-9])\\b");
+        String kolicina=find(flat,"(?:КОЛИЧИНА|KOLICINA|QTY|QUANTITY|MENGE|PAIR|PAIRS|PARA)\\s*[:#.-]?\\s*(\\d+)");
+        String kutii=find(flat,"(?:КУТИИ|KUTII|BOX|BOXES|KARTON|KARTONS)\\s*[:#.-]?\\s*(\\d+)");
+        return new Row(nalog,paket,artikal,boja,golemina,kolicina,kutii,raw);
     }
-    private TextView label(String s){ TextView t=new TextView(this); t.setText(s); t.setTextSize(16); t.setPadding(4,12,4,12); return t; }
-    private Button button(String s){ Button b=new Button(this); b.setText(s); b.setAllCaps(false); return b; }
-    private void openCamera(){
-        if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
-            requestPermissions(new String[]{Manifest.permission.CAMERA},PERM); return;
-        }
-        startActivityForResult(new Intent(MediaStore.ACTION_IMAGE_CAPTURE),CAMERA);
+
+    private String find(String s,String regex){
+        Matcher m=Pattern.compile(regex,Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE).matcher(s);
+        return m.find()?m.group(1).trim():"";
     }
-    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){
-        super.onRequestPermissionsResult(r,p,g);
-        if(r==PERM && g.length>0 && g[0]==PackageManager.PERMISSION_GRANTED) openCamera();
-    }
-    @Override protected void onActivityResult(int r,int c,Intent data){
-        super.onActivityResult(r,c,data);
-        if(r==CAMERA && c==RESULT_OK && data!=null){
-            Bitmap bm=(Bitmap)data.getExtras().get("data"); preview.setImageBitmap(bm);
-            rawText.setText("Се чита...");
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                .process(InputImage.fromBitmap(bm,0))
-                .addOnSuccessListener(x->{rawText.setText(x.getText()); guessFields(x.getText());})
-                .addOnFailureListener(x->rawText.setText("Не успеа читањето. Внеси рачно."));
-        } else if(r==SAVE && c==RESULT_OK && data!=null){
-            try(OutputStream out=getContentResolver().openOutputStream(data.getData())){
-                out.write(pendingXls.getBytes(StandardCharsets.UTF_8)); toast("Excel документот е зачуван");
-            }catch(Exception e){toast("Грешка при зачувување");}
-        }
-    }
-    private void guessFields(String text){
-        String upper=text.toUpperCase(Locale.ROOT);
-        String[] sizes={"XS","S","M","L","XL","2XL","3XL","4XL","5XL","42","44","46","48","50","52","54","56","58","60"};
-        for(String s:sizes) if(upper.matches("(?s).*\\b"+s+"\\b.*")){size.setText(s);break;}
-    }
-    private void addRow(){
-        String o=orderNo.getText().toString().trim();
-        if(o.isEmpty()){toast("Прво започни налог");return;}
-        if(size.getText().toString().trim().isEmpty()||quantity.getText().toString().trim().isEmpty()){
-            toast("Внеси големина и количина");return;
-        }
-        rows.add(new Row(o,size.getText().toString().trim(),quantity.getText().toString().trim(),
-                boxes.getText().toString().trim(),rawText.getText().toString().trim()));
-        size.setText(""); quantity.setText(""); boxes.setText(""); rawText.setText(""); preview.setImageDrawable(null);
-        updateTotal(); toast("Пакетот е додаден");
-    }
-    private void updateTotal(){total.setText("Скенирани пакети: "+rows.size());}
-    private void showReview(){
-        if(rows.isEmpty()){toast("Нема внесени пакети");return;}
+
+    private void refresh(){
+        count.setText("Скенирани пакети: "+rows.size());
         StringBuilder s=new StringBuilder();
-        for(int i=0;i<rows.size();i++){Row x=rows.get(i);s.append(i+1).append(". Големина ").append(x.size)
-            .append(" — ").append(x.qty).append(" пара"); if(!x.boxes.isEmpty())s.append(" — ").append(x.boxes).append(" кутии");s.append("\n");}
-        new android.app.AlertDialog.Builder(this).setTitle("Налог "+orderNo.getText()).setMessage(s.toString())
-            .setPositiveButton("Во ред",null).show();
+        for(int i=rows.size()-1;i>=0;i--){
+            Row r=rows.get(i);
+            s.append("✓ #").append(i+1);
+            if(!r.nalog.isEmpty())s.append("  Налог: ").append(r.nalog);
+            if(!r.paket.isEmpty())s.append("\nПакет: ").append(r.paket);
+            if(!r.artikal.isEmpty())s.append("   Артикал: ").append(r.artikal);
+            if(!r.boja.isEmpty())s.append("\nБоја: ").append(r.boja);
+            if(!r.golemina.isEmpty())s.append("   Големина: ").append(r.golemina);
+            if(!r.kolicina.isEmpty())s.append("   Количина: ").append(r.kolicina);
+            if(!r.kutii.isEmpty())s.append("   Кутии: ").append(r.kutii);
+            s.append("\n────────────────\n");
+        }
+        list.setText(s.length()==0?"Сè уште нема скенирано.":s.toString());
     }
+
     private void exportXls(){
-        if(rows.isEmpty()){toast("Нема внесени пакети");return;}
+        if(rows.isEmpty()){Toast.makeText(this,"Нема скенирани пакети",Toast.LENGTH_SHORT).show();return;}
         StringBuilder x=new StringBuilder("<?xml version=\"1.0\"?><?mso-application progid=\"Excel.Sheet\"?>");
         x.append("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\"><Worksheet ss:Name=\"Paketi\"><Table>");
-        x.append(rowXml("Налог","Големина","Количина","Кутии","Текст од етикета"));
-        for(Row r:rows)x.append(rowXml(r.order,r.size,r.qty,r.boxes,r.text));
-        x.append("</Table></Worksheet></Workbook>"); pendingXls=x.toString();
-        Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT); i.setType("application/vnd.ms-excel");
-        i.putExtra(Intent.EXTRA_TITLE,"WF_Nalog_"+orderNo.getText()+".xls"); startActivityForResult(i,SAVE);
+        x.append(xrow("Налог","Пакет","Артикал","Боја","Големина","Количина","Кутии"));
+        for(Row r:rows)x.append(xrow(r.nalog,r.paket,r.artikal,r.boja,r.golemina,r.kolicina,r.kutii));
+        pendingXls=x.append("</Table></Worksheet></Workbook>").toString();
+        Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("application/vnd.ms-excel");
+        i.putExtra(Intent.EXTRA_TITLE,"WF_Skenirani_Paketi.xls");startActivityForResult(i,SAVE);
     }
-    private String rowXml(String... cells){
-        StringBuilder s=new StringBuilder("<Row>");
-        for(String c:cells)s.append("<Cell><Data ss:Type=\"String\">").append(esc(c)).append("</Data></Cell>");
-        return s.append("</Row>").toString();
-    }
+
+    private String xrow(String... cs){StringBuilder s=new StringBuilder("<Row>");for(String c:cs)s.append("<Cell><Data ss:Type=\"String\">").append(esc(c)).append("</Data></Cell>");return s.append("</Row>").toString();}
     private String esc(String s){return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;");}
-    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(r==SAVE&&c==RESULT_OK&&d!=null)try(OutputStream o=getContentResolver().openOutputStream(d.getData())){o.write(pendingXls.getBytes(StandardCharsets.UTF_8));Toast.makeText(this,"Excel е зачуван",Toast.LENGTH_LONG).show();}catch(Exception e){Toast.makeText(this,"Грешка при зачувување",Toast.LENGTH_LONG).show();}}
+    @Override public void onRequestPermissionsResult(int r,String[] p,int[] g){super.onRequestPermissionsResult(r,p,g);if(r==PERM&&g.length>0&&g[0]==PackageManager.PERMISSION_GRANTED)startCamera();}
+    private TextView tv(String s,int z){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setPadding(4,8,4,8);return t;}
+    private Button btn(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);return b;}
 }
