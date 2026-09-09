@@ -3,6 +3,8 @@ name: Build WF APK
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -20,5 +22,5 @@ jobs:
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WF-Label-Scanner-v3.1-FAST-SAFE-APK
+          name: WF-Label-Scanner-v4.0-DIRECT-SCAN-APK
           path: app/build/outputs/apk/debug/app-debug.apk
