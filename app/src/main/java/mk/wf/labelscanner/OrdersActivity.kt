@@ -34,6 +34,7 @@ class OrdersActivity : AppCompatActivity() {
         val groups = db.getAll().groupBy { it.nalog }
             .toList()
             .sortedByDescending { (_, rows) -> rows.maxOfOrNull { it.createdAt }.orEmpty() }
+
         orderNames = groups.map { it.first }
         val rows = groups.map { (nalog, packages) ->
             val rawDate = packages.maxOfOrNull { it.createdAt }.orEmpty()
@@ -42,13 +43,53 @@ class OrdersActivity : AppCompatActivity() {
                 val output = SimpleDateFormat("dd.MM.yyyy  HH:mm", Locale.getDefault())
                 output.format(input.parse(rawDate)!!)
             }.getOrDefault(rawDate)
+
+            val masterNumbers = packages.mapNotNull { extractMasterNumber(it).takeIf(String::isNotBlank) }
+                .distinct()
+            val masterLine = if (masterNumbers.isEmpty()) "-" else masterNumbers.joinToString(", ")
+
+            val packageLines = packages
+                .sortedWith(compareBy<PackageRecord> { packageSortKey(it.packageNo) }.thenBy { it.packageNo })
+                .joinToString("\n") { row ->
+                    val size = row.size.ifBlank { "?" }
+                    val packageNo = row.packageNo.ifBlank { "?" }
+                    "Пакет $packageNo: Големина $size — ${row.quantity} парчиња"
+                }
+
             val bySize = packages.groupBy { it.size.ifBlank { "Непозната" } }
                 .entries.sortedBy { it.key }
-                .joinToString("\n") { (size, rows) ->
-                    "Големина $size: ${rows.size} пакети • ${rows.sumOf { it.quantity }} парчиња"
+                .joinToString("\n") { (size, sizeRows) ->
+                    val packageNos = sizeRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")
+                    "Големина $size: ${sizeRows.sumOf { it.quantity }} парчиња • пакети: $packageNos"
                 }
-            "$date\nНалог: $nalog\nВкупно: ${packages.size} пакети • ${packages.sumOf { it.quantity }} парчиња\n$bySize"
+
+            buildString {
+                append(date)
+                append("\nНалог: ").append(nalog)
+                append("\nMaster number: ").append(masterLine)
+                append("\n\nПАКЕТИ\n").append(packageLines)
+                append("\n\nВКУПНО ПО ГОЛЕМИНА\n").append(bySize)
+                append("\n\nВКУПНО: ").append(packages.size).append(" пакети • ")
+                    .append(packages.sumOf { it.quantity }).append(" парчиња")
+            }
         }
+
         list.adapter = ArrayAdapter(this, R.layout.order_list_item, R.id.orderLineText, rows)
+    }
+
+    private fun packageSortKey(value: String): Int =
+        Regex("\\d+").find(value)?.value?.toIntOrNull() ?: Int.MAX_VALUE
+
+    private fun extractMasterNumber(record: PackageRecord): String {
+        val patterns = listOf(
+            Regex("(?i)master\\s*(?:number|no|nr|#)?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)master[-_ ]?nr\\.?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)model\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)modell\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})")
+        )
+        patterns.forEach { rx ->
+            rx.find(record.rawText)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return record.article.trim()
     }
 }
