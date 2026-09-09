@@ -6,11 +6,16 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@drawable/ic_wf_launcher"
         android:label="WF Label Scanner"
+        android:roundIcon="@drawable/ic_wf_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.WFLabelScanner">
         <activity
             android:name=".ReviewActivity"
+            android:exported="false" />
+        <activity
+            android:name=".OrdersActivity"
             android:exported="false" />
         <activity
             android:name=".MainActivity"

@@ -133,6 +133,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.reviewButton).setOnClickListener {
             startActivity(Intent(this, ReviewActivity::class.java))
         }
+        findViewById<Button>(R.id.documentsButton).setOnClickListener {
+            startActivity(Intent(this, OrdersActivity::class.java))
+        }
         findViewById<Button>(R.id.exportButton).setOnClickListener { exportExcel() }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -546,12 +549,10 @@ class MainActivity : AppCompatActivity() {
     private fun closeCurrentOrder() {
         val nalog = nalogInput.text.toString().trim()
         if (nalog.isBlank()) return toast("Нема активен налог.")
-        pendingExportRecords = db.getForOrder(nalog)
-        if (pendingExportRecords.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
-        closeOrderAfterExport = true
-        val safeOrder = nalog.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        val date = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
-        excelLauncher.launch("WF_Nalog_${safeOrder}_$date.xlsx")
+        val records = db.getForOrder(nalog)
+        if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
+        toast("Налог $nalog е зачуван: ${records.size} пакети, ${records.sumOf { it.quantity }} парчиња.")
+        startNewOrder()
     }
 
     private fun updateCount() {

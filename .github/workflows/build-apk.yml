@@ -20,5 +20,5 @@ jobs:
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WF-Label-Scanner-v2.6-STABLE-OCR-APK
+          name: WF-Label-Scanner-v3.0-CLEAN-APK
           path: app/build/outputs/apk/debug/app-debug.apk

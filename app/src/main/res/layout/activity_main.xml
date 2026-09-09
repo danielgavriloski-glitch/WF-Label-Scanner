@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#F5F5F5"
     android:fillViewport="true">
 
     <LinearLayout
@@ -11,144 +12,117 @@
         android:orientation="vertical"
         android:padding="14dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="WF LABEL SCANNER"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/statusText"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Подготвено за скенирање"
-            android:textSize="14sp" />
-
-        <EditText
-            android:id="@+id/nalogInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:hint="Налог / Име"
-            android:inputType="text" />
-
-        <RadioGroup
-            android:id="@+id/labelTypeGroup"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <RadioButton
-                android:id="@+id/standardLabelRadio"
+            <TextView
+                android:layout_width="62dp"
+                android:layout_height="62dp"
+                android:background="@drawable/wf_logo_tile"
+                android:gravity="center"
+                android:text="WF"
+                android:textColor="#000000"
+                android:textSize="27sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
                 android:layout_weight="1"
-                android:checked="true"
-                android:text="СТАНДАРДЕН НАЛОГ" />
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="WF LABEL SCANNER"
+                    android:textColor="#111111"
+                    android:textSize="21sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Точно скенирање на пакети"
+                    android:textColor="#666666"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
 
-            <RadioButton
-                android:id="@+id/nameLabelRadio"
-                android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/card_background"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="НАЛОГ ПО ИМЕ" />
-        </RadioGroup>
-
-        <Button
-            android:id="@+id/newOrderButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="НОВ НАЛОГ" />
-
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="280dp"
-            android:layout_marginTop="8dp"
-            android:background="#111111">
-
-            <androidx.camera.view.PreviewView
-                android:id="@+id/previewView"
+                android:text="1. ОДБЕРИ ТИП НА НАЛОГ"
+                android:textStyle="bold" />
+            <RadioGroup
+                android:id="@+id/labelTypeGroup"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                app:implementationMode="performance" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="170dp"
-                android:layout_gravity="center"
-                android:layout_marginHorizontal="12dp"
-                android:background="@drawable/scan_frame" />
-        </FrameLayout>
-
-        <Button
-            android:id="@+id/switchCameraButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="СМЕНИ КАМЕРА" />
+                android:layout_height="wrap_content">
+                <RadioButton
+                    android:id="@+id/standardLabelRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:buttonTint="#F5C400"
+                    android:checked="true"
+                    android:text="СТАНДАРДЕН — 26-010-00351"
+                    android:textStyle="bold" />
+                <RadioButton
+                    android:id="@+id/nameLabelRadio"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:buttonTint="#F5C400"
+                    android:text="ПО ИМЕ — Regenschutz-Jacke 18"
+                    android:textStyle="bold" />
+            </RadioGroup>
+            <EditText
+                android:id="@+id/nalogInput"
+                style="@style/WFInput"
+                android:hint="Број на налог / Име" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Автоматски препознаени полиња (можеш да ги поправиш):"
+            android:text="2. СТАВИ ЈА ЦЕЛАТА ЕТИКЕТА ВО РАМКАТА"
             android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/packageInput"
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="320dp"
+            android:layout_marginTop="6dp"
+            android:background="#111111">
+            <androidx.camera.view.PreviewView
+                android:id="@+id/previewView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:implementationMode="performance" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="195dp"
+                android:layout_gravity="center"
+                android:layout_marginHorizontal="10dp"
+                android:background="@drawable/scan_frame" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Пакет / Box / Karton" />
-
-        <EditText
-            android:id="@+id/articleInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Артикл / Artikel / Item" />
-
-        <EditText
-            android:id="@+id/sizeInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Големина / Size / Größe" />
-
-        <EditText
-            android:id="@+id/quantityInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Количина / Menge / Qty"
-            android:inputType="number" />
-
-        <EditText
-            android:id="@+id/customerInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Клиент / Kunde / Customer" />
-
-        <EditText
-            android:id="@+id/barcodeInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Barcode / EAN" />
-
-        <EditText
-            android:id="@+id/rawTextInput"
-            android:layout_width="match_parent"
-            android:layout_height="140dp"
-            android:gravity="top|start"
-            android:hint="Цел текст од етикетата"
-            android:inputType="textMultiLine"
-            android:padding="8dp" />
-
-        <Button
-            android:id="@+id/saveButton"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
             android:layout_marginTop="8dp"
-            android:text="РАЧНО ЗАЧУВАЈ / ПОПРАВИ"
-            android:textSize="16sp"
+            android:background="@drawable/status_background"
+            android:gravity="center"
+            android:padding="11dp"
+            android:text="Подготвено — држи ја етикетата мирно"
+            android:textColor="#111111"
             android:textStyle="bold" />
 
         <TextView
@@ -156,30 +130,51 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:padding="8dp"
-            android:text="0 зачувани пакети"
+            android:padding="10dp"
+            android:text="0 скенирани пакети"
+            android:textColor="#067647"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/reviewButton"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="ПРЕГЛЕД / КОНТРОЛА" />
+            android:background="@drawable/card_background"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ПОДАТОЦИ — МОЖЕШ ДА ГИ ИЗМЕНИШ"
+                android:textStyle="bold" />
+            <EditText android:id="@+id/packageInput" style="@style/WFInput" android:hint="Број на пакет" />
+            <EditText android:id="@+id/articleInput" style="@style/WFInput" android:hint="Артикл / Модел" />
+            <EditText android:id="@+id/sizeInput" style="@style/WFInput" android:hint="Големина (1 или L/N)" />
+            <EditText android:id="@+id/quantityInput" style="@style/WFInput" android:hint="Парчиња" android:inputType="number" />
+            <EditText android:id="@+id/customerInput" style="@style/WFInput" android:hint="Клиент / Боја" />
+            <EditText android:id="@+id/barcodeInput" style="@style/WFInput" android:hint="Barcode / EAN" />
+            <EditText
+                android:id="@+id/rawTextInput"
+                style="@style/WFInput"
+                android:gravity="top|start"
+                android:hint="Цел прочитан текст"
+                android:inputType="textMultiLine"
+                android:minHeight="90dp" />
+        </LinearLayout>
 
+        <Button android:id="@+id/saveButton" style="@style/WFPrimaryButton" android:text="ПОТВРДИ / ЗАЧУВАЈ ИЗМЕНА" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/newOrderButton" style="@style/WFSecondaryButton" android:text="НОВ НАЛОГ" />
+            <Button android:id="@+id/switchCameraButton" style="@style/WFSecondaryButton" android:text="СМЕНИ КАМЕРА" />
+        </LinearLayout>
+        <Button android:id="@+id/closeOrderButton" style="@style/WFPrimaryButton" android:text="ЗАТВОРИ НАЛОГ" />
         <Button
-            android:id="@+id/closeOrderButton"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="8dp"
-            android:text="ЗАТВОРИ НАЛОГ И ЗАЧУВАЈ ДОКУМЕНТ"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/exportButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:id="@+id/documentsButton"
+            style="@style/WFYellowButton"
             android:layout_marginBottom="24dp"
-            android:text="ИЗВЕЗИ EXCEL (.XLSX)" />
+            android:text="НАЛОЗИ / ДОКУМЕНТИ" />
 
+        <Button android:id="@+id/reviewButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
+        <Button android:id="@+id/exportButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
     </LinearLayout>
 </ScrollView>
