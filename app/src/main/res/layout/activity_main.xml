@@ -44,7 +44,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Точно скенирање на пакети"
+                    android:text="Брзо и точно скенирање на пакети"
                     android:textColor="#666666"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -101,8 +101,17 @@
             android:background="@drawable/status_background"
             android:gravity="center"
             android:padding="11dp"
-            android:text="Подготвено — држи ја етикетата мирно"
+            android:text="Камера подготвена — притисни СКЕНИРАЈ"
             android:textColor="#111111"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/scanButton"
+            style="@style/WFYellowButton"
+            android:layout_marginTop="8dp"
+            android:minHeight="64dp"
+            android:text="СКЕНИРАЈ"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
