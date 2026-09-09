@@ -43,16 +43,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
     companion object {
-        private const val ANALYSIS_INTERVAL_MS = 450L
-        private const val REQUIRED_STABLE_READS = 3
-        private const val REQUIRED_EMPTY_FRAMES = 4
-        private const val REQUIRED_BAD_FRAMES = 10
-        private const val REQUIRED_WRONG_ORDER_READS = 3
+        private const val ANALYSIS_INTERVAL_MS = 220L
+        private const val REQUIRED_STABLE_READS = 2
+        private const val REQUIRED_BAD_FRAMES = 6
+        private const val REQUIRED_WRONG_ORDER_READS = 2
     }
 
     private lateinit var previewView: PreviewView
     private lateinit var statusText: TextView
     private lateinit var countText: TextView
+    private lateinit var scanButton: Button
     private lateinit var nalogInput: EditText
     private lateinit var packageInput: EditText
     private lateinit var articleInput: EditText
@@ -72,19 +72,16 @@ class MainActivity : AppCompatActivity() {
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var latestPhotoPath = ""
     private var lastAnalysisAt = 0L
+    private var scanRequested = false
     private var candidateKey = ""
     private var candidateCount = 0
-    private var lastSavedKey = ""
-    private var scannerArmed = true
-    private var emptyFrames = 0
     private var badReadFrames = 0
     private var errorSoundPlayed = false
-    private var wrongOrderSoundedFor = ""
     private var wrongOrderCandidate = ""
     private var wrongOrderCount = 0
-    private val recentOcr = ArrayDeque<String>()
-    private var displayedRecord: PackageRecord? = null
     private var formattingOrder = false
+    private var displayedRecord: PackageRecord? = null
+    private val recentOcr = ArrayDeque<String>()
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
 
@@ -116,15 +113,18 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
         db = AppDatabase(this)
         cameraExecutor = Executors.newSingleThreadExecutor()
         recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         barcodeScanner = BarcodeScanning.getClient()
         toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+
         bindViews()
         installOrderFormatter()
         updateCount()
 
+        scanButton.setOnClickListener { beginScan() }
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveCurrent(manual = true) }
         findViewById<Button>(R.id.newOrderButton).setOnClickListener { startNewOrder() }
         findViewById<Button>(R.id.closeOrderButton).setOnClickListener { closeCurrentOrder() }
@@ -161,6 +161,7 @@ class MainActivity : AppCompatActivity() {
         previewView = findViewById(R.id.previewView)
         statusText = findViewById(R.id.statusText)
         countText = findViewById(R.id.countText)
+        scanButton = findViewById(R.id.scanButton)
         nalogInput = findViewById(R.id.nalogInput)
         packageInput = findViewById(R.id.packageInput)
         articleInput = findViewById(R.id.articleInput)
@@ -226,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         try {
             provider.unbindAll()
             provider.bindToLifecycle(this, selector, preview, analysis)
-            statusText.text = "Прецизно скенирање — држи ја етикетата мирно и право"
+            statusText.text = "Камера подготвена — стави етикета и притисни СКЕНИРАЈ"
         } catch (e: Exception) {
             statusText.text = "Грешка со камера: ${e.message}"
         }
@@ -244,11 +245,42 @@ class MainActivity : AppCompatActivity() {
         }.getOrDefault(false)
         if (!available) return toast("Другата камера не е достапна.")
         lensFacing = wanted
-        resetScanner()
+        stopScan("Камера сменета — притисни СКЕНИРАЈ")
         bindCameraUseCases()
     }
 
+    private fun beginScan() {
+        if (scanRequested) return
+        clearPackageFields(keepNalog = true)
+        candidateKey = ""
+        candidateCount = 0
+        badReadFrames = 0
+        errorSoundPlayed = false
+        wrongOrderCandidate = ""
+        wrongOrderCount = 0
+        recentOcr.clear()
+        displayedRecord = null
+        latestPhotoPath = ""
+        scanRequested = true
+        scanButton.isEnabled = false
+        statusText.text = "Скенирам... држи ја етикетата право во рамката"
+    }
+
+    private fun stopScan(message: String) = runOnUiThread {
+        scanRequested = false
+        scanButton.isEnabled = true
+        candidateKey = ""
+        candidateCount = 0
+        recentOcr.clear()
+        statusText.text = message
+    }
+
     private fun analyzeFrame(proxy: ImageProxy) {
+        if (!scanRequested) {
+            proxy.close()
+            return
+        }
+
         val now = System.currentTimeMillis()
         if (now - lastAnalysisAt < ANALYSIS_INTERVAL_MS || !processing.compareAndSet(false, true)) {
             proxy.close()
@@ -259,6 +291,7 @@ class MainActivity : AppCompatActivity() {
         val bitmap = runCatching { proxy.toBitmap() }.getOrNull()
         val rotation = proxy.imageInfo.rotationDegrees
         proxy.close()
+
         if (bitmap == null) {
             processing.set(false)
             return
@@ -271,61 +304,59 @@ class MainActivity : AppCompatActivity() {
                 barcodeScanner.process(image)
                     .addOnSuccessListener { codes ->
                         val code = codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue.orEmpty()
-                        handleAutomaticResult(raw, code, bitmap)
+                        handleScanResult(raw, code, bitmap)
                     }
-                    .addOnFailureListener { handleAutomaticResult(raw, "", bitmap) }
+                    .addOnFailureListener { handleScanResult(raw, "", bitmap) }
                     .addOnCompleteListener { processing.set(false) }
             }
             .addOnFailureListener {
-                registerEmptyFrame()
+                registerBadRead()
                 processing.set(false)
             }
     }
 
-    private fun handleAutomaticResult(raw: String, detectedBarcode: String, bitmap: Bitmap) {
+    private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap) {
+        if (!scanRequested) return
+
         if (raw.length >= 8) {
             recentOcr.addLast(raw)
-            while (recentOcr.size > 6) recentOcr.removeFirst()
+            while (recentOcr.size > 3) recentOcr.removeFirst()
         }
         val combinedRaw = recentOcr.joinToString("\n")
 
-        // Precision rule: do not fall back to the active order when OCR did not actually read an order.
-        // AUTO recognizes both 20-010-00355 orders and name-based labels.
         val parsed = LabelParser.parse(combinedRaw, "", LabelType.AUTO).let {
             if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
         }
 
         val qty = parsed.quantity.filter { it.isDigit() }.toIntOrNull() ?: 0
         val complete = parsed.nalog.isNotBlank() && parsed.size.isNotBlank() && qty > 0
-        if (!complete || combinedRaw.length < 16) {
-            if (combinedRaw.length >= 12) registerBadRead()
-            registerEmptyFrame()
+        if (!complete || combinedRaw.length < 14) {
+            registerBadRead()
             return
         }
 
         val activeOrder = nalogInput.text.toString().trim()
         if (activeOrder.isNotBlank() && normalizeOrder(parsed.nalog) != normalizeOrder(activeOrder)) {
-            candidateKey = ""
-            candidateCount = 0
-            scannerArmed = true
             val wrongKey = "${normalizeOrder(parsed.nalog)}|${normalizeOrder(activeOrder)}"
-            if (wrongKey == wrongOrderCandidate) wrongOrderCount++ else {
+            if (wrongKey == wrongOrderCandidate) {
+                wrongOrderCount++
+            } else {
                 wrongOrderCandidate = wrongKey
                 wrongOrderCount = 1
             }
             runOnUiThread {
                 statusText.text = "Проверувам налог... $wrongOrderCount/$REQUIRED_WRONG_ORDER_READS"
             }
-            if (wrongOrderCount >= REQUIRED_WRONG_ORDER_READS) signalWrongOrder(parsed.nalog, activeOrder)
+            if (wrongOrderCount >= REQUIRED_WRONG_ORDER_READS) {
+                signalWrongOrder(parsed.nalog, activeOrder)
+            }
             return
         }
 
         badReadFrames = 0
         errorSoundPlayed = false
-        wrongOrderSoundedFor = ""
         wrongOrderCandidate = ""
         wrongOrderCount = 0
-        emptyFrames = 0
 
         val key = listOf(
             normalizeOrder(parsed.nalog),
@@ -338,34 +369,6 @@ class MainActivity : AppCompatActivity() {
 
         showParsed(parsed, combinedRaw)
 
-        if (!scannerArmed) {
-            if (key == lastSavedKey) {
-                candidateKey = ""
-                candidateCount = 0
-                runOnUiThread {
-                    statusText.text = "✓ Зачувано — тргни ја оваа етикета и покажи ја следната"
-                }
-                return
-            }
-
-            if (key == candidateKey) {
-                candidateCount++
-            } else {
-                candidateKey = key
-                candidateCount = 1
-            }
-
-            if (candidateCount < REQUIRED_STABLE_READS) {
-                runOnUiThread {
-                    statusText.text = "Ја проверувам следната етикета... $candidateCount/$REQUIRED_STABLE_READS"
-                }
-                return
-            }
-
-            scannerArmed = true
-            candidateCount = 1
-        }
-
         if (key == candidateKey) {
             candidateCount++
         } else {
@@ -373,21 +376,18 @@ class MainActivity : AppCompatActivity() {
             candidateCount = 1
         }
 
-        if (candidateCount >= REQUIRED_STABLE_READS) {
+        if (candidateCount < REQUIRED_STABLE_READS) {
             runOnUiThread {
-                latestPhotoPath = saveFrame(bitmap)
-                if (saveCurrent(manual = false)) {
-                    lastSavedKey = key
-                    scannerArmed = false
-                    candidateKey = ""
-                    candidateCount = 0
-                    playSuccessSound()
-                    recentOcr.clear()
-                }
+                statusText.text = "Проверувам точност... $candidateCount/$REQUIRED_STABLE_READS"
             }
-        } else {
-            runOnUiThread {
-                statusText.text = "Проверувам точност... $candidateCount/$REQUIRED_STABLE_READS — држи мирно"
+            return
+        }
+
+        runOnUiThread {
+            latestPhotoPath = saveFrame(bitmap)
+            if (saveCurrent(manual = false)) {
+                playSuccessSound()
+                stopScan("✓ Скенирано и зачувано — стави следна етикета и притисни СКЕНИРАЈ")
             }
         }
     }
@@ -395,39 +395,26 @@ class MainActivity : AppCompatActivity() {
     private fun normalizeOrder(value: String): String =
         value.uppercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
-    private fun signalWrongOrder(readOrder: String, activeOrder: String) {
-        val key = "${normalizeOrder(readOrder)}|${normalizeOrder(activeOrder)}"
-        runOnUiThread {
-            statusText.text = "✕ Погрешен налог: $readOrder • треба $activeOrder — ПОВТОРИ"
-            if (wrongOrderSoundedFor != key) {
-                wrongOrderSoundedFor = key
-                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 650)
-                vibrate(450)
-            }
-        }
-    }
+    private fun normalizeText(value: String): String =
+        value.uppercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
-    private fun registerEmptyFrame() {
-        emptyFrames++
-        if (!scannerArmed && emptyFrames >= REQUIRED_EMPTY_FRAMES) {
-            scannerArmed = true
-            displayedRecord = null
-            candidateKey = ""
-            candidateCount = 0
-            runOnUiThread {
-                statusText.text = "Подготвено — постави ја следната етикета"
-            }
+    private fun signalWrongOrder(readOrder: String, activeOrder: String) {
+        runOnUiThread {
+            toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 650)
+            vibrate(450)
+            stopScan("✕ Погрешен налог: $readOrder • активен е $activeOrder")
         }
     }
 
     private fun registerBadRead() {
+        if (!scanRequested) return
         badReadFrames++
         if (badReadFrames >= REQUIRED_BAD_FRAMES && !errorSoundPlayed) {
             errorSoundPlayed = true
             runOnUiThread {
-                statusText.text = "Не ја прочитав целата етикета — намести ја во рамката и држи мирно"
-                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 500)
-                vibrate(350)
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 450)
+                vibrate(250)
+                stopScan("Не ја прочитав целата етикета — намести ја подобро и притисни СКЕНИРАЈ")
             }
         }
     }
@@ -461,18 +448,18 @@ class MainActivity : AppCompatActivity() {
 
         val currentDisplayed = displayedRecord
         val record = PackageRecord(
-                id = currentDisplayed?.id ?: 0,
-                createdAt = currentDisplayed?.createdAt
-                    ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
-                nalog = nalog,
-                packageNo = packageNo,
-                article = articleInput.text.toString().trim(),
-                size = sizeInput.text.toString().trim(),
-                quantity = qty,
-                customer = customerInput.text.toString().trim(),
-                barcode = barcodeInput.text.toString().trim(),
-                rawText = rawTextInput.text.toString(),
-                photoPath = latestPhotoPath
+            id = currentDisplayed?.id ?: 0,
+            createdAt = currentDisplayed?.createdAt
+                ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+            nalog = nalog,
+            packageNo = packageNo,
+            article = articleInput.text.toString().trim(),
+            size = sizeInput.text.toString().trim(),
+            quantity = qty,
+            customer = customerInput.text.toString().trim(),
+            barcode = barcodeInput.text.toString().trim(),
+            rawText = rawTextInput.text.toString(),
+            photoPath = latestPhotoPath
         )
 
         if (manual && currentDisplayed != null) {
@@ -483,12 +470,30 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
+        if (isDuplicate(record)) {
+            toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 500)
+            vibrate(250)
+            stopScan("⚠ Овој пакет е веќе скениран — не е зачуван повторно")
+            return false
+        }
+
         val insertedId = db.insert(record)
         displayedRecord = record.copy(id = insertedId)
-
-        statusText.text = "✓ Зачуван пакет $packageNo за налог $nalog"
         updateCount()
         return true
+    }
+
+    private fun isDuplicate(record: PackageRecord): Boolean {
+        val existing = db.getForOrder(record.nalog)
+        return existing.any { old ->
+            val samePackage = record.packageNo.isNotBlank() && old.packageNo.isNotBlank() &&
+                normalizeText(record.packageNo) == normalizeText(old.packageNo)
+            val sameBarcode = record.barcode.isNotBlank() && old.barcode.isNotBlank() &&
+                normalizeText(record.barcode) == normalizeText(old.barcode)
+            val sameContent = normalizeText(record.rawText).length > 30 &&
+                normalizeText(record.rawText) == normalizeText(old.rawText)
+            samePackage || sameBarcode || sameContent
+        }
     }
 
     private fun saveFrame(bitmap: Bitmap): String = runCatching {
@@ -524,26 +529,21 @@ class MainActivity : AppCompatActivity() {
         latestPhotoPath = ""
     }
 
-    private fun resetScanner() {
-        scannerArmed = true
-        emptyFrames = 0
+    private fun startNewOrder() {
+        clearPackageFields(keepNalog = false)
+        nalogInput.isEnabled = true
+        scanRequested = false
+        scanButton.isEnabled = true
         candidateKey = ""
         candidateCount = 0
-        lastSavedKey = ""
         badReadFrames = 0
         errorSoundPlayed = false
-        wrongOrderSoundedFor = ""
         wrongOrderCandidate = ""
         wrongOrderCount = 0
         recentOcr.clear()
         displayedRecord = null
-    }
-
-    private fun startNewOrder() {
-        clearPackageFields(keepNalog = false)
-        nalogInput.isEnabled = true
-        resetScanner()
-        statusText.text = "Нов налог — внеси го налогот или постави ја првата етикета"
+        statusText.text = "Нов налог — стави ја првата етикета и притисни СКЕНИРАЈ"
+        updateCount()
     }
 
     private fun exportExcel() {
@@ -559,9 +559,12 @@ class MainActivity : AppCompatActivity() {
         if (nalog.isBlank()) return toast("Нема активен налог.")
         val records = db.getForOrder(nalog)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
+
         val sizes = records.groupBy { it.size.ifBlank { "Непозната" } }
-            .entries.joinToString(" • ") { (size, rows) -> "$size: ${rows.sumOf { it.quantity }}" }
-        toast("Налог $nalog е затворен: ${records.size} пакети, ${records.sumOf { it.quantity }} парчиња. $sizes")
+            .entries.sortedBy { it.key }
+            .joinToString(" • ") { (size, rows) -> "$size: ${rows.sumOf { it.quantity }}" }
+
+        toast("Налог $nalog затворен: ${records.size} пакети • ${records.sumOf { it.quantity }} парчиња • $sizes")
         startNewOrder()
     }
 
