@@ -31,8 +31,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:hint="Налог / Auftrag / Order"
+            android:hint="Налог / Име"
             android:inputType="text" />
+
+        <Spinner
+            android:id="@+id/labelTypeSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:contentDescription="Избор на тип етикета" />
 
         <Button
             android:id="@+id/newOrderButton"
@@ -40,13 +46,25 @@
             android:layout_height="wrap_content"
             android:text="НОВ НАЛОГ" />
 
-        <androidx.camera.view.PreviewView
-            android:id="@+id/previewView"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="280dp"
             android:layout_marginTop="8dp"
-            android:background="#111111"
-            app:implementationMode="performance" />
+            android:background="#111111">
+
+            <androidx.camera.view.PreviewView
+                android:id="@+id/previewView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:implementationMode="performance" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="170dp"
+                android:layout_gravity="center"
+                android:layout_marginHorizontal="12dp"
+                android:background="@drawable/scan_frame" />
+        </FrameLayout>
 
         <Button
             android:id="@+id/switchCameraButton"
