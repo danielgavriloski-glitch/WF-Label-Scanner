@@ -9,8 +9,6 @@ import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.os.Handler
-import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.widget.Button
@@ -57,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var recognizer: TextRecognizer
     private lateinit var barcodeScanner: BarcodeScanner
+    private lateinit var toneGenerator: ToneGenerator
     private val processing = AtomicBoolean(false)
     private var cameraProvider: ProcessCameraProvider? = null
     private var lensFacing = CameraSelector.LENS_FACING_BACK
@@ -67,6 +66,10 @@ class MainActivity : AppCompatActivity() {
     private var lastSavedKey = ""
     private var scannerArmed = true
     private var emptyFrames = 0
+    private var badReadFrames = 0
+    private var errorSoundPlayed = false
+    private var pendingExportRecords: List<PackageRecord> = emptyList()
+    private var closeOrderAfterExport = false
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startCamera() else toast("Потребна е дозвола за камера.")
@@ -75,12 +78,21 @@ class MainActivity : AppCompatActivity() {
     private val excelLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     ) { uri: Uri? ->
-        if (uri == null) return@registerForActivityResult
+        if (uri == null) {
+            closeOrderAfterExport = false
+            pendingExportRecords = emptyList()
+            return@registerForActivityResult
+        }
         runCatching {
-            contentResolver.openOutputStream(uri)?.use { XlsxExporter.write(it, db.getAll()) }
+            contentResolver.openOutputStream(uri)?.use { XlsxExporter.write(it, pendingExportRecords) }
                 ?: error("Не можам да го отворам избраниот фајл.")
-        }.onSuccess { toast("Excel е успешно зачуван.") }
+        }.onSuccess {
+            toast("Документот е успешно зачуван.")
+            if (closeOrderAfterExport) startNewOrder()
+        }
             .onFailure { toast("Грешка при Excel: ${it.message}") }
+        closeOrderAfterExport = false
+        pendingExportRecords = emptyList()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,10 +102,12 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         barcodeScanner = BarcodeScanning.getClient()
+        toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
         bindViews()
         updateCount()
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveCurrent(manual = true) }
         findViewById<Button>(R.id.newOrderButton).setOnClickListener { startNewOrder() }
+        findViewById<Button>(R.id.closeOrderButton).setOnClickListener { closeCurrentOrder() }
         findViewById<Button>(R.id.switchCameraButton).setOnClickListener { switchCamera() }
         findViewById<Button>(R.id.reviewButton).setOnClickListener {
             startActivity(Intent(this, ReviewActivity::class.java))
@@ -113,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
         recognizer.close()
         barcodeScanner.close()
+        toneGenerator.release()
         super.onDestroy()
     }
 
@@ -170,7 +185,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun analyzeFrame(proxy: ImageProxy) {
         val now = System.currentTimeMillis()
-        if (now - lastAnalysisAt < 650 || !processing.compareAndSet(false, true)) {
+        if (now - lastAnalysisAt < 350 || !processing.compareAndSet(false, true)) {
             proxy.close()
             return
         }
@@ -204,14 +219,14 @@ class MainActivity : AppCompatActivity() {
         val parsed = LabelParser.parse(raw, nalogInput.text.toString().trim()).let {
             if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
         }
-        val useful = parsed.nalog.isNotBlank() && (
-            parsed.packageNo.isNotBlank() || parsed.article.isNotBlank() || parsed.size.isNotBlank() ||
-                parsed.quantity.isNotBlank() || parsed.barcode.isNotBlank()
-            )
-        if (!useful || raw.length < 12) {
+        val complete = parsed.nalog.isNotBlank() && parsed.size.isNotBlank() && parsed.quantity.isNotBlank()
+        if (!complete || raw.length < 12) {
+            if (raw.length >= 12) registerBadRead()
             registerEmptyFrame()
             return
         }
+        badReadFrames = 0
+        errorSoundPlayed = false
         emptyFrames = 0
         val key = listOf(parsed.nalog, parsed.packageNo, parsed.article, parsed.size, parsed.quantity, parsed.barcode)
             .joinToString("|") { it.lowercase(Locale.ROOT).replace(" ", "") }
@@ -227,7 +242,7 @@ class MainActivity : AppCompatActivity() {
                 candidateKey = key
                 candidateCount = 1
             }
-            if (candidateCount < 3) {
+            if (candidateCount < 2) {
                 runOnUiThread { statusText.text = "Ја проверувам следната етикета..." }
                 return
             }
@@ -246,7 +261,7 @@ class MainActivity : AppCompatActivity() {
                     scannerArmed = false
                     candidateKey = ""
                     candidateCount = 0
-                    beepAndVibrate()
+                    playSuccessSound()
                 }
             }
         } else runOnUiThread { statusText.text = "Препознавам... држи ја етикетата мирно" }
@@ -259,6 +274,18 @@ class MainActivity : AppCompatActivity() {
             candidateKey = ""
             candidateCount = 0
             runOnUiThread { statusText.text = "Подготвено — постави ја следната етикета" }
+        }
+    }
+
+    private fun registerBadRead() {
+        badReadFrames++
+        if (badReadFrames >= 2 && !errorSoundPlayed) {
+            errorSoundPlayed = true
+            runOnUiThread {
+                statusText.text = "Не ги прочитав налогот, големината и парчињата — повтори"
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 500)
+                vibrate(350)
+            }
         }
     }
 
@@ -303,12 +330,14 @@ class MainActivity : AppCompatActivity() {
         file.absolutePath
     }.getOrDefault("")
 
-    private fun beepAndVibrate() {
-        val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
-        tone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
-        Handler(Looper.getMainLooper()).postDelayed({ tone.release() }, 250)
+    private fun playSuccessSound() {
+        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
+        vibrate(100)
+    }
+
+    private fun vibrate(milliseconds: Long) {
         (getSystemService(VIBRATOR_SERVICE) as? Vibrator)?.vibrate(
-            VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE)
+            VibrationEffect.createOneShot(milliseconds, VibrationEffect.DEFAULT_AMPLITUDE)
         )
     }
 
@@ -321,6 +350,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun resetScanner() {
         scannerArmed = true; emptyFrames = 0; candidateKey = ""; candidateCount = 0; lastSavedKey = ""
+        badReadFrames = 0; errorSoundPlayed = false
     }
 
     private fun startNewOrder() {
@@ -330,9 +360,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exportExcel() {
-        if (db.getAll().isEmpty()) return toast("Нема зачувани пакети за Excel.")
+        pendingExportRecords = db.getAll()
+        if (pendingExportRecords.isEmpty()) return toast("Нема зачувани пакети за Excel.")
+        closeOrderAfterExport = false
         val date = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
         excelLauncher.launch("WF_Nalozi_$date.xlsx")
+    }
+
+    private fun closeCurrentOrder() {
+        val nalog = nalogInput.text.toString().trim()
+        if (nalog.isBlank()) return toast("Нема активен налог.")
+        pendingExportRecords = db.getForOrder(nalog)
+        if (pendingExportRecords.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
+        closeOrderAfterExport = true
+        val safeOrder = nalog.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val date = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
+        excelLauncher.launch("WF_Nalog_${safeOrder}_$date.xlsx")
     }
 
     private fun updateCount() {

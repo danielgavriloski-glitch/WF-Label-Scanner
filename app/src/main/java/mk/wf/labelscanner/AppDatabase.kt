@@ -69,6 +69,9 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
         return out
     }
 
+    fun getForOrder(nalog: String): List<PackageRecord> =
+        getAll().filter { it.nalog == nalog }
+
     fun countAll(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM packages", null).use { c ->
         c.moveToFirst(); c.getInt(0)
     }

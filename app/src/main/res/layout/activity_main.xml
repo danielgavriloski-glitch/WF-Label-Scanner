@@ -133,6 +133,14 @@
             android:text="ПРЕГЛЕД / КОНТРОЛА" />
 
         <Button
+            android:id="@+id/closeOrderButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="ЗАТВОРИ НАЛОГ И ЗАЧУВАЈ ДОКУМЕНТ"
+            android:textStyle="bold" />
+
+        <Button
             android:id="@+id/exportButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
