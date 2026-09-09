@@ -20,5 +20,5 @@ jobs:
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WF-Label-Scanner-v0.2-AUTO-APK
+          name: WF-Label-Scanner-v2.5-ACCURATE-APK
           path: app/build/outputs/apk/debug/app-debug.apk
