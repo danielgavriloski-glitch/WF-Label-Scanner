@@ -13,13 +13,56 @@ data class ParsedLabel(
 enum class LabelType { AUTO, STANDARD, NAME }
 
 object LabelParser {
+    private const val DEFAULT_ORDER_PREFIX = "26-010"
+
     private fun clean(s: String) = s.trim().trim(':', '-', '#', '|', '=').trim()
 
-    private val standardOrder = Regex("(?<!\\d)(\\d{2})[\\s.-]?(\\d{3})[\\s.-]?(\\d{5})(?!\\d)")
+    private val standardOrder = Regex("(?<!\\d)(\\d{2})[\\s./-]?(\\d{3})[\\s./-]?(\\d{5})(?!\\d)")
+    private val ocrFullOrder = Regex(
+        "(?i)(?<![A-Z0-9])([0-9OQ]{2})[\\s./-]*([0-9OQ]{3})[\\s./-]*([0-9OQ]{5})(?![A-Z0-9])"
+    )
+    private val shortOrder = Regex(
+        "(?i)(?<![A-Z0-9])([0OQ]{2}[\\s./-]*[0-9OQISBLZ]{3})(?![A-Z0-9])"
+    )
 
-    private fun standardOrderFrom(text: String): String = standardOrder.find(text)?.let {
-        "${it.groupValues[1]}-${it.groupValues[2]}-${it.groupValues[3]}"
-    }.orEmpty()
+    private fun normalizeOcrDigits(value: String): String = buildString {
+        value.uppercase().forEach { ch ->
+            when (ch) {
+                in '0'..'9' -> append(ch)
+                'O', 'Q' -> append('0')
+                'I', 'L' -> append('1')
+                'Z' -> append('2')
+                'S' -> append('5')
+                'B' -> append('8')
+            }
+        }
+    }
+
+    private fun standardOrderFrom(text: String): String {
+        standardOrder.find(text)?.let {
+            return "${it.groupValues[1]}-${it.groupValues[2]}-${it.groupValues[3]}"
+        }
+
+        ocrFullOrder.find(text)?.let {
+            val a = normalizeOcrDigits(it.groupValues[1])
+            val b = normalizeOcrDigits(it.groupValues[2])
+            val c = normalizeOcrDigits(it.groupValues[3])
+            if (a.length == 2 && b.length == 3 && c.length == 5) {
+                return "$a-$b-$c"
+            }
+        }
+        return ""
+    }
+
+    private fun shortOrderFrom(text: String): String {
+        for (match in shortOrder.findAll(text)) {
+            val digits = normalizeOcrDigits(match.groupValues[1])
+            if (digits.length == 5 && digits.startsWith("00")) {
+                return "$DEFAULT_ORDER_PREFIX-$digits"
+            }
+        }
+        return ""
+    }
 
     private fun isLn(value: String): Boolean =
         value.replace(" ", "").matches(Regex("(?i)^L[/I|]N$"))
@@ -44,10 +87,17 @@ object LabelParser {
 
         val lines = text.lines().map { clean(it) }.filter { it.isNotBlank() }
 
-        val standardNalog = standardOrderFrom(text).ifBlank { valueAfter(text, listOf(
+        val orderKeys = listOf(
             "nalog", "auftrag", "auftragsnr", "auftrags-nr", "auftrag nr", "auftrag-nr",
-            "order", "order no", "order nr", "order number", "ordre", "job", "work order", "kommission"
-        )) }
+            "order", "order no", "order nr", "order number", "ordre", "job", "work order", "kommission",
+            "papos", "pa/pos", "pa pos"
+        )
+        val keyedOrder = valueAfter(text, orderKeys)
+        val standardNalog = standardOrderFrom(text)
+            .ifBlank { standardOrderFrom(keyedOrder) }
+            .ifBlank { shortOrderFrom(keyedOrder) }
+            .ifBlank { shortOrderFrom(text) }
+
         val lnIndex = lines.indexOfFirst(::isLn)
         val nameNalog = if (lnIndex > 0) {
             lines.subList(0, lnIndex).lastOrNull {
@@ -78,7 +128,7 @@ object LabelParser {
         ))
         if (size.isBlank()) {
             size = lines.firstOrNull {
-                isLn(it) || it.matches(Regex("(?i)^(?:XXS|XS|S|M|L|XL|XXL|3XL|4XL|5XL|\\d{1,3})$"))
+                isLn(it) || it.matches(Regex("(?i)^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|\\d{1,3})$"))
             }.orEmpty().let { if (isLn(it)) "L/N" else it.replace(Regex("\\s+"), "") }
         }
 
@@ -86,7 +136,7 @@ object LabelParser {
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
         ))
         if (quantity.isBlank()) {
-            quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|stiick|stiick|pcs|pieces|paar|pairs?)(?![a-z])")
+            quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|stiick|pcs|pieces|paar|pairs?)(?![a-z])")
                 .find(text)?.groupValues?.get(1).orEmpty()
         }
         quantity = Regex("\\d+").find(quantity)?.value ?: quantity
