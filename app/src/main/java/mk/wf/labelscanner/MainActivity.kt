@@ -15,7 +15,6 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -55,7 +54,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var countText: TextView
     private lateinit var nalogInput: EditText
-    private lateinit var labelTypeGroup: RadioGroup
     private lateinit var packageInput: EditText
     private lateinit var articleInput: EditText
     private lateinit var sizeInput: EditText
@@ -164,7 +162,6 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         countText = findViewById(R.id.countText)
         nalogInput = findViewById(R.id.nalogInput)
-        labelTypeGroup = findViewById(R.id.labelTypeGroup)
         packageInput = findViewById(R.id.packageInput)
         articleInput = findViewById(R.id.articleInput)
         sizeInput = findViewById(R.id.sizeInput)
@@ -293,12 +290,8 @@ class MainActivity : AppCompatActivity() {
         val combinedRaw = recentOcr.joinToString("\n")
 
         // Precision rule: do not fall back to the active order when OCR did not actually read an order.
-        val labelType = if (labelTypeGroup.checkedRadioButtonId == R.id.nameLabelRadio) {
-            LabelType.NAME
-        } else {
-            LabelType.STANDARD
-        }
-        val parsed = LabelParser.parse(combinedRaw, "", labelType).let {
+        // AUTO recognizes both 20-010-00355 orders and name-based labels.
+        val parsed = LabelParser.parse(combinedRaw, "", LabelType.AUTO).let {
             if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
         }
 
@@ -442,6 +435,7 @@ class MainActivity : AppCompatActivity() {
     private fun showParsed(parsed: ParsedLabel, raw: String) = runOnUiThread {
         if (nalogInput.text.isNullOrBlank() && parsed.nalog.isNotBlank()) {
             nalogInput.setText(formatOrderNumber(parsed.nalog))
+            nalogInput.isEnabled = false
         }
         packageInput.setText(parsed.packageNo)
         articleInput.setText(parsed.article)
@@ -547,6 +541,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startNewOrder() {
         clearPackageFields(keepNalog = false)
+        nalogInput.isEnabled = true
         resetScanner()
         statusText.text = "Нов налог — внеси го налогот или постави ја првата етикета"
     }
@@ -564,7 +559,9 @@ class MainActivity : AppCompatActivity() {
         if (nalog.isBlank()) return toast("Нема активен налог.")
         val records = db.getForOrder(nalog)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
-        toast("Налог $nalog е зачуван: ${records.size} пакети, ${records.sumOf { it.quantity }} парчиња.")
+        val sizes = records.groupBy { it.size.ifBlank { "Непозната" } }
+            .entries.joinToString(" • ") { (size, rows) -> "$size: ${rows.sumOf { it.quantity }}" }
+        toast("Налог $nalog е затворен: ${records.size} пакети, ${records.sumOf { it.quantity }} парчиња. $sizes")
         startNewOrder()
     }
 
