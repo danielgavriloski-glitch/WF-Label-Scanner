@@ -42,7 +42,7 @@ object XlsxExporter {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets>
 <sheet name="Paketi" sheetId="1" r:id="rId1"/>
-<sheet name="Rezime" sheetId="2" r:id="rId2"/>
+<sheet name="Nalog rezime" sheetId="2" r:id="rId2"/>
 </sheets>
 </workbook>"""
 
@@ -64,28 +64,80 @@ object XlsxExporter {
 
     private fun detailsSheet(records: List<PackageRecord>): String {
         val rows = mutableListOf<List<Cell>>()
-        rows += listOf("ID", "Datum", "Nalog", "Paket", "Artikl", "Golemina", "Kolicina", "Klient", "Barcode", "Cel OCR tekst", "Foto path", "Provereno OK", "Zabeleshka").map { Cell.S(it, true) }
+        rows += listOf(
+            "Datum", "Nalog", "Master number", "Paket", "Golemina", "Parcinja",
+            "Artikl / Model", "Klient", "Barcode", "Cel OCR tekst"
+        ).map { Cell.S(it, true) }
+
         records.forEach { r ->
             rows += listOf(
-                Cell.N(r.id.toString()), Cell.S(r.createdAt), Cell.S(r.nalog), Cell.S(r.packageNo),
-                Cell.S(r.article), Cell.S(r.size), Cell.N(r.quantity.toString()), Cell.S(r.customer),
-                Cell.S(r.barcode), Cell.S(r.rawText), Cell.S(r.photoPath), Cell.S(""), Cell.S("")
+                Cell.S(r.createdAt),
+                Cell.S(r.nalog),
+                Cell.S(masterNumber(r)),
+                Cell.S(r.packageNo),
+                Cell.S(r.size),
+                Cell.N(r.quantity.toString()),
+                Cell.S(r.article),
+                Cell.S(r.customer),
+                Cell.S(r.barcode),
+                Cell.S(r.rawText)
             )
         }
         return sheetXml(rows)
     }
 
     private fun summarySheet(records: List<PackageRecord>): String {
-        data class Key(val nalog: String, val size: String)
-        val grouped = records.groupBy { Key(it.nalog, it.size.ifBlank { "(bez golemina)" }) }
         val rows = mutableListOf<List<Cell>>()
-        rows += listOf("Nalog", "Golemina", "Vkupna kolicina", "Broj paketi").map { Cell.S(it, true) }
-        grouped.toSortedMap(compareBy<Key> { it.nalog }.thenBy { it.size }).forEach { (k, v) ->
-            rows += listOf(Cell.S(k.nalog), Cell.S(k.size), Cell.N(v.sumOf { it.quantity }.toString()), Cell.N(v.size.toString()))
-        }
+        rows += listOf(
+            "Nalog", "Master number", "Golemina", "Paketi", "Vkupno parcinja", "Broj paketi"
+        ).map { Cell.S(it, true) }
+
+        val grouped = records.groupBy { Triple(it.nalog, masterNumber(it), it.size.ifBlank { "(bez golemina)" }) }
+        grouped.entries
+            .sortedWith(compareBy({ it.key.first }, { it.key.second }, { it.key.third }))
+            .forEach { (key, groupRows) ->
+                val packageNos = groupRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")
+                rows += listOf(
+                    Cell.S(key.first),
+                    Cell.S(key.second),
+                    Cell.S(key.third),
+                    Cell.S(packageNos),
+                    Cell.N(groupRows.sumOf { it.quantity }.toString()),
+                    Cell.N(groupRows.size.toString())
+                )
+            }
+
         rows.add(emptyList())
-        rows += listOf(Cell.S("VKUPNO", true), Cell.S(""), Cell.N(records.sumOf { it.quantity }.toString()), Cell.N(records.size.toString()))
+        records.groupBy { it.nalog }.toSortedMap().forEach { (nalog, orderRows) ->
+            rows += listOf(
+                Cell.S("NALOG $nalog", true),
+                Cell.S("VKUPNO", true),
+                Cell.S(""),
+                Cell.S(orderRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")),
+                Cell.N(orderRows.sumOf { it.quantity }.toString(), true),
+                Cell.N(orderRows.size.toString(), true)
+            )
+        }
+
+        rows.add(emptyList())
+        rows += listOf(
+            Cell.S("SITE NALOZI", true), Cell.S("VKUPNO", true), Cell.S(""), Cell.S(""),
+            Cell.N(records.sumOf { it.quantity }.toString(), true), Cell.N(records.size.toString(), true)
+        )
         return sheetXml(rows)
+    }
+
+    private fun masterNumber(record: PackageRecord): String {
+        val patterns = listOf(
+            Regex("(?i)master\\s*(?:number|no|nr|#)?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)master[-_ ]?nr\\.?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)model\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
+            Regex("(?i)modell\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})")
+        )
+        patterns.forEach { rx ->
+            rx.find(record.rawText)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return record.article.trim()
     }
 
     private sealed class Cell {
@@ -105,13 +157,14 @@ object XlsxExporter {
                 when (cell) {
                     is Cell.S -> {
                         val style = if (cell.bold) " s=\"1\"" else ""
-                        sb.append("<c r=\"").append(ref).append("\" t=\"inlineStr\"").append(style).append("><is><t xml:space=\"preserve\">")
+                        sb.append("<c r=\"").append(ref).append("\" t=\"inlineStr\"").append(style)
+                            .append("><is><t xml:space=\"preserve\">")
                             .append(esc(cell.value)).append("</t></is></c>")
                     }
                     is Cell.N -> {
                         val style = if (cell.bold) " s=\"1\"" else ""
-                        sb.append("<c r=\"").append(ref).append("\" t=\"n\"").append(style).append("><v>")
-                            .append(cell.value.ifBlank { "0" }).append("</v></c>")
+                        sb.append("<c r=\"").append(ref).append("\" t=\"n\"").append(style)
+                            .append("><v>").append(cell.value.ifBlank { "0" }).append("</v></c>")
                     }
                 }
             }
