@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WF LABEL SCANNER"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Подготвено за скенирање"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/nalogInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:hint="Налог / Auftrag / Order"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/newOrderButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="НОВ НАЛОГ" />
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/previewView"
+            android:layout_width="match_parent"
+            android:layout_height="280dp"
+            android:layout_marginTop="8dp"
+            android:background="#111111"
+            app:implementationMode="performance" />
+
+        <Button
+            android:id="@+id/switchCameraButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="СМЕНИ КАМЕРА" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Автоматски препознаени полиња (можеш да ги поправиш):"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/packageInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Пакет / Box / Karton" />
+
+        <EditText
+            android:id="@+id/articleInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Артикл / Artikel / Item" />
+
+        <EditText
+            android:id="@+id/sizeInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Големина / Size / Größe" />
+
+        <EditText
+            android:id="@+id/quantityInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Количина / Menge / Qty"
+            android:inputType="number" />
+
+        <EditText
+            android:id="@+id/customerInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Клиент / Kunde / Customer" />
+
+        <EditText
+            android:id="@+id/barcodeInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Barcode / EAN" />
+
+        <EditText
+            android:id="@+id/rawTextInput"
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:gravity="top|start"
+            android:hint="Цел текст од етикетата"
+            android:inputType="textMultiLine"
+            android:padding="8dp" />
+
+        <Button
+            android:id="@+id/saveButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="РАЧНО ЗАЧУВАЈ / ПОПРАВИ"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/countText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="0 зачувани пакети"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/reviewButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ПРЕГЛЕД / КОНТРОЛА" />
+
+        <Button
+            android:id="@+id/exportButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:text="ИЗВЕЗИ EXCEL (.XLSX)" />
+
+    </LinearLayout>
+</ScrollView>
