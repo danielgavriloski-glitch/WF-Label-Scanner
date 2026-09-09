@@ -42,7 +42,12 @@ class OrdersActivity : AppCompatActivity() {
                 val output = SimpleDateFormat("dd.MM.yyyy  HH:mm", Locale.getDefault())
                 output.format(input.parse(rawDate)!!)
             }.getOrDefault(rawDate)
-            "$date\nНалог: $nalog\n${packages.size} пакети  •  ${packages.sumOf { it.quantity }} парчиња"
+            val bySize = packages.groupBy { it.size.ifBlank { "Непозната" } }
+                .entries.sortedBy { it.key }
+                .joinToString("\n") { (size, rows) ->
+                    "Големина $size: ${rows.size} пакети • ${rows.sumOf { it.quantity }} парчиња"
+                }
+            "$date\nНалог: $nalog\nВкупно: ${packages.size} пакети • ${packages.sumOf { it.quantity }} парчиња\n$bySize"
         }
         list.adapter = ArrayAdapter(this, R.layout.order_list_item, R.id.orderLineText, rows)
     }
