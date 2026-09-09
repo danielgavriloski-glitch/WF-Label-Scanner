@@ -21,6 +21,9 @@ object LabelParser {
         "${it.groupValues[1]}-${it.groupValues[2]}-${it.groupValues[3]}"
     }.orEmpty()
 
+    private fun isLn(value: String): Boolean =
+        value.replace(" ", "").matches(Regex("(?i)^L[/I|]N$"))
+
     private fun valueAfter(text: String, keys: List<String>): String {
         val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
         for (i in lines.indices) {
@@ -45,7 +48,7 @@ object LabelParser {
             "nalog", "auftrag", "auftragsnr", "auftrags-nr", "auftrag nr", "auftrag-nr",
             "order", "order no", "order nr", "order number", "ordre", "job", "work order", "kommission"
         )) }
-        val lnIndex = lines.indexOfFirst { it.matches(Regex("(?i)^L\\s*/\\s*N$")) }
+        val lnIndex = lines.indexOfFirst(::isLn)
         val nameNalog = if (lnIndex > 0) {
             lines.subList(0, lnIndex).lastOrNull {
                     it.any(Char::isLetter) &&
@@ -66,7 +69,7 @@ object LabelParser {
         var article = valueAfter(text, listOf(
             "artikl", "artikel", "artikel nr", "artikel-nr", "artikelnr", "article", "item", "model", "style", "art.", "art nr", "art-nr"
         ))
-        if (article.isBlank() && lines.any { it.matches(Regex("(?i)^L\\s*/\\s*N$")) }) {
+        if (article.isBlank() && lines.any(::isLn)) {
             article = Regex("(?<!\\d)\\d{3,6}[.]\\d{3,6}(?!\\d)").find(text)?.value.orEmpty()
         }
 
@@ -75,15 +78,15 @@ object LabelParser {
         ))
         if (size.isBlank()) {
             size = lines.firstOrNull {
-                it.matches(Regex("(?i)^(?:L\\s*/\\s*N|XXS|XS|S|M|L|XL|XXL|3XL|4XL|5XL|\\d{1,3})$"))
-            }.orEmpty().replace(Regex("\\s+"), "")
+                isLn(it) || it.matches(Regex("(?i)^(?:XXS|XS|S|M|L|XL|XXL|3XL|4XL|5XL|\\d{1,3})$"))
+            }.orEmpty().let { if (isLn(it)) "L/N" else it.replace(Regex("\\s+"), "") }
         }
 
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
         ))
         if (quantity.isBlank()) {
-            quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|pcs|pieces|paar|pairs?)(?![a-z])")
+            quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|stiick|stiick|pcs|pieces|paar|pairs?)(?![a-z])")
                 .find(text)?.groupValues?.get(1).orEmpty()
         }
         quantity = Regex("\\d+").find(quantity)?.value ?: quantity

@@ -34,11 +34,27 @@
             android:hint="Налог / Име"
             android:inputType="text" />
 
-        <Spinner
-            android:id="@+id/labelTypeSpinner"
+        <RadioGroup
+            android:id="@+id/labelTypeGroup"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:contentDescription="Избор на тип етикета" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/standardLabelRadio"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:text="СТАНДАРДЕН НАЛОГ" />
+
+            <RadioButton
+                android:id="@+id/nameLabelRadio"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="НАЛОГ ПО ИМЕ" />
+        </RadioGroup>
 
         <Button
             android:id="@+id/newOrderButton"

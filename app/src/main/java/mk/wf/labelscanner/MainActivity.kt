@@ -15,8 +15,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ArrayAdapter
-import android.widget.Spinner
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,7 +47,7 @@ class MainActivity : AppCompatActivity() {
         private const val ANALYSIS_INTERVAL_MS = 900L
         private const val REQUIRED_STABLE_READS = 3
         private const val REQUIRED_EMPTY_FRAMES = 2
-        private const val REQUIRED_BAD_FRAMES = 6
+        private const val REQUIRED_BAD_FRAMES = 10
         private const val REQUIRED_WRONG_ORDER_READS = 3
     }
 
@@ -56,7 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var countText: TextView
     private lateinit var nalogInput: EditText
-    private lateinit var labelTypeSpinner: Spinner
+    private lateinit var labelTypeGroup: RadioGroup
     private lateinit var packageInput: EditText
     private lateinit var articleInput: EditText
     private lateinit var sizeInput: EditText
@@ -85,6 +84,7 @@ class MainActivity : AppCompatActivity() {
     private var wrongOrderSoundedFor = ""
     private var wrongOrderCandidate = ""
     private var wrongOrderCount = 0
+    private val recentOcr = ArrayDeque<String>()
     private var formattingOrder = false
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
@@ -123,11 +123,6 @@ class MainActivity : AppCompatActivity() {
         barcodeScanner = BarcodeScanning.getClient()
         toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
         bindViews()
-        labelTypeSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            listOf("Автоматски тип", "Стандардна етикета", "Етикета со име")
-        )
         installOrderFormatter()
         updateCount()
 
@@ -165,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         countText = findViewById(R.id.countText)
         nalogInput = findViewById(R.id.nalogInput)
-        labelTypeSpinner = findViewById(R.id.labelTypeSpinner)
+        labelTypeGroup = findViewById(R.id.labelTypeGroup)
         packageInput = findViewById(R.id.packageInput)
         articleInput = findViewById(R.id.articleInput)
         sizeInput = findViewById(R.id.sizeInput)
@@ -287,20 +282,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleAutomaticResult(raw: String, detectedBarcode: String, bitmap: Bitmap) {
-        // Precision rule: do not fall back to the active order when OCR did not actually read an order.
-        val labelType = when (labelTypeSpinner.selectedItemPosition) {
-            1 -> LabelType.STANDARD
-            2 -> LabelType.NAME
-            else -> LabelType.AUTO
+        if (raw.length >= 8) {
+            recentOcr.addLast(raw)
+            while (recentOcr.size > 6) recentOcr.removeFirst()
         }
-        val parsed = LabelParser.parse(raw, "", labelType).let {
+        val combinedRaw = recentOcr.joinToString("\n")
+
+        // Precision rule: do not fall back to the active order when OCR did not actually read an order.
+        val labelType = if (labelTypeGroup.checkedRadioButtonId == R.id.nameLabelRadio) {
+            LabelType.NAME
+        } else {
+            LabelType.STANDARD
+        }
+        val parsed = LabelParser.parse(combinedRaw, "", labelType).let {
             if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
         }
 
         val qty = parsed.quantity.filter { it.isDigit() }.toIntOrNull() ?: 0
         val complete = parsed.nalog.isNotBlank() && parsed.size.isNotBlank() && qty > 0
-        if (!complete || raw.length < 16) {
-            if (raw.length >= 12) registerBadRead()
+        if (!complete || combinedRaw.length < 16) {
+            if (combinedRaw.length >= 12) registerBadRead()
             registerEmptyFrame()
             return
         }
@@ -338,7 +339,7 @@ class MainActivity : AppCompatActivity() {
             parsed.barcode
         ).joinToString("|") { it.lowercase(Locale.ROOT).replace(" ", "") }
 
-        showParsed(parsed, raw)
+        showParsed(parsed, combinedRaw)
 
         if (!scannerArmed) {
             if (key == lastSavedKey) {
@@ -384,6 +385,7 @@ class MainActivity : AppCompatActivity() {
                     candidateKey = ""
                     candidateCount = 0
                     playSuccessSound()
+                    recentOcr.clear()
                 }
             }
         } else {
@@ -524,6 +526,7 @@ class MainActivity : AppCompatActivity() {
         wrongOrderSoundedFor = ""
         wrongOrderCandidate = ""
         wrongOrderCount = 0
+        recentOcr.clear()
     }
 
     private fun startNewOrder() {
