@@ -10,8 +10,16 @@ data class ParsedLabel(
     val barcode: String = ""
 )
 
+enum class LabelType { AUTO, STANDARD, NAME }
+
 object LabelParser {
     private fun clean(s: String) = s.trim().trim(':', '-', '#', '|', '=').trim()
+
+    private val standardOrder = Regex("(?<!\\d)(\\d{2})[\\s.-]?(\\d{3})[\\s.-]?(\\d{5})(?!\\d)")
+
+    private fun standardOrderFrom(text: String): String = standardOrder.find(text)?.let {
+        "${it.groupValues[1]}-${it.groupValues[2]}-${it.groupValues[3]}"
+    }.orEmpty()
 
     private fun valueAfter(text: String, keys: List<String>): String {
         val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
@@ -28,28 +36,56 @@ object LabelParser {
         return ""
     }
 
-    fun parse(raw: String, currentNalog: String = ""): ParsedLabel {
+    fun parse(raw: String, currentNalog: String = "", labelType: LabelType = LabelType.AUTO): ParsedLabel {
         val text = raw.replace('\u00A0', ' ')
 
-        var nalog = valueAfter(text, listOf(
+        val lines = text.lines().map { clean(it) }.filter { it.isNotBlank() }
+
+        val standardNalog = standardOrderFrom(text).ifBlank { valueAfter(text, listOf(
             "nalog", "auftrag", "auftragsnr", "auftrags-nr", "auftrag nr", "auftrag-nr",
             "order", "order no", "order nr", "order number", "ordre", "job", "work order", "kommission"
-        ))
+        )) }
+        val lnIndex = lines.indexOfFirst { it.matches(Regex("(?i)^L\\s*/\\s*N$")) }
+        val nameNalog = if (lnIndex > 0) {
+            lines.subList(0, lnIndex).lastOrNull {
+                    it.any(Char::isLetter) &&
+                        !it.contains("workfashion", ignoreCase = true) &&
+                        !it.matches(Regex("^[\\d.]+$"))
+            }.orEmpty()
+        } else ""
+        var nalog = when (labelType) {
+            LabelType.STANDARD -> standardNalog
+            LabelType.NAME -> nameNalog
+            LabelType.AUTO -> standardNalog.ifBlank { nameNalog }
+        }
         if (nalog.isBlank()) nalog = currentNalog
 
         val packageNo = valueAfter(text, listOf(
-            "paket", "package", "pack", "box", "karton", "carton", "colli", "kolli", "kollinr", "kolli-nr"
+            "paket", "package", "pack", "box", "karton", "karton nr", "karton-nr", "carton", "colli", "kolli", "kollinr", "kolli-nr"
         ))
-        val article = valueAfter(text, listOf(
+        var article = valueAfter(text, listOf(
             "artikl", "artikel", "artikel nr", "artikel-nr", "artikelnr", "article", "item", "model", "style", "art.", "art nr", "art-nr"
         ))
-        val size = valueAfter(text, listOf(
+        if (article.isBlank() && lines.any { it.matches(Regex("(?i)^L\\s*/\\s*N$")) }) {
+            article = Regex("(?<!\\d)\\d{3,6}[.]\\d{3,6}(?!\\d)").find(text)?.value.orEmpty()
+        }
+
+        var size = valueAfter(text, listOf(
             "golemina", "size", "größe", "grösse", "groesse", "gr.", "gr", "taille", "mass"
         ))
+        if (size.isBlank()) {
+            size = lines.firstOrNull {
+                it.matches(Regex("(?i)^(?:L\\s*/\\s*N|XXS|XS|S|M|L|XL|XXL|3XL|4XL|5XL|\\d{1,3})$"))
+            }.orEmpty().replace(Regex("\\s+"), "")
+        }
 
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
         ))
+        if (quantity.isBlank()) {
+            quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|pcs|pieces|paar|pairs?)(?![a-z])")
+                .find(text)?.groupValues?.get(1).orEmpty()
+        }
         quantity = Regex("\\d+").find(quantity)?.value ?: quantity
 
         val customer = valueAfter(text, listOf(
