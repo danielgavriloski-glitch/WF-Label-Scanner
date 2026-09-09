@@ -15,6 +15,8 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ArrayAdapter
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,15 +45,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
     companion object {
-        private const val ANALYSIS_INTERVAL_MS = 650L
+        private const val ANALYSIS_INTERVAL_MS = 900L
         private const val REQUIRED_STABLE_READS = 3
-        private const val REQUIRED_EMPTY_FRAMES = 3
+        private const val REQUIRED_EMPTY_FRAMES = 2
+        private const val REQUIRED_BAD_FRAMES = 6
+        private const val REQUIRED_WRONG_ORDER_READS = 3
     }
 
     private lateinit var previewView: PreviewView
     private lateinit var statusText: TextView
     private lateinit var countText: TextView
     private lateinit var nalogInput: EditText
+    private lateinit var labelTypeSpinner: Spinner
     private lateinit var packageInput: EditText
     private lateinit var articleInput: EditText
     private lateinit var sizeInput: EditText
@@ -78,6 +83,8 @@ class MainActivity : AppCompatActivity() {
     private var badReadFrames = 0
     private var errorSoundPlayed = false
     private var wrongOrderSoundedFor = ""
+    private var wrongOrderCandidate = ""
+    private var wrongOrderCount = 0
     private var formattingOrder = false
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
@@ -116,6 +123,11 @@ class MainActivity : AppCompatActivity() {
         barcodeScanner = BarcodeScanning.getClient()
         toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
         bindViews()
+        labelTypeSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            listOf("Автоматски тип", "Стандардна етикета", "Етикета со име")
+        )
         installOrderFormatter()
         updateCount()
 
@@ -153,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         countText = findViewById(R.id.countText)
         nalogInput = findViewById(R.id.nalogInput)
+        labelTypeSpinner = findViewById(R.id.labelTypeSpinner)
         packageInput = findViewById(R.id.packageInput)
         articleInput = findViewById(R.id.articleInput)
         sizeInput = findViewById(R.id.sizeInput)
@@ -275,7 +288,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleAutomaticResult(raw: String, detectedBarcode: String, bitmap: Bitmap) {
         // Precision rule: do not fall back to the active order when OCR did not actually read an order.
-        val parsed = LabelParser.parse(raw, "").let {
+        val labelType = when (labelTypeSpinner.selectedItemPosition) {
+            1 -> LabelType.STANDARD
+            2 -> LabelType.NAME
+            else -> LabelType.AUTO
+        }
+        val parsed = LabelParser.parse(raw, "", labelType).let {
             if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
         }
 
@@ -292,13 +310,23 @@ class MainActivity : AppCompatActivity() {
             candidateKey = ""
             candidateCount = 0
             scannerArmed = true
-            signalWrongOrder(parsed.nalog, activeOrder)
+            val wrongKey = "${normalizeOrder(parsed.nalog)}|${normalizeOrder(activeOrder)}"
+            if (wrongKey == wrongOrderCandidate) wrongOrderCount++ else {
+                wrongOrderCandidate = wrongKey
+                wrongOrderCount = 1
+            }
+            runOnUiThread {
+                statusText.text = "Проверувам налог... $wrongOrderCount/$REQUIRED_WRONG_ORDER_READS"
+            }
+            if (wrongOrderCount >= REQUIRED_WRONG_ORDER_READS) signalWrongOrder(parsed.nalog, activeOrder)
             return
         }
 
         badReadFrames = 0
         errorSoundPlayed = false
         wrongOrderSoundedFor = ""
+        wrongOrderCandidate = ""
+        wrongOrderCount = 0
         emptyFrames = 0
 
         val key = listOf(
@@ -394,10 +422,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun registerBadRead() {
         badReadFrames++
-        if (badReadFrames >= 2 && !errorSoundPlayed) {
+        if (badReadFrames >= REQUIRED_BAD_FRAMES && !errorSoundPlayed) {
             errorSoundPlayed = true
             runOnUiThread {
-                statusText.text = "Не ги прочитав сигурно налогот, големината и парчињата — ПОВТОРИ"
+                statusText.text = "Не ја прочитав целата етикета — намести ја во рамката и држи мирно"
                 toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 500)
                 vibrate(350)
             }
@@ -494,6 +522,8 @@ class MainActivity : AppCompatActivity() {
         badReadFrames = 0
         errorSoundPlayed = false
         wrongOrderSoundedFor = ""
+        wrongOrderCandidate = ""
+        wrongOrderCount = 0
     }
 
     private fun startNewOrder() {
