@@ -60,39 +60,19 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="1. ОДБЕРИ ТИП НА НАЛОГ"
+                android:text="АКТИВЕН НАЛОГ"
                 android:textStyle="bold" />
-            <RadioGroup
-                android:id="@+id/labelTypeGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-                <RadioButton
-                    android:id="@+id/standardLabelRadio"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:buttonTint="#F5C400"
-                    android:checked="true"
-                    android:text="СТАНДАРДЕН (пример: 26-010-00351)"
-                    android:textStyle="bold" />
-                <RadioButton
-                    android:id="@+id/nameLabelRadio"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:buttonTint="#F5C400"
-                    android:text="ПО ИМЕ (пример: Regenschutz-Jacke 18)"
-                    android:textStyle="bold" />
-            </RadioGroup>
             <EditText
                 android:id="@+id/nalogInput"
                 style="@style/WFInput"
-                android:hint="Број на налог / Име" />
+                android:hint="Ќе се пополни автоматски од првиот скен" />
         </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="2. СТАВИ ЈА ЦЕЛАТА ЕТИКЕТА ВО РАМКАТА"
+            android:text="СТАВИ ЈА ЦЕЛАТА ЕТИКЕТА ВО РАМКАТА"
             android:textStyle="bold" />
 
         <FrameLayout
@@ -141,7 +121,8 @@
             android:layout_height="wrap_content"
             android:background="@drawable/card_background"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="12dp"
+            android:visibility="gone">
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -162,9 +143,9 @@
                 android:minHeight="90dp" />
         </LinearLayout>
 
-        <Button android:id="@+id/saveButton" style="@style/WFPrimaryButton" android:text="ПОТВРДИ / ЗАЧУВАЈ ИЗМЕНА" />
+        <Button android:id="@+id/saveButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-            <Button android:id="@+id/newOrderButton" style="@style/WFSecondaryButton" android:text="НОВ НАЛОГ" />
+            <Button android:id="@+id/newOrderButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
             <Button android:id="@+id/switchCameraButton" style="@style/WFSecondaryButton" android:text="СМЕНИ КАМЕРА" />
         </LinearLayout>
         <Button android:id="@+id/closeOrderButton" style="@style/WFPrimaryButton" android:text="ЗАТВОРИ НАЛОГ" />
