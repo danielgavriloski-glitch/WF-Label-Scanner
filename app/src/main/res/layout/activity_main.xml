@@ -72,14 +72,14 @@
                     android:layout_height="48dp"
                     android:buttonTint="#F5C400"
                     android:checked="true"
-                    android:text="СТАНДАРДЕН — 26-010-00351"
+                    android:text="СТАНДАРДЕН (пример: 26-010-00351)"
                     android:textStyle="bold" />
                 <RadioButton
                     android:id="@+id/nameLabelRadio"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:buttonTint="#F5C400"
-                    android:text="ПО ИМЕ — Regenschutz-Jacke 18"
+                    android:text="ПО ИМЕ (пример: Regenschutz-Jacke 18)"
                     android:textStyle="bold" />
             </RadioGroup>
             <EditText

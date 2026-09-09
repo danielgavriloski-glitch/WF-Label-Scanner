@@ -44,9 +44,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
     companion object {
-        private const val ANALYSIS_INTERVAL_MS = 900L
+        private const val ANALYSIS_INTERVAL_MS = 450L
         private const val REQUIRED_STABLE_READS = 3
-        private const val REQUIRED_EMPTY_FRAMES = 2
+        private const val REQUIRED_EMPTY_FRAMES = 4
         private const val REQUIRED_BAD_FRAMES = 10
         private const val REQUIRED_WRONG_ORDER_READS = 3
     }
@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private var wrongOrderCandidate = ""
     private var wrongOrderCount = 0
     private val recentOcr = ArrayDeque<String>()
+    private var displayedRecord: PackageRecord? = null
     private var formattingOrder = false
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
@@ -417,6 +418,7 @@ class MainActivity : AppCompatActivity() {
         emptyFrames++
         if (!scannerArmed && emptyFrames >= REQUIRED_EMPTY_FRAMES) {
             scannerArmed = true
+            displayedRecord = null
             candidateKey = ""
             candidateCount = 0
             runOnUiThread {
@@ -463,10 +465,11 @@ class MainActivity : AppCompatActivity() {
         var packageNo = packageInput.text.toString().trim()
         if (packageNo.isBlank()) packageNo = (db.countForOrder(nalog) + 1).toString()
 
-        val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        db.insert(
-            PackageRecord(
-                createdAt = created,
+        val currentDisplayed = displayedRecord
+        val record = PackageRecord(
+                id = currentDisplayed?.id ?: 0,
+                createdAt = currentDisplayed?.createdAt
+                    ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
                 nalog = nalog,
                 packageNo = packageNo,
                 article = articleInput.text.toString().trim(),
@@ -476,11 +479,20 @@ class MainActivity : AppCompatActivity() {
                 barcode = barcodeInput.text.toString().trim(),
                 rawText = rawTextInput.text.toString(),
                 photoPath = latestPhotoPath
-            )
         )
 
+        if (manual && currentDisplayed != null) {
+            db.update(record.copy(photoPath = currentDisplayed.photoPath.ifBlank { latestPhotoPath }))
+            displayedRecord = record
+            statusText.text = "✓ Измената е зачувана за пакет $packageNo"
+            updateCount()
+            return true
+        }
+
+        val insertedId = db.insert(record)
+        displayedRecord = record.copy(id = insertedId)
+
         statusText.text = "✓ Зачуван пакет $packageNo за налог $nalog"
-        clearPackageFields(keepNalog = true)
         updateCount()
         return true
     }
@@ -530,6 +542,7 @@ class MainActivity : AppCompatActivity() {
         wrongOrderCandidate = ""
         wrongOrderCount = 0
         recentOcr.clear()
+        displayedRecord = null
     }
 
     private fun startNewOrder() {
