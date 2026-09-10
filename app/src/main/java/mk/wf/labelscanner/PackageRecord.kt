@@ -11,5 +11,6 @@ data class PackageRecord(
     val customer: String,
     val barcode: String,
     val rawText: String,
-    val photoPath: String
+    val photoPath: String,
+    val documentId: String = ""
 )
