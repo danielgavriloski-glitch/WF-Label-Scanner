@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 220L
-        private const val REQUIRED_STABLE_READS = 2
+        private const val REQUIRED_STABLE_READS = 3
         private const val REQUIRED_BAD_FRAMES = 6
         private const val REQUIRED_WRONG_ORDER_READS = 2
     }
@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
     private var wrongOrderCount = 0
     private var formattingOrder = false
     private var displayedRecord: PackageRecord? = null
+    private var lastSavedFingerprint = ""
     private val recentOcr = ArrayDeque<String>()
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
@@ -479,11 +480,18 @@ class MainActivity : AppCompatActivity() {
 
         val insertedId = db.insert(record)
         displayedRecord = record.copy(id = insertedId)
+        lastSavedFingerprint = recordFingerprint(record)
         updateCount()
         return true
     }
 
+    private fun recordFingerprint(record: PackageRecord): String = listOf(
+        record.nalog, record.packageNo, record.article, record.size, record.quantity.toString()
+    ).joinToString("|") { normalizeText(it) }
+
     private fun isDuplicate(record: PackageRecord): Boolean {
+        val fingerprint = recordFingerprint(record)
+        if (fingerprint == lastSavedFingerprint) return true
         val existing = db.getForOrder(record.nalog)
         return existing.any { old ->
             val samePackage = record.packageNo.isNotBlank() && old.packageNo.isNotBlank() &&
@@ -492,7 +500,11 @@ class MainActivity : AppCompatActivity() {
                 normalizeText(record.barcode) == normalizeText(old.barcode)
             val sameContent = normalizeText(record.rawText).length > 30 &&
                 normalizeText(record.rawText) == normalizeText(old.rawText)
-            samePackage || sameBarcode || sameContent
+            val sameLabelFields = record.article.isNotBlank() && record.size.isNotBlank() && record.quantity > 0 &&
+                normalizeText(record.article) == normalizeText(old.article) &&
+                normalizeText(record.size) == normalizeText(old.size) && record.quantity == old.quantity &&
+                (record.packageNo.isBlank() || old.packageNo.isBlank())
+            samePackage || sameBarcode || sameContent || sameLabelFields
         }
     }
 
