@@ -14,6 +14,7 @@ import android.widget.ListView
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -94,6 +95,20 @@ class OrdersActivity : AppCompatActivity() {
             addView(text("ВКУПЕН ЗБИР", true))
             addView(table(listOf("Големина", "Парчиња"), totals))
             addView(text("Вкупно пакети: ${packages.size}     Вкупно парчиња: ${packages.sumOf { it.quantity }}", true))
+            addView(Button(this@OrdersActivity).apply {
+                text = "ИЗБРИШИ НАЛОГ"
+                setOnClickListener {
+                    AlertDialog.Builder(this@OrdersActivity)
+                        .setTitle("Избриши налог ${nalog}?")
+                        .setMessage("Ќе се избрише целиот документ и сите ${packages.size} зачувани пакети.")
+                        .setPositiveButton("ИЗБРИШИ") { _, _ ->
+                            db.deleteOrder(nalog)
+                            refresh()
+                        }
+                        .setNegativeButton("ОТКАЖИ", null)
+                        .show()
+                }
+            })
         }
     }
 }
