@@ -22,5 +22,5 @@ jobs:
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WF-Label-Scanner-v4.3-CLEAN-TABLES-APK
+          name: WF-Label-Scanner-v4.4-CORRECT-SIZE-QTY-APK
           path: app/build/outputs/apk/debug/app-debug.apk
