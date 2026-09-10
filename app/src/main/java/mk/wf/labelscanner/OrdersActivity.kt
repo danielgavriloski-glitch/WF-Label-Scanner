@@ -3,8 +3,17 @@ package mk.wf.labelscanner
 import android.content.Intent
 import android.os.Bundle
 import android.widget.ArrayAdapter
+import android.graphics.Color
+import android.graphics.Typeface
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.BaseAdapter
+import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.TableLayout
+import android.widget.TableRow
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -34,62 +43,57 @@ class OrdersActivity : AppCompatActivity() {
         val groups = db.getAll().groupBy { it.nalog }
             .toList()
             .sortedByDescending { (_, rows) -> rows.maxOfOrNull { it.createdAt }.orEmpty() }
-
         orderNames = groups.map { it.first }
-        val rows = groups.map { (nalog, packages) ->
+        list.adapter = object : BaseAdapter() {
+            override fun getCount() = groups.size
+            override fun getItem(position: Int) = groups[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val (nalog, packages) = groups[position]
+                return orderCard(nalog, packages)
+            }
+        }
+    }
+
+    private fun orderCard(nalog: String, packages: List<PackageRecord>): View {
             val rawDate = packages.maxOfOrNull { it.createdAt }.orEmpty()
             val date = runCatching {
                 val input = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 val output = SimpleDateFormat("dd.MM.yyyy  HH:mm", Locale.getDefault())
                 output.format(input.parse(rawDate)!!)
             }.getOrDefault(rawDate)
-
-            val masterNumbers = packages.mapNotNull { extractMasterNumber(it).takeIf(String::isNotBlank) }
-                .distinct()
-            val masterLine = if (masterNumbers.isEmpty()) "-" else masterNumbers.joinToString(", ")
-
-            val packageLines = packages
-                .sortedWith(compareBy<PackageRecord> { packageSortKey(it.packageNo) }.thenBy { it.packageNo })
-                .joinToString("\n") { row ->
-                    val size = row.size.ifBlank { "?" }
-                    val packageNo = row.packageNo.ifBlank { "?" }
-                    "Пакет $packageNo: Големина $size — ${row.quantity} парчиња"
-                }
-
-            val bySize = packages.groupBy { it.size.ifBlank { "Непозната" } }
-                .entries.sortedBy { it.key }
-                .joinToString("\n") { (size, sizeRows) ->
-                    val packageNos = sizeRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")
-                    "Големина $size: ${sizeRows.sumOf { it.quantity }} парчиња • пакети: $packageNos"
-                }
-
-            buildString {
-                append(date)
-                append("\nНалог: ").append(nalog)
-                append("\nMaster number: ").append(masterLine)
-                append("\n\nПАКЕТИ\n").append(packageLines)
-                append("\n\nВКУПНО ПО ГОЛЕМИНА\n").append(bySize)
-                append("\n\nВКУПНО: ").append(packages.size).append(" пакети • ")
-                    .append(packages.sumOf { it.quantity }).append(" парчиња")
-            }
+        fun text(value: String, bold: Boolean = false) = TextView(this).apply {
+            this.text = value; setTextColor(Color.rgb(20, 20, 20)); textSize = 15f
+            setPadding(10, 9, 10, 9)
+            if (bold) setTypeface(typeface, Typeface.BOLD)
         }
-
-        list.adapter = ArrayAdapter(this, R.layout.order_list_item, R.id.orderLineText, rows)
-    }
-
-    private fun packageSortKey(value: String): Int =
-        Regex("\\d+").find(value)?.value?.toIntOrNull() ?: Int.MAX_VALUE
-
-    private fun extractMasterNumber(record: PackageRecord): String {
-        val patterns = listOf(
-            Regex("(?i)master\\s*(?:number|no|nr|#)?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
-            Regex("(?i)master[-_ ]?nr\\.?\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
-            Regex("(?i)model\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})"),
-            Regex("(?i)modell\\s*[:=#-]?\\s*([A-Z0-9./-]{3,})")
-        )
-        patterns.forEach { rx ->
-            rx.find(record.rawText)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+        fun table(headers: List<String>, rows: List<List<String>>) = TableLayout(this).apply {
+            isStretchAllColumns = true
+            addView(TableRow(this@OrdersActivity).apply {
+                setBackgroundColor(Color.rgb(245, 196, 0))
+                headers.forEach { addView(text(it, true)) }
+            })
+            rows.forEachIndexed { index, values -> addView(TableRow(this@OrdersActivity).apply {
+                if (index % 2 == 1) setBackgroundColor(Color.rgb(245, 245, 245))
+                values.forEach { addView(text(it)) }
+            }) }
         }
-        return record.article.trim()
+        val details = packages.sortedBy { it.packageNo.toIntOrNull() ?: Int.MAX_VALUE }.map {
+            listOf(nalog, it.size.ifBlank { "—" }, it.article.ifBlank { "—" })
+        }
+        val totals = packages.groupBy { it.size.ifBlank { "—" } }.toSortedMap().map { (size, rows) ->
+            listOf(size, rows.sumOf { it.quantity }.toString())
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12, 12, 12, 12)
+            setBackgroundResource(R.drawable.card_background)
+            addView(text("НАЛОГ $nalog", true))
+            addView(text(date))
+            addView(table(listOf("Налог", "Големина", "Master number"), details))
+            addView(text("ВКУПЕН ЗБИР", true))
+            addView(table(listOf("Големина", "Парчиња"), totals))
+            addView(text("Вкупно пакети: ${packages.size}     Вкупно парчиња: ${packages.sumOf { it.quantity }}", true))
+        }
     }
 }
