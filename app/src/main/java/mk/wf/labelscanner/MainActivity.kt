@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private var formattingOrder = false
     private var displayedRecord: PackageRecord? = null
     private var lastSavedFingerprint = ""
+    private var activeDocumentId = newDocumentId()
     private val recentOcr = ArrayDeque<String>()
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
@@ -445,7 +446,7 @@ class MainActivity : AppCompatActivity() {
         if (!manual && qty <= 0) return false
 
         var packageNo = packageInput.text.toString().trim()
-        if (packageNo.isBlank()) packageNo = (db.countForOrder(nalog) + 1).toString()
+        if (packageNo.isBlank()) packageNo = (db.countForDocument(activeDocumentId) + 1).toString()
 
         val currentDisplayed = displayedRecord
         val record = PackageRecord(
@@ -460,7 +461,8 @@ class MainActivity : AppCompatActivity() {
             customer = customerInput.text.toString().trim(),
             barcode = barcodeInput.text.toString().trim(),
             rawText = rawTextInput.text.toString(),
-            photoPath = latestPhotoPath
+            photoPath = latestPhotoPath,
+            documentId = activeDocumentId
         )
 
         if (manual && currentDisplayed != null) {
@@ -492,7 +494,7 @@ class MainActivity : AppCompatActivity() {
     private fun isDuplicate(record: PackageRecord): Boolean {
         val fingerprint = recordFingerprint(record)
         if (fingerprint == lastSavedFingerprint) return true
-        val existing = db.getForOrder(record.nalog)
+        val existing = db.getForDocument(record.documentId)
         return existing.any { old ->
             val samePackage = record.packageNo.isNotBlank() && old.packageNo.isNotBlank() &&
                 normalizeText(record.packageNo) == normalizeText(old.packageNo)
@@ -541,7 +543,11 @@ class MainActivity : AppCompatActivity() {
         latestPhotoPath = ""
     }
 
+    private fun newDocumentId(): String = "${System.currentTimeMillis()}-${java.util.UUID.randomUUID()}"
+
     private fun startNewOrder() {
+        activeDocumentId = newDocumentId()
+        lastSavedFingerprint = ""
         clearPackageFields(keepNalog = false)
         nalogInput.isEnabled = true
         scanRequested = false
@@ -569,7 +575,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeCurrentOrder() {
         val nalog = nalogInput.text.toString().trim()
         if (nalog.isBlank()) return toast("Нема активен налог.")
-        val records = db.getForOrder(nalog)
+        val records = db.getForDocument(activeDocumentId)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
 
         val sizes = records.groupBy { it.size.ifBlank { "Непозната" } }
@@ -583,7 +589,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateCount() {
         val total = db.countAll()
         val nalog = if (::nalogInput.isInitialized) nalogInput.text.toString().trim() else ""
-        val current = if (nalog.isBlank()) 0 else db.countForOrder(nalog)
+        val current = if (nalog.isBlank()) 0 else db.countForDocument(activeDocumentId)
         countText.text = if (nalog.isBlank()) {
             "$total зачувани пакети"
         } else {
