@@ -32,19 +32,7 @@ class OrdersActivity : AppCompatActivity() {
         list = findViewById(R.id.ordersList)
         findViewById<Button>(R.id.closeOrdersButton).setOnClickListener { finish() }
         list.setOnItemClickListener { _, _, position, _ ->
-            val uriText = documentRecords.getOrNull(position)?.firstOrNull()?.documentUri.orEmpty()
-            if (uriText.isBlank()) {
-                android.widget.Toast.makeText(this, "Овој налог сè уште нема зачуван Word документ.", android.widget.Toast.LENGTH_LONG).show()
-            } else {
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(android.net.Uri.parse(uriText), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    })
-                }.onFailure {
-                    android.widget.Toast.makeText(this, "Нема апликација за отворање Word документ.", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
+            openDocument(documentRecords.getOrNull(position).orEmpty())
         }
     }
 
@@ -70,6 +58,25 @@ class OrdersActivity : AppCompatActivity() {
         }
     }
 
+    private fun openDocument(packages: List<PackageRecord>) {
+        val uriText = packages.firstOrNull()?.documentUri.orEmpty()
+        if (uriText.isBlank()) {
+            android.widget.Toast.makeText(
+                this, "Word документот сè уште не е создаден. Прво притисни ЗАТВОРИ НАЛОГ.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(android.net.Uri.parse(uriText), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        }.onFailure {
+            android.widget.Toast.makeText(this, "Нема апликација за отворање Word документ.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun orderCard(nalog: String, packages: List<PackageRecord>): View {
         val rawDate = packages.maxOfOrNull { it.createdAt }.orEmpty()
         val date = runCatching {
@@ -91,6 +98,12 @@ class OrdersActivity : AppCompatActivity() {
             addView(text("НАЛОГ $nalog", true))
             addView(text("Датум и време: $date"))
             addView(text("${packages.size} пакети • допри за да го отвориш Word документот"))
+            addView(Button(this@OrdersActivity).apply {
+                text = "ОТВОРИ ДОКУМЕНТ"
+                setBackgroundColor(Color.rgb(244, 196, 0))
+                setTextColor(Color.BLACK)
+                setOnClickListener { openDocument(packages) }
+            })
             addView(Button(this@OrdersActivity).apply {
                 text = "ИЗБРИШИ НАЛОГ"
                 setOnClickListener {
