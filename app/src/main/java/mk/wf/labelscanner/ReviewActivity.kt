@@ -40,17 +40,8 @@ class ReviewActivity : AppCompatActivity() {
     private fun showDetails(r: PackageRecord) {
         val message = """
             Налог: ${r.nalog}
-            Пакет: ${r.packageNo}
-            Артикл: ${r.article}
             Големина: ${r.size}
-            Количина: ${r.quantity}
-            Клиент: ${r.customer}
-            Barcode: ${r.barcode}
-            Датум: ${r.createdAt}
-            Фото: ${r.photoPath}
-
-            Цел OCR текст:
-            ${r.rawText}
+            Master number: ${r.article}
         """.trimIndent()
         AlertDialog.Builder(this)
             .setTitle("Пакет #${r.id}")
