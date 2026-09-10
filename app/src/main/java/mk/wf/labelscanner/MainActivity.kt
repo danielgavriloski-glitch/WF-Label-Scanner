@@ -14,10 +14,12 @@ import android.os.Vibrator
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -45,7 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 220L
-        private const val REQUIRED_STABLE_READS = 3
+        private const val REQUIRED_STABLE_READS = 2
         private const val REQUIRED_BAD_FRAMES = 6
         private const val REQUIRED_WRONG_ORDER_READS = 2
     }
@@ -438,13 +440,62 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        scanRequested = false
         runOnUiThread {
-            latestPhotoPath = saveFrame(bitmap)
-            if (saveCurrent(manual = false)) {
-                playSuccessSound()
-                stopScan("✓ Скенирано и зачувано — стави следна етикета и притисни СКЕНИРАЈ")
+            scanButton.isEnabled = true
+            showScanConfirmation(parsed, combinedRaw, bitmap)
+        }
+    }
+
+    private fun showScanConfirmation(parsed: ParsedLabel, raw: String, bitmap: Bitmap) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(36, 12, 36, 4)
+        }
+        fun field(label: String, value: String, numeric: Boolean = false): EditText =
+            EditText(this).apply {
+                hint = label
+                setText(value)
+                if (numeric) inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                box.addView(this)
+            }
+        val order = field("Налог", parsed.nalog)
+        val size = field("Големина", parsed.size)
+        val qty = field("Парчиња", parsed.quantity, true)
+        val master = field("Master number", parsed.article)
+        val packageNo = field("Пакет", parsed.packageNo)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Провери го скенирањето")
+            .setView(box)
+            .setPositiveButton("ПОТВРДИ", null)
+            .setNegativeButton("ОТКАЖИ") { _, _ ->
+                statusText.text = "Откажано — притисни СКЕНИРАЈ за повторно"
+            }
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val quantity = qty.text.toString().filter(Char::isDigit)
+                if (order.text.isBlank() || size.text.isBlank() || quantity.toIntOrNull() == null) {
+                    toast("Провери налог, големина и парчиња.")
+                    return@setOnClickListener
+                }
+                nalogInput.setText(formatOrderNumber(order.text.toString().trim()))
+                nalogInput.isEnabled = false
+                sizeInput.setText(size.text.toString().trim())
+                quantityInput.setText(quantity)
+                articleInput.setText(master.text.toString().trim())
+                packageInput.setText(packageNo.text.toString().trim())
+                rawTextInput.setText(raw)
+                latestPhotoPath = saveFrame(bitmap)
+                if (saveCurrent(manual = false)) {
+                    playSuccessSound()
+                    dialog.dismiss()
+                    stopScan("✓ Потврдено и зачувано — стави следна етикета")
+                }
             }
         }
+        dialog.show()
     }
 
     private fun normalizeOrder(value: String): String =
