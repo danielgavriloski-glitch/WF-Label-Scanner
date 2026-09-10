@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -323,12 +324,13 @@ class MainActivity : AppCompatActivity() {
         recognizer.process(image)
             .addOnSuccessListener { textResult ->
                 val raw = textResult.text
+                val spatialFields = extractSpatialFields(textResult)
                 barcodeScanner.process(image)
                     .addOnSuccessListener { codes ->
                         val code = codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue.orEmpty()
-                        handleScanResult(raw, code, bitmap)
+                        handleScanResult(raw, code, bitmap, spatialFields)
                     }
-                    .addOnFailureListener { handleScanResult(raw, "", bitmap) }
+                    .addOnFailureListener { handleScanResult(raw, "", bitmap, spatialFields) }
                     .addOnCompleteListener { processing.set(false) }
             }
             .addOnFailureListener {
@@ -337,7 +339,35 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap) {
+    private fun extractSpatialFields(result: Text): Pair<String, String>? {
+        val lines = result.textBlocks.flatMap { it.lines }
+        fun normalized(value: String) = value.uppercase(Locale.ROOT)
+            .replace("Ö", "O").replace("Ü", "U").replace(" ", "")
+        val sizeHeader = lines.firstOrNull {
+            normalized(it.text).contains("GROSSE") || normalized(it.text) == "OSSE"
+        } ?: return null
+        val quantityHeader = lines.firstOrNull {
+            normalized(it.text).contains("STUCK") || normalized(it.text).contains("STUICK")
+        } ?: return null
+        val sizeBox = sizeHeader.boundingBox ?: return null
+        val qtyBox = quantityHeader.boundingBox ?: return null
+        val middle = (sizeBox.centerX() + qtyBox.centerX()) / 2
+        val headerBottom = maxOf(sizeBox.bottom, qtyBox.bottom)
+        val numbers = lines.mapNotNull { line ->
+            val value = line.text.trim()
+            val box = line.boundingBox
+            if (box != null && value.matches(Regex("\\d{1,3}")) && box.top > headerBottom) {
+                Triple(value, box.centerX(), box.top)
+            } else null
+        }
+        val size = numbers.filter { it.second < middle }
+            .minByOrNull { it.third }?.first.orEmpty()
+        val quantity = numbers.filter { it.second >= middle && it.second < qtyBox.right + qtyBox.width() }
+            .minByOrNull { it.third }?.first.orEmpty()
+        return if (size.isNotBlank() && quantity.isNotBlank()) size to quantity else null
+    }
+
+    private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap, spatialFields: Pair<String, String>?) {
         if (!scanRequested) return
 
         if (raw.length >= 8) {
@@ -347,7 +377,10 @@ class MainActivity : AppCompatActivity() {
         val combinedRaw = recentOcr.joinToString("\n")
 
         val parsed = LabelParser.parse(combinedRaw, "", LabelType.AUTO).let {
-            if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
+            val withBarcode = if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
+            spatialFields?.let { fields ->
+                withBarcode.copy(size = fields.first, quantity = fields.second)
+            } ?: withBarcode
         }
 
         val qty = parsed.quantity.filter { it.isDigit() }.toIntOrNull() ?: 0
