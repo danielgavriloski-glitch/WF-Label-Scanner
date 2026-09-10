@@ -127,6 +127,12 @@ class MainActivity : AppCompatActivity() {
             contentResolver.openOutputStream(uri)?.use { DocxExporter.write(it, pendingWordRecords) }
                 ?: error("Не можам да го отворам избраниот фајл.")
         }.onSuccess {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            pendingWordRecords.forEach { db.update(it.copy(documentUri = uri.toString())) }
             toast("Word документот е зачуван.")
             pendingWordRecords = emptyList()
             startNewOrder()
@@ -153,7 +159,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveCurrent(manual = true) }
         findViewById<Button>(R.id.newOrderButton).setOnClickListener { startNewOrder() }
         findViewById<Button>(R.id.closeOrderButton).setOnClickListener { closeCurrentOrder() }
-        findViewById<Button>(R.id.switchCameraButton).setOnClickListener { switchCamera() }
+        findViewById<Button>(R.id.switchCameraButton).visibility = android.view.View.GONE
         findViewById<Button>(R.id.reviewButton).setOnClickListener {
             startActivity(Intent(this, ReviewActivity::class.java))
         }
@@ -491,11 +497,29 @@ class MainActivity : AppCompatActivity() {
                 if (saveCurrent(manual = false)) {
                     playSuccessSound()
                     dialog.dismiss()
-                    stopScan("✓ Потврдено и зачувано — стави следна етикета")
+                    if (isLastPackage(packageInput.text.toString())) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Последен пакет")
+                            .setMessage("Ова е последниот пакет според KARTON NR. Да го затворам налогот и да зачувам Word документ?")
+                            .setPositiveButton("ЗАТВОРИ И ЗАЧУВАЈ") { _, _ -> closeCurrentOrder() }
+                            .setNegativeButton("ПРОДОЛЖИ") { _, _ ->
+                                stopScan("✓ Зачувано — притисни СКЕНИРАЈ за следен пакет")
+                            }
+                            .show()
+                    } else {
+                        stopScan("✓ Потврдено и зачувано — стави следна етикета")
+                    }
                 }
             }
         }
         dialog.show()
+    }
+
+    private fun isLastPackage(value: String): Boolean {
+        val match = Regex("(\\d+)\\s*/\\s*(\\d+)").find(value) ?: return false
+        val current = match.groupValues[1].toIntOrNull() ?: return false
+        val total = match.groupValues[2].toIntOrNull() ?: return false
+        return total > 0 && current == total
     }
 
     private fun normalizeOrder(value: String): String =
