@@ -149,8 +149,23 @@ object LabelParser {
             it.uppercase().replace("Ö", "O").replace("ß", "SS")
                 .matches(Regex("^(?:GR(?:O|0)?SSE|GROSSE|OSSE|SIZE|GOLEMINA)$"))
         }
-        val wfSize = nextMatching(lines, sizeHeading) { isRealSize(it) }
-        if (!isRealSize(size) && wfSize.isNotBlank()) size = wfSize
+        val cartonHeading = lines.indexOfFirst {
+            it.uppercase().replace(" ", "").startsWith("KARTON")
+        }
+        // WF box labels are read by OCR column-by-column. Between GRÖSSE and
+        // KARTON the final two standalone numbers are STÜCK then GRÖSSE.
+        // Example: ... 50, 1, 1/1 => 50 pieces, size 1.
+        val wfNumbers = if (sizeHeading >= 0) {
+            val end = if (cartonHeading > sizeHeading) cartonHeading else lines.size
+            lines.subList(sizeHeading + 1, end).mapNotNull {
+                it.takeIf { value -> value.matches(Regex("\\d{1,3}")) }?.toIntOrNull()
+            }.filter { it in 1..500 }
+        } else emptyList()
+        if (wfNumbers.size >= 2) size = wfNumbers.last().toString()
+        else {
+            val wfSize = nextMatching(lines, sizeHeading) { isRealSize(it) }
+            if (!isRealSize(size) && wfSize.isNotBlank()) size = wfSize
+        }
 
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
@@ -160,14 +175,18 @@ object LabelParser {
                 .find(text)?.groupValues?.get(1).orEmpty()
         }
         quantity = Regex("\\d+").find(quantity)?.value ?: quantity
-        val numericQuantity = quantity.toIntOrNull() ?: 0
-        if (numericQuantity <= 0 || numericQuantity > 500) {
-            val detectedSizeIndex = lines.indexOfFirst {
-                it.replace(" ", "").equals(size.replace(" ", ""), true)
-            }
-            quantity = nextMatching(lines, detectedSizeIndex, 4) {
-                val n = it.toIntOrNull()
-                n != null && n in 1..500
+        if (wfNumbers.size >= 2) {
+            quantity = wfNumbers[wfNumbers.lastIndex - 1].toString()
+        } else {
+            val numericQuantity = quantity.toIntOrNull() ?: 0
+            if (numericQuantity <= 0 || numericQuantity > 500) {
+                val detectedSizeIndex = lines.indexOfFirst {
+                    it.replace(" ", "").equals(size.replace(" ", ""), true)
+                }
+                quantity = nextMatching(lines, detectedSizeIndex, 4) {
+                    val n = it.toIntOrNull()
+                    n != null && n in 1..500
+                }
             }
         }
 
