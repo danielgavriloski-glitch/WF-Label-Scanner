@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private var activeDocumentId = newDocumentId()
     private val recentOcr = ArrayDeque<String>()
     private var pendingExportRecords: List<PackageRecord> = emptyList()
+    private var pendingWordRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -110,6 +111,25 @@ class MainActivity : AppCompatActivity() {
         }
         closeOrderAfterExport = false
         pendingExportRecords = emptyList()
+    }
+
+    private val wordLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    ) { uri: Uri? ->
+        if (uri == null) {
+            toast("Word документот не е зачуван. Налогот останува отворен.")
+            return@registerForActivityResult
+        }
+        runCatching {
+            contentResolver.openOutputStream(uri)?.use { DocxExporter.write(it, pendingWordRecords) }
+                ?: error("Не можам да го отворам избраниот фајл.")
+        }.onSuccess {
+            toast("Word документот е зачуван.")
+            pendingWordRecords = emptyList()
+            startNewOrder()
+        }.onFailure {
+            toast("Грешка при Word документ: ${it.message}")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -578,12 +598,10 @@ class MainActivity : AppCompatActivity() {
         val records = db.getForDocument(activeDocumentId)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
 
-        val sizes = records.groupBy { it.size.ifBlank { "Непозната" } }
-            .entries.sortedBy { it.key }
-            .joinToString(" • ") { (size, rows) -> "$size: ${rows.sumOf { it.quantity }}" }
-
-        toast("Налог $nalog затворен: ${records.size} пакети • ${records.sumOf { it.quantity }} парчиња • $sizes")
-        startNewOrder()
+        pendingWordRecords = records
+        val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
+        val safeNalog = nalog.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        wordLauncher.launch("WF_Nalog_${safeNalog}_$date.docx")
     }
 
     private fun updateCount() {
