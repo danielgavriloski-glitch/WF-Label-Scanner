@@ -22,7 +22,7 @@ import java.util.Locale
 class OrdersActivity : AppCompatActivity() {
     private lateinit var db: AppDatabase
     private lateinit var list: ListView
-    private var orderNames: List<String> = emptyList()
+    private var documentIds: List<String> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,7 +31,7 @@ class OrdersActivity : AppCompatActivity() {
         list = findViewById(R.id.ordersList)
         findViewById<Button>(R.id.closeOrdersButton).setOnClickListener { finish() }
         list.setOnItemClickListener { _, _, position, _ ->
-            startActivity(Intent(this, ReviewActivity::class.java).putExtra("nalog", orderNames[position]))
+            startActivity(Intent(this, ReviewActivity::class.java).putExtra("documentId", documentIds[position]))
         }
     }
 
@@ -41,17 +41,17 @@ class OrdersActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        val groups = db.getAll().groupBy { it.nalog }
+        val groups = db.getAll().groupBy { it.documentId.ifBlank { "legacy:${it.nalog}" } }
             .toList()
             .sortedByDescending { (_, rows) -> rows.maxOfOrNull { it.createdAt }.orEmpty() }
-        orderNames = groups.map { it.first }
+        documentIds = groups.map { it.first }
         list.adapter = object : BaseAdapter() {
             override fun getCount() = groups.size
             override fun getItem(position: Int) = groups[position]
             override fun getItemId(position: Int) = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val (nalog, packages) = groups[position]
-                return orderCard(nalog, packages)
+                val (_, packages) = groups[position]
+                return orderCard(packages.firstOrNull()?.nalog.orEmpty(), packages)
             }
         }
     }
@@ -102,7 +102,8 @@ class OrdersActivity : AppCompatActivity() {
                         .setTitle("Избриши налог ${nalog}?")
                         .setMessage("Ќе се избрише целиот документ и сите ${packages.size} зачувани пакети.")
                         .setPositiveButton("ИЗБРИШИ") { _, _ ->
-                            db.deleteOrder(nalog)
+                            if (packages.first().documentId.isBlank()) db.deleteOrder(nalog)
+                            else db.deleteDocument(packages.first().documentId)
                             refresh()
                         }
                         .setNegativeButton("ОТКАЖИ", null)
