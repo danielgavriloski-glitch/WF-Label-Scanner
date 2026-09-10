@@ -16,13 +16,13 @@ class ReviewActivity : AppCompatActivity() {
     private lateinit var db: AppDatabase
     private lateinit var list: ListView
     private var records: List<PackageRecord> = emptyList()
-    private var orderFilter: String = ""
+    private var documentFilter: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_review)
         db = AppDatabase(this)
-        orderFilter = intent.getStringExtra("nalog").orEmpty()
+        documentFilter = intent.getStringExtra("documentId").orEmpty()
         list = findViewById(R.id.reviewList)
         findViewById<Button>(R.id.closeButton).setOnClickListener { finish() }
         list.setOnItemClickListener { _, _, position, _ -> showDetails(records[position]) }
@@ -30,7 +30,7 @@ class ReviewActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        records = if (orderFilter.isBlank()) db.getAll() else db.getForOrder(orderFilter)
+        records = if (documentFilter.isBlank()) db.getAll() else if (documentFilter.startsWith("legacy:")) db.getForOrder(documentFilter.removePrefix("legacy:")) else db.getForDocument(documentFilter)
         val lines = records.map {
             "#${it.id}  Налог ${it.nalog}  • Пакет ${it.packageNo}  • ${it.size.ifBlank { "-" }}  • Qty ${it.quantity}"
         }
