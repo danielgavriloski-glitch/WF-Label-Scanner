@@ -83,4 +83,8 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
     fun delete(id: Long) {
         writableDatabase.delete("packages", "id = ?", arrayOf(id.toString()))
     }
+
+    fun deleteOrder(nalog: String) {
+        writableDatabase.delete("packages", "nalog = ?", arrayOf(nalog))
+    }
 }
