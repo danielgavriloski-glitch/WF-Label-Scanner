@@ -82,6 +82,17 @@ object LabelParser {
         return ""
     }
 
+    private fun nextMatching(lines: List<String>, start: Int, limit: Int = 7, test: (String) -> Boolean): String {
+        if (start < 0) return ""
+        return lines.drop(start + 1).take(limit).firstOrNull(test).orEmpty()
+    }
+
+    private fun isRealSize(value: String): Boolean {
+        val v = value.uppercase().replace(" ", "")
+        if (v.matches(Regex("^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|L/N)$"))) return true
+        return v.toIntOrNull()?.let { it in 20..80 } == true
+    }
+
     fun parse(raw: String, currentNalog: String = "", labelType: LabelType = LabelType.AUTO): ParsedLabel {
         val text = raw.replace('\u00A0', ' ')
 
@@ -119,6 +130,9 @@ object LabelParser {
         var article = valueAfter(text, listOf(
             "artikl", "artikel", "artikel nr", "artikel-nr", "artikelnr", "article", "item", "model", "style", "art.", "art nr", "art-nr"
         ))
+        val masterIndex = lines.indexOfFirst { it.equals("MASTER", true) }
+        val master = nextMatching(lines, masterIndex, 3) { it.matches(Regex("\\d{4,8}")) }
+        if (master.isNotBlank()) article = master
         if (article.isBlank() && lines.any(::isLn)) {
             article = Regex("(?<!\\d)\\d{3,6}[.]\\d{3,6}(?!\\d)").find(text)?.value.orEmpty()
         }
@@ -131,6 +145,12 @@ object LabelParser {
                 isLn(it) || it.matches(Regex("(?i)^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|\\d{1,3})$"))
             }.orEmpty().let { if (isLn(it)) "L/N" else it.replace(Regex("\\s+"), "") }
         }
+        val sizeHeading = lines.indexOfFirst {
+            it.uppercase().replace("Ö", "O").replace("ß", "SS")
+                .matches(Regex("^(?:GR(?:O|0)?SSE|GROSSE|OSSE|SIZE|GOLEMINA)$"))
+        }
+        val wfSize = nextMatching(lines, sizeHeading) { isRealSize(it) }
+        if (!isRealSize(size) && wfSize.isNotBlank()) size = wfSize
 
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
@@ -140,6 +160,16 @@ object LabelParser {
                 .find(text)?.groupValues?.get(1).orEmpty()
         }
         quantity = Regex("\\d+").find(quantity)?.value ?: quantity
+        val numericQuantity = quantity.toIntOrNull() ?: 0
+        if (numericQuantity <= 0 || numericQuantity > 500) {
+            val detectedSizeIndex = lines.indexOfFirst {
+                it.replace(" ", "").equals(size.replace(" ", ""), true)
+            }
+            quantity = nextMatching(lines, detectedSizeIndex, 4) {
+                val n = it.toIntOrNull()
+                n != null && n in 1..500
+            }
+        }
 
         val customer = valueAfter(text, listOf(
             "klient", "client", "customer", "kunde", "kundenname", "name"
