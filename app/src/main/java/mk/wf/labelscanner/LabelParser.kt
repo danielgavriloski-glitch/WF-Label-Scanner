@@ -22,18 +22,19 @@ object LabelParser {
         "(?i)(?<![A-Z0-9])([0-9OQ]{2})[\\s./-]*([0-9OQ]{3})[\\s./-]*([0-9OQ]{5})(?![A-Z0-9])"
     )
     private val shortOrder = Regex(
-        "(?i)(?<![A-Z0-9])([0OQ]{2}[\\s./-]*[0-9OQISBLZ]{3})(?![A-Z0-9])"
+        "(?i)(?<![A-Z0-9])([0OQD]{2}[\\s./,_-]*[0-9OQDISBLZG]{3})(?![A-Z0-9])"
     )
 
     private fun normalizeOcrDigits(value: String): String = buildString {
         value.uppercase().forEach { ch ->
             when (ch) {
                 in '0'..'9' -> append(ch)
-                'O', 'Q' -> append('0')
+                'O', 'Q', 'D' -> append('0')
                 'I', 'L' -> append('1')
                 'Z' -> append('2')
                 'S' -> append('5')
                 'B' -> append('8')
+                'G' -> append('6')
             }
         }
     }
@@ -62,6 +63,14 @@ object LabelParser {
             }
         }
         return ""
+    }
+
+    /** Handwritten labels often arrive as loose OCR lines without printed headings. */
+    private fun handwrittenNumberAfter(text: String, keys: String, maxDigits: Int = 6): String {
+        val match = Regex(
+            "(?i)(?:$keys)\\s*[:#=./-]?\\s*([0-9OQDISBLZG]{1,$maxDigits}(?:\\s*/\\s*[0-9OQDISBLZG]{1,$maxDigits})?)"
+        ).find(text) ?: return ""
+        return match.groupValues[1].split('/').joinToString("/") { normalizeOcrDigits(it) }
     }
 
     private fun isLn(value: String): Boolean =
@@ -126,7 +135,7 @@ object LabelParser {
 
         val packageNo = valueAfter(text, listOf(
             "paket", "package", "pack", "box", "karton", "karton nr", "karton-nr", "carton", "colli", "kolli", "kollinr", "kolli-nr"
-        ))
+        )).ifBlank { handwrittenNumberAfter(text, "pak(?:et)?|pack(?:age)?|box|karton|kolli", 4) }
         var article = valueAfter(text, listOf(
             "artikl", "artikel", "artikel nr", "artikel-nr", "artikelnr", "article", "item", "model", "style", "art.", "art nr", "art-nr"
         ))
@@ -140,6 +149,12 @@ object LabelParser {
         var size = valueAfter(text, listOf(
             "golemina", "size", "größe", "grösse", "groesse", "gr.", "gr", "taille", "mass"
         ))
+        if (!isRealSize(size)) {
+            val handwrittenSize = Regex(
+                "(?i)(?:size|gr(?:o|0|ö)?sse|golemina|vel)\\s*[:#=./-]?\\s*(XXS|XS|S|M|L|XL|XXL|[2-6]XL|L\\s*[/I|]\\s*N|[2-8][0-9])"
+            ).find(text)?.groupValues?.get(1).orEmpty()
+            if (handwrittenSize.isNotBlank()) size = if (isLn(handwrittenSize)) "L/N" else handwrittenSize.replace(" ", "")
+        }
         if (size.isBlank()) {
             size = lines.firstOrNull {
                 isLn(it) || it.matches(Regex("(?i)^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|\\d{1,3})$"))
@@ -170,6 +185,9 @@ object LabelParser {
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
         ))
+        if (quantity.isBlank()) {
+            quantity = handwrittenNumberAfter(text, "qty|quantity|koli(?:c|č)ina|pcs|pieces|par(?:c|č)inja|st(?:uck|ück)?|menge", 4)
+        }
         if (quantity.isBlank()) {
             quantity = Regex("(?i)(?<!\\d)(\\d{1,6})\\s*(?:stück|stuck|stiick|pcs|pieces|paar|pairs?)(?![a-z])")
                 .find(text)?.groupValues?.get(1).orEmpty()

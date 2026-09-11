@@ -90,6 +90,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingExportRecords: List<PackageRecord> = emptyList()
     private var pendingWordRecords: List<PackageRecord> = emptyList()
     private var closeOrderAfterExport = false
+    private var bestPartial: ParsedLabel? = null
+    private var bestPartialRaw = ""
+    private var bestPartialBitmap: Bitmap? = null
+    private var bestPartialScore = -1
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startCamera() else toast("Потребна е дозвола за камера.")
@@ -292,6 +296,10 @@ class MainActivity : AppCompatActivity() {
         recentOcr.clear()
         displayedRecord = null
         latestPhotoPath = ""
+        bestPartial = null
+        bestPartialRaw = ""
+        bestPartialBitmap = null
+        bestPartialScore = -1
         scanRequested = true
         scanButton.isEnabled = false
         statusText.text = "Скенирам... држи ја етикетата право во рамката"
@@ -392,6 +400,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val qty = parsed.quantity.filter { it.isDigit() }.toIntOrNull() ?: 0
+        rememberBestPartial(parsed, combinedRaw, bitmap)
         val complete = parsed.nalog.isNotBlank() && parsed.size.isNotBlank() && qty > 0
         if (!complete || combinedRaw.length < 14) {
             registerBadRead()
@@ -450,6 +459,17 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             scanButton.isEnabled = true
             showScanConfirmation(parsed, combinedRaw, bitmap)
+        }
+    }
+
+    private fun rememberBestPartial(parsed: ParsedLabel, raw: String, bitmap: Bitmap) {
+        val score = listOf(parsed.nalog, parsed.packageNo, parsed.article, parsed.size,
+            parsed.quantity, parsed.customer, parsed.barcode).count { it.isNotBlank() }
+        if (score > bestPartialScore || (score == bestPartialScore && raw.length > bestPartialRaw.length)) {
+            bestPartial = parsed
+            bestPartialRaw = raw
+            bestPartialBitmap = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+            bestPartialScore = score
         }
     }
 
@@ -542,9 +562,18 @@ class MainActivity : AppCompatActivity() {
         if (badReadFrames >= REQUIRED_BAD_FRAMES && !errorSoundPlayed) {
             errorSoundPlayed = true
             runOnUiThread {
-                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 450)
-                vibrate(250)
-                stopScan("Не ја прочитав целата етикета — намести ја подобро и притисни СКЕНИРАЈ")
+                val partial = bestPartial
+                val partialBitmap = bestPartialBitmap
+                if (partial != null && partialBitmap != null && bestPartialScore > 0) {
+                    scanRequested = false
+                    scanButton.isEnabled = true
+                    statusText.text = "Не е прочитано сè — провери и дополни"
+                    showScanConfirmation(partial, bestPartialRaw, partialBitmap)
+                } else {
+                    toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 450)
+                    vibrate(250)
+                    stopScan("Не прочитав ништо — намести ја етикетата и притисни СКЕНИРАЈ")
+                }
             }
         }
     }
