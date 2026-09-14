@@ -46,9 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
     companion object {
-        private const val ANALYSIS_INTERVAL_MS = 220L
-        private const val REQUIRED_STABLE_READS = 2
-        private const val REQUIRED_BAD_FRAMES = 6
+        private const val ANALYSIS_INTERVAL_MS = 280L
+        private const val REQUIRED_STABLE_READS = 3
+        private const val REQUIRED_BAD_FRAMES = 8
         private const val REQUIRED_WRONG_ORDER_READS = 2
     }
 
@@ -336,7 +336,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val image = InputImage.fromBitmap(bitmap, rotation)
+        val scanBitmap = cropToScanFrame(bitmap)
+        val image = InputImage.fromBitmap(scanBitmap, rotation)
         recognizer.process(image)
             .addOnSuccessListener { textResult ->
                 val raw = textResult.text
@@ -344,15 +345,26 @@ class MainActivity : AppCompatActivity() {
                 barcodeScanner.process(image)
                     .addOnSuccessListener { codes ->
                         val code = codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue.orEmpty()
-                        handleScanResult(raw, code, bitmap, spatialFields)
+                        handleScanResult(raw, code, scanBitmap, spatialFields)
                     }
-                    .addOnFailureListener { handleScanResult(raw, "", bitmap, spatialFields) }
+                    .addOnFailureListener { handleScanResult(raw, "", scanBitmap, spatialFields) }
                     .addOnCompleteListener { processing.set(false) }
             }
             .addOnFailureListener {
                 registerBadRead()
                 processing.set(false)
             }
+    }
+
+    private fun cropToScanFrame(bitmap: Bitmap): Bitmap {
+        // The yellow guide occupies the center of the preview. Ignoring the outer area
+        // prevents text from nearby cartons and shelves from contaminating one label.
+        val cropWidth = (bitmap.width * 0.90f).toInt().coerceAtLeast(1)
+        val cropHeight = (bitmap.height * 0.68f).toInt().coerceAtLeast(1)
+        val left = ((bitmap.width - cropWidth) / 2).coerceAtLeast(0)
+        val top = ((bitmap.height - cropHeight) / 2).coerceAtLeast(0)
+        return runCatching { Bitmap.createBitmap(bitmap, left, top, cropWidth, cropHeight) }
+            .getOrDefault(bitmap)
     }
 
     private fun extractSpatialFields(result: Text): Pair<String, String>? {
@@ -369,30 +381,31 @@ class MainActivity : AppCompatActivity() {
         val qtyBox = quantityHeader.boundingBox ?: return null
         val middle = (sizeBox.centerX() + qtyBox.centerX()) / 2
         val headerBottom = maxOf(sizeBox.bottom, qtyBox.bottom)
-        val numbers = lines.mapNotNull { line ->
-            val value = line.text.trim()
+        val candidates = lines.mapNotNull { line ->
+            val value = line.text.trim().uppercase(Locale.ROOT)
+                .replace(" ", "").replace("|", "/")
             val box = line.boundingBox
-            if (box != null && value.matches(Regex("\\d{1,3}")) && box.top > headerBottom) {
-                Triple(value, box.centerX(), box.top)
-            } else null
+            if (box != null && box.top > headerBottom) Triple(value, box.centerX(), box.top) else null
         }
-        val size = numbers.filter { it.second < middle }
+        val sizePattern = Regex("^(XXS|XS|S|M|L|XL|XXL|[2-6]XL|MN|ML|LN|XLN|XXLN|[2-4]XLN|L/N|[2-8][0-9])$")
+        val size = candidates.filter { it.second < middle && sizePattern.matches(it.first) }
             .minByOrNull { it.third }?.first.orEmpty()
-        val quantity = numbers.filter { it.second >= middle && it.second < qtyBox.right + qtyBox.width() }
-            .minByOrNull { it.third }?.first.orEmpty()
+        val quantity = candidates.filter {
+            it.second >= middle && it.second < qtyBox.right + qtyBox.width() &&
+                it.first.matches(Regex("\\d{1,3}")) &&
+                (it.first.toIntOrNull() ?: 0) in 1..500
+        }.minByOrNull { it.third }?.first.orEmpty()
         return if (size.isNotBlank() && quantity.isNotBlank()) size to quantity else null
     }
 
     private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap, spatialFields: Pair<String, String>?) {
         if (!scanRequested) return
 
-        if (raw.length >= 8) {
-            recentOcr.addLast(raw)
-            while (recentOcr.size > 3) recentOcr.removeFirst()
-        }
-        val combinedRaw = recentOcr.joinToString("\n")
+        // Parse one frame at a time. Combining frames can mix two adjacent labels.
+        val combinedRaw = raw
+        val activeOrderForParsing = nalogInput.text.toString().trim()
 
-        val parsed = LabelParser.parse(combinedRaw, "", LabelType.AUTO).let {
+        val parsed = LabelParser.parse(combinedRaw, activeOrderForParsing, LabelType.AUTO).let {
             val withBarcode = if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
             spatialFields?.let { fields ->
                 withBarcode.copy(size = fields.first, quantity = fields.second)
