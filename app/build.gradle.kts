@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 24
-        versionName = "5.2-handwriting-review"
+        versionCode = 25
+        versionName = "5.3-precision-labels"
     }
 
     compileOptions {
