@@ -98,7 +98,7 @@ object LabelParser {
 
     private fun isRealSize(value: String): Boolean {
         val v = value.uppercase().replace(" ", "")
-        if (v.matches(Regex("^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|L/N)$"))) return true
+        if (v.matches(Regex("^(?:XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|L/N|MN|ML|LN|XLN|XXLN|3XLN|4XLN)$"))) return true
         return v.toIntOrNull()?.let { it in 20..80 } == true
     }
 
@@ -133,14 +133,25 @@ object LabelParser {
         }
         if (nalog.isBlank()) nalog = currentNalog
 
-        val packageNo = valueAfter(text, listOf(
-            "paket", "package", "pack", "box", "karton", "karton nr", "karton-nr", "carton", "colli", "kolli", "kollinr", "kolli-nr"
-        )).ifBlank { handwrittenNumberAfter(text, "pak(?:et)?|pack(?:age)?|box|karton|kolli", 4) }
+        val exactCarton = Regex(
+            "(?i)KARTON\\s*(?:NR\\.?|N[R8]\\.?)?\\s*[:#=./-]?\\s*([0-9OQDISBLZG]{1,6})"
+        ).find(text)?.groupValues?.get(1)?.let(::normalizeOcrDigits).orEmpty()
+        val packageNo = exactCarton.ifBlank {
+            valueAfter(text, listOf(
+                "paket", "package", "pack", "box", "karton nr", "karton-nr", "carton", "colli", "kolli", "kollinr", "kolli-nr"
+            )).ifBlank { handwrittenNumberAfter(text, "pak(?:et)?|pack(?:age)?|box|karton|kolli", 4) }
+        }
         var article = valueAfter(text, listOf(
             "artikl", "artikel", "artikel nr", "artikel-nr", "artikelnr", "article", "item", "model", "style", "art.", "art nr", "art-nr"
         ))
+        val exactMaster = Regex(
+            "(?i)MASTER(?:NR\\.?|NUMMER)?\\s*[:#=./-]?\\s*([0-9OQDISBLZG]{4,8})"
+        ).find(text)?.groupValues?.get(1)?.let(::normalizeOcrDigits).orEmpty()
         val masterIndex = lines.indexOfFirst { it.equals("MASTER", true) }
-        val master = nextMatching(lines, masterIndex, 3) { it.matches(Regex("\\d{4,8}")) }
+        val master = exactMaster.ifBlank {
+            nextMatching(lines, masterIndex, 3) { it.matches(Regex("[0-9OQDISBLZG]{4,8}", RegexOption.IGNORE_CASE)) }
+                .let(::normalizeOcrDigits)
+        }
         if (master.isNotBlank()) article = master
         if (article.isBlank() && lines.any(::isLn)) {
             article = Regex("(?<!\\d)\\d{3,6}[.]\\d{3,6}(?!\\d)").find(text)?.value.orEmpty()
@@ -149,6 +160,10 @@ object LabelParser {
         var size = valueAfter(text, listOf(
             "golemina", "size", "größe", "grösse", "groesse", "gr.", "gr", "taille", "mass"
         ))
+        val exactStandardSize = Regex(
+            "(?i)GR(?:Ö|O|0)?SSE\\s*[:#=./-]?\\s*(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|6XL|MN|ML|LN|XLN|XXLN|3XLN|4XLN|L\\s*[/I|]\\s*N|[2-8][0-9])"
+        ).find(text)?.groupValues?.get(1).orEmpty().replace(Regex("\\s+"), "")
+        if (exactStandardSize.isNotBlank()) size = if (isLn(exactStandardSize)) "L/N" else exactStandardSize.uppercase()
         if (!isRealSize(size)) {
             val handwrittenSize = Regex(
                 "(?i)(?:size|gr(?:o|0|ö)?sse|golemina|vel)\\s*[:#=./-]?\\s*(XXS|XS|S|M|L|XL|XXL|[2-6]XL|L\\s*[/I|]\\s*N|[2-8][0-9])"
@@ -185,6 +200,10 @@ object LabelParser {
         var quantity = valueAfter(text, listOf(
             "kolicina", "količina", "qty", "quantity", "menge", "anzahl", "pcs", "pairs", "pair", "paar", "stück", "stuck", "st"
         ))
+        val exactStandardQuantity = Regex(
+            "(?i)ST(?:Ü|U|II|I)?CK\\s*[:#=./-]?\\s*([0-9OQDISBLZG]{1,3})"
+        ).find(text)?.groupValues?.get(1)?.let(::normalizeOcrDigits).orEmpty()
+        if (exactStandardQuantity.isNotBlank()) quantity = exactStandardQuantity
         if (quantity.isBlank()) {
             quantity = handwrittenNumberAfter(text, "qty|quantity|koli(?:c|č)ina|pcs|pieces|par(?:c|č)inja|st(?:uck|ück)?|menge", 4)
         }
