@@ -44,7 +44,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="v5.6 • Повеќе големини во пакет"
+                    android:text="v5.7 • Точно спарени големини"
                     android:textColor="#666666"
                     android:textSize="13sp" />
             </LinearLayout>
