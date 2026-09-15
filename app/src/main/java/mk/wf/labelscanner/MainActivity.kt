@@ -702,13 +702,6 @@ class MainActivity : AppCompatActivity() {
             return true
         }
 
-        if (isDuplicate(record)) {
-            toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 500)
-            vibrate(250)
-            stopScan("⚠ Овој пакет е веќе скениран — не е зачуван повторно")
-            return false
-        }
-
         val insertedId = db.insert(record)
         displayedRecord = record.copy(id = insertedId)
         lastSavedFingerprint = recordFingerprint(record)
