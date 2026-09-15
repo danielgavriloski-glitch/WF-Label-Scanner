@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 26
-        versionName = "5.4-spatial-anchors"
+        versionCode = 27
+        versionName = "5.5-confirmed-save"
     }
 
     compileOptions {
