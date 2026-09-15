@@ -97,7 +97,8 @@ class OrdersActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.card_background)
             addView(text("НАЛОГ $nalog", true))
             addView(text("Датум и време: $date"))
-            addView(text("${packages.size} пакети • допри за да го отвориш Word документот"))
+            val packageCount = packages.map { it.packageNo }.distinct().size
+            addView(text("$packageCount пакети • допри за да го отвориш Word документот"))
             addView(Button(this@OrdersActivity).apply {
                 text = "ОТВОРИ ДОКУМЕНТ"
                 setBackgroundColor(Color.rgb(244, 196, 0))
@@ -109,7 +110,7 @@ class OrdersActivity : AppCompatActivity() {
                 setOnClickListener {
                     AlertDialog.Builder(this@OrdersActivity)
                         .setTitle("Избриши налог $nalog?")
-                        .setMessage("Ќе се избрише документот од листата и сите ${packages.size} пакети.")
+                        .setMessage("Ќе се избрише документот од листата и сите $packageCount пакети.")
                         .setPositiveButton("ИЗБРИШИ") { _, _ ->
                             if (packages.first().documentId.isBlank()) db.deleteOrder(nalog)
                             else db.deleteDocument(packages.first().documentId)
