@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Rect
+import android.util.Size
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
@@ -45,10 +47,18 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : AppCompatActivity() {
+    private data class SpatialFields(
+        val nalog: String = "",
+        val packageNo: String = "",
+        val article: String = "",
+        val size: String = "",
+        val quantity: String = ""
+    )
+
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 280L
-        private const val REQUIRED_STABLE_READS = 3
-        private const val REQUIRED_BAD_FRAMES = 8
+        private const val REQUIRED_STABLE_READS = 2
+        private const val REQUIRED_BAD_FRAMES = 10
         private const val REQUIRED_WRONG_ORDER_READS = 2
     }
 
@@ -255,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
         val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
         val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(Size(1920, 1080))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
             .also { it.setAnalyzer(cameraExecutor, ::analyzeFrame) }
@@ -359,46 +370,88 @@ class MainActivity : AppCompatActivity() {
     private fun cropToScanFrame(bitmap: Bitmap): Bitmap {
         // The yellow guide occupies the center of the preview. Ignoring the outer area
         // prevents text from nearby cartons and shelves from contaminating one label.
-        val cropWidth = (bitmap.width * 0.90f).toInt().coerceAtLeast(1)
-        val cropHeight = (bitmap.height * 0.68f).toInt().coerceAtLeast(1)
+        val cropWidth = (bitmap.width * 0.97f).toInt().coerceAtLeast(1)
+        val cropHeight = (bitmap.height * 0.88f).toInt().coerceAtLeast(1)
         val left = ((bitmap.width - cropWidth) / 2).coerceAtLeast(0)
         val top = ((bitmap.height - cropHeight) / 2).coerceAtLeast(0)
         return runCatching { Bitmap.createBitmap(bitmap, left, top, cropWidth, cropHeight) }
             .getOrDefault(bitmap)
     }
 
-    private fun extractSpatialFields(result: Text): Pair<String, String>? {
-        val lines = result.textBlocks.flatMap { it.lines }
-        fun normalized(value: String) = value.uppercase(Locale.ROOT)
-            .replace("Ö", "O").replace("Ü", "U").replace(" ", "")
-        val sizeHeader = lines.firstOrNull {
-            normalized(it.text).contains("GROSSE") || normalized(it.text) == "OSSE"
-        } ?: return null
-        val quantityHeader = lines.firstOrNull {
-            normalized(it.text).contains("STUCK") || normalized(it.text).contains("STUICK")
-        } ?: return null
-        val sizeBox = sizeHeader.boundingBox ?: return null
-        val qtyBox = quantityHeader.boundingBox ?: return null
-        val middle = (sizeBox.centerX() + qtyBox.centerX()) / 2
-        val headerBottom = maxOf(sizeBox.bottom, qtyBox.bottom)
-        val candidates = lines.mapNotNull { line ->
-            val value = line.text.trim().uppercase(Locale.ROOT)
-                .replace(" ", "").replace("|", "/")
-            val box = line.boundingBox
-            if (box != null && box.top > headerBottom) Triple(value, box.centerX(), box.top) else null
+    private fun extractSpatialFields(result: Text): SpatialFields? {
+        val lines = result.textBlocks.flatMap { it.lines }.filter { it.boundingBox != null }
+        if (lines.isEmpty()) return null
+
+        fun norm(value: String) = value.uppercase(Locale.ROOT)
+            .replace("Ö", "O").replace("Ü", "U").replace("ß", "SS")
+            .replace(Regex("[^A-Z0-9/]"), "")
+
+        fun header(vararg keys: String): Text.Line? = lines.firstOrNull { line ->
+            val n = norm(line.text)
+            keys.any { key -> n.contains(key) }
         }
-        val sizePattern = Regex("^(XXS|XS|S|M|L|XL|XXL|[2-6]XL|MN|ML|LN|XLN|XXLN|[2-4]XLN|L/N|[2-8][0-9])$")
-        val size = candidates.filter { it.second < middle && sizePattern.matches(it.first) }
-            .minByOrNull { it.third }?.first.orEmpty()
-        val quantity = candidates.filter {
-            it.second >= middle && it.second < qtyBox.right + qtyBox.width() &&
-                it.first.matches(Regex("\\d{1,3}")) &&
-                (it.first.toIntOrNull() ?: 0) in 1..500
-        }.minByOrNull { it.third }?.first.orEmpty()
-        return if (size.isNotBlank() && quantity.isNotBlank()) size to quantity else null
+
+        fun overlapX(a: Rect, b: Rect): Int = maxOf(0, minOf(a.right, b.right) - maxOf(a.left, b.left))
+
+        fun nearestValue(anchor: Text.Line?, validator: (String) -> Boolean): String {
+            val anchorBox = anchor?.boundingBox ?: return ""
+            val anchorHeight = anchorBox.height().coerceAtLeast(18)
+            return lines.asSequence()
+                .filter { it !== anchor }
+                .mapNotNull { line ->
+                    val box = line.boundingBox ?: return@mapNotNull null
+                    val value = norm(line.text)
+                    if (!validator(value)) return@mapNotNull null
+
+                    val sameRow = kotlin.math.abs(box.centerY() - anchorBox.centerY()) <=
+                        maxOf(anchorHeight, box.height())
+                    val toRight = sameRow && box.left >= anchorBox.right - 12 &&
+                        box.left <= anchorBox.right + anchorHeight * 12
+
+                    val below = box.top >= anchorBox.bottom - 8 &&
+                        box.top <= anchorBox.bottom + anchorHeight * 7 &&
+                        (overlapX(anchorBox, box) > 0 ||
+                            kotlin.math.abs(box.centerX() - anchorBox.centerX()) <= anchorHeight * 5)
+
+                    if (!toRight && !below) return@mapNotNull null
+                    val score = if (toRight) {
+                        (box.left - anchorBox.right).coerceAtLeast(0) +
+                            kotlin.math.abs(box.centerY() - anchorBox.centerY()) * 2
+                    } else {
+                        (box.top - anchorBox.bottom).coerceAtLeast(0) +
+                            kotlin.math.abs(box.centerX() - anchorBox.centerX())
+                    }
+                    value to score
+                }
+                .minByOrNull { it.second }?.first.orEmpty()
+        }
+
+        val orderHeader = header("NALOG", "AUFTRAG", "ORDER", "PAPOS", "KOMMISSION")
+        val packageHeader = header("KARTON", "PAKET", "PACKAGE", "BOX", "KOLLI")
+        val masterHeader = header("MASTER", "ARTIKEL", "ARTICLE", "MODEL")
+        val sizeHeader = header("GROSSE", "GROESSE", "SIZE", "GOLEMINA", "VELICINA")
+        val quantityHeader = header("STUCK", "STUICK", "QTY", "QUANTITY", "KOLICINA", "PARCINJA", "PCS")
+
+        val sizePattern = Regex("^(XXS|XS|S|M|L|XL|XXL|[2-6]XL|MN|ML|LN|XLN|XXLN|[2-4]XLN|L/N|[1-9]|[2-8][0-9])$")
+        val nalog = nearestValue(orderHeader) {
+            it.filter(Char::isDigit).length in 5..10
+        }
+        val packageNo = nearestValue(packageHeader) {
+            it.matches(Regex("^\\d{1,4}(/\\d{1,4})?$"))
+        }
+        val article = nearestValue(masterHeader) {
+            it.matches(Regex("^[A-Z0-9./-]{3,16}$")) && !sizePattern.matches(it)
+        }
+        val size = nearestValue(sizeHeader) { sizePattern.matches(it) }
+        val quantity = nearestValue(quantityHeader) {
+            it.matches(Regex("^\\d{1,3}$")) && (it.toIntOrNull() ?: 0) in 1..500
+        }
+
+        return SpatialFields(nalog, packageNo, article, size, quantity)
+            .takeIf { listOf(it.nalog, it.packageNo, it.article, it.size, it.quantity).any(String::isNotBlank) }
     }
 
-    private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap, spatialFields: Pair<String, String>?) {
+    private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap, spatialFields: SpatialFields?) {
         if (!scanRequested) return
 
         // Parse one frame at a time. Combining frames can mix two adjacent labels.
@@ -408,7 +461,13 @@ class MainActivity : AppCompatActivity() {
         val parsed = LabelParser.parse(combinedRaw, activeOrderForParsing, LabelType.AUTO).let {
             val withBarcode = if (detectedBarcode.isBlank()) it else it.copy(barcode = detectedBarcode)
             spatialFields?.let { fields ->
-                withBarcode.copy(size = fields.first, quantity = fields.second)
+                withBarcode.copy(
+                    nalog = fields.nalog.ifBlank { withBarcode.nalog },
+                    packageNo = fields.packageNo.ifBlank { withBarcode.packageNo },
+                    article = fields.article.ifBlank { withBarcode.article },
+                    size = fields.size.ifBlank { withBarcode.size },
+                    quantity = fields.quantity.ifBlank { withBarcode.quantity }
+                )
             } ?: withBarcode
         }
 
