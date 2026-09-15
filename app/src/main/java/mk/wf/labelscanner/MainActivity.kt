@@ -461,27 +461,60 @@ class MainActivity : AppCompatActivity() {
         }?.boundingBox
 
         val rows = if (sizeAnchor != null && qtyAnchor != null) {
+            // GRÖSSE and STÜCK define two strict neighboring columns.
+            // Only values inside those columns and on the same horizontal row are paired.
             val headerBottom = maxOf(sizeAnchor.bottom, qtyAnchor.bottom)
-            val columnDistance = kotlin.math.abs(qtyAnchor.centerX() - sizeAnchor.centerX()).coerceAtLeast(40)
+            val middleX = (sizeAnchor.centerX() + qtyAnchor.centerX()) / 2
+            val columnGap = kotlin.math.abs(qtyAnchor.centerX() - sizeAnchor.centerX()).coerceAtLeast(50)
+
+            // Stop before the next printed section (KARTON/MASTER/BARCODE/etc.),
+            // so numbers outside the size table can never become extra sizes.
+            val stopWords = listOf("KARTON", "PAKET", "PACKAGE", "BOX", "KOLLI", "MASTER", "BARCODE", "EAN", "GTIN")
+            val nextSectionTop = elements.mapNotNull { element ->
+                val box = element.boundingBox ?: return@mapNotNull null
+                val n = norm(element.text)
+                box.top.takeIf { box.top > headerBottom + 8 && stopWords.any(n::contains) }
+            }.minOrNull()
+            val tableBottom = nextSectionTop ?: (headerBottom + columnGap * 5)
+
+            val sizeLeft = sizeAnchor.left - columnGap / 2
+            val sizeRight = middleX
+            val qtyLeft = middleX
+            val qtyRight = qtyAnchor.right + columnGap / 2
+
+            data class CellValue(val value: String, val box: Rect)
             val sizeValues = elements.mapNotNull { element ->
                 val box = element.boundingBox ?: return@mapNotNull null
                 val value = norm(element.text).replace("|", "/")
-                if (box.top <= headerBottom || !sizePattern.matches(value)) return@mapNotNull null
-                if (kotlin.math.abs(box.centerX() - sizeAnchor.centerX()) > columnDistance / 2 + sizeAnchor.width()) return@mapNotNull null
-                Triple(value, box.centerY(), box.height().coerceAtLeast(10))
-            }
+                val inside = box.centerX() in sizeLeft..sizeRight &&
+                    box.centerY() > headerBottom && box.centerY() < tableBottom
+                if (inside && sizePattern.matches(value)) CellValue(value, box) else null
+            }.sortedBy { it.box.centerY() }
+
             val qtyValues = elements.mapNotNull { element ->
                 val box = element.boundingBox ?: return@mapNotNull null
                 val value = norm(element.text)
                 val number = value.toIntOrNull()
-                if (box.top <= headerBottom || number == null || number !in 1..500) return@mapNotNull null
-                if (kotlin.math.abs(box.centerX() - qtyAnchor.centerX()) > columnDistance / 2 + qtyAnchor.width()) return@mapNotNull null
-                Triple(value, box.centerY(), box.height().coerceAtLeast(10))
-            }
-            sizeValues.mapNotNull { s ->
-                qtyValues.minByOrNull { q -> kotlin.math.abs(q.second - s.second) }
-                    ?.takeIf { q -> kotlin.math.abs(q.second - s.second) <= maxOf(s.third, q.third) * 2 }
-                    ?.let { q -> s.first to q.first }
+                val inside = box.centerX() in qtyLeft..qtyRight &&
+                    box.centerY() > headerBottom && box.centerY() < tableBottom
+                if (inside && number != null && number in 1..500) CellValue(value, box) else null
+            }.sortedBy { it.box.centerY() }
+
+            val usedQuantities = mutableSetOf<Int>()
+            sizeValues.mapNotNull { sizeCell ->
+                val quantityIndex = qtyValues.indices
+                    .filterNot(usedQuantities::contains)
+                    .minByOrNull { index ->
+                        kotlin.math.abs(qtyValues[index].box.centerY() - sizeCell.box.centerY())
+                    } ?: return@mapNotNull null
+                val quantityCell = qtyValues[quantityIndex]
+                val rowTolerance = maxOf(sizeCell.box.height(), quantityCell.box.height())
+                    .coerceAtLeast(12)
+                if (kotlin.math.abs(quantityCell.box.centerY() - sizeCell.box.centerY()) > rowTolerance) {
+                    return@mapNotNull null
+                }
+                usedQuantities += quantityIndex
+                sizeCell.value to quantityCell.value
             }.distinct()
         } else emptyList()
 
