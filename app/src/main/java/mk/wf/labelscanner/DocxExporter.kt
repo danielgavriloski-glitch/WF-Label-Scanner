@@ -20,13 +20,15 @@ object DocxExporter {
         require(records.isNotEmpty())
         val nalog = records.first().nalog
         val date = records.maxOf { it.createdAt }
-        val details = records.map { listOf(nalog, it.size, it.article) }
+        val details = records.map {
+            listOf(it.packageNo, it.size, it.quantity.toString(), it.article)
+        }
         val totals = records.groupBy { it.size }.toSortedMap().map { (size, rows) -> listOf(size, rows.sumOf { it.quantity }.toString()) }
         val body = "<w:p><w:r><w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr><w:t>WF Налог ${xml(nalog)}</w:t></w:r></w:p>" +
             "<w:p><w:r><w:t>Датум и време: ${xml(date)}</w:t></w:r></w:p>" +
-            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Пакети</w:t></w:r></w:p>" + table(listOf("Налог", "Големина", "Master number"), details) +
+            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Пакети</w:t></w:r></w:p>" + table(listOf("Пакет", "Големина", "Парчиња", "Master number"), details) +
             "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Вкупен збир</w:t></w:r></w:p>" + table(listOf("Големина", "Парчиња"), totals) +
-            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Вкупно пакети: ${records.size}    Вкупно парчиња: ${records.sumOf { it.quantity }}</w:t></w:r></w:p>" +
+            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Вкупно пакети: ${records.map { it.packageNo }.distinct().size}    Вкупно парчиња: ${records.sumOf { it.quantity }}</w:t></w:r></w:p>" +
             "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1080\" w:right=\"1080\" w:bottom=\"1080\" w:left=\"1080\"/></w:sectPr>"
         val document = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>$body</w:body></w:document>"
         val types = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>"
