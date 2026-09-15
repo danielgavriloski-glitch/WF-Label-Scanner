@@ -52,7 +52,8 @@ class MainActivity : AppCompatActivity() {
         val packageNo: String = "",
         val article: String = "",
         val size: String = "",
-        val quantity: String = ""
+        val quantity: String = "",
+        val rows: List<Pair<String, String>> = emptyList()
     )
 
     companion object {
@@ -447,8 +448,55 @@ class MainActivity : AppCompatActivity() {
             it.matches(Regex("^\\d{1,3}$")) && (it.toIntOrNull() ?: 0) in 1..500
         }
 
-        return SpatialFields(nalog, packageNo, article, size, quantity)
-            .takeIf { listOf(it.nalog, it.packageNo, it.article, it.size, it.quantity).any(String::isNotBlank) }
+        // Read every size/quantity row in the printed table, not just the first one.
+        val elements = result.textBlocks.flatMap { it.lines }.flatMap { it.elements }
+            .filter { it.boundingBox != null }
+        val sizeAnchor = elements.firstOrNull {
+            val n = norm(it.text)
+            n.contains("GROSSE") || n.contains("GROESSE") || n == "SIZE" || n.contains("VELICINA")
+        }?.boundingBox
+        val qtyAnchor = elements.firstOrNull {
+            val n = norm(it.text)
+            n.contains("STUCK") || n.contains("QTY") || n.contains("KOLICINA") || n.contains("PARCINJA")
+        }?.boundingBox
+
+        val rows = if (sizeAnchor != null && qtyAnchor != null) {
+            val headerBottom = maxOf(sizeAnchor.bottom, qtyAnchor.bottom)
+            val columnDistance = kotlin.math.abs(qtyAnchor.centerX() - sizeAnchor.centerX()).coerceAtLeast(40)
+            val sizeValues = elements.mapNotNull { element ->
+                val box = element.boundingBox ?: return@mapNotNull null
+                val value = norm(element.text).replace("|", "/")
+                if (box.top <= headerBottom || !sizePattern.matches(value)) return@mapNotNull null
+                if (kotlin.math.abs(box.centerX() - sizeAnchor.centerX()) > columnDistance / 2 + sizeAnchor.width()) return@mapNotNull null
+                Triple(value, box.centerY(), box.height().coerceAtLeast(10))
+            }
+            val qtyValues = elements.mapNotNull { element ->
+                val box = element.boundingBox ?: return@mapNotNull null
+                val value = norm(element.text)
+                val number = value.toIntOrNull()
+                if (box.top <= headerBottom || number == null || number !in 1..500) return@mapNotNull null
+                if (kotlin.math.abs(box.centerX() - qtyAnchor.centerX()) > columnDistance / 2 + qtyAnchor.width()) return@mapNotNull null
+                Triple(value, box.centerY(), box.height().coerceAtLeast(10))
+            }
+            sizeValues.mapNotNull { s ->
+                qtyValues.minByOrNull { q -> kotlin.math.abs(q.second - s.second) }
+                    ?.takeIf { q -> kotlin.math.abs(q.second - s.second) <= maxOf(s.third, q.third) * 2 }
+                    ?.let { q -> s.first to q.first }
+            }.distinct()
+        } else emptyList()
+
+        val finalRows = rows.ifEmpty {
+            if (size.isNotBlank() && quantity.isNotBlank()) listOf(size to quantity) else emptyList()
+        }
+        val firstRow = finalRows.firstOrNull()
+        return SpatialFields(
+            nalog, packageNo, article,
+            firstRow?.first ?: size,
+            firstRow?.second ?: quantity,
+            finalRows
+        ).takeIf {
+            listOf(it.nalog, it.packageNo, it.article, it.size, it.quantity).any(String::isNotBlank)
+        }
     }
 
     private fun handleScanResult(raw: String, detectedBarcode: String, bitmap: Bitmap, spatialFields: SpatialFields?) {
@@ -530,7 +578,7 @@ class MainActivity : AppCompatActivity() {
         scanRequested = false
         runOnUiThread {
             scanButton.isEnabled = true
-            showScanConfirmation(parsed, combinedRaw, bitmap)
+            showScanConfirmation(parsed, combinedRaw, bitmap, spatialFields?.rows.orEmpty())
         }
     }
 
@@ -545,7 +593,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showScanConfirmation(parsed: ParsedLabel, raw: String, bitmap: Bitmap) {
+    private fun showScanConfirmation(
+        parsed: ParsedLabel,
+        raw: String,
+        bitmap: Bitmap,
+        detectedRows: List<Pair<String, String>> = emptyList()
+    ) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 12, 36, 4)
@@ -558,10 +611,25 @@ class MainActivity : AppCompatActivity() {
                 box.addView(this)
             }
         val order = field("Налог", parsed.nalog)
-        val size = field("Големина", parsed.size)
-        val qty = field("Парчиња", parsed.quantity, true)
         val master = field("Master number", parsed.article)
         val packageNo = field("Пакет", parsed.packageNo)
+        val rowEditors = mutableListOf<Pair<EditText, EditText>>()
+
+        fun addSizeRow(sizeValue: String = "", quantityValue: String = "") {
+            val number = rowEditors.size + 1
+            val sizeEditor = field("Големина $number", sizeValue)
+            val qtyEditor = field("Парчиња $number", quantityValue, true)
+            rowEditors += sizeEditor to qtyEditor
+        }
+
+        detectedRows.ifEmpty { listOf(parsed.size to parsed.quantity) }
+            .distinct()
+            .forEach { (sizeValue, quantityValue) -> addSizeRow(sizeValue, quantityValue) }
+
+        box.addView(Button(this).apply {
+            text = "+ ДОДАЈ ДРУГА ГОЛЕМИНА"
+            setOnClickListener { addSizeRow() }
+        })
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("Провери го скенирањето")
@@ -573,20 +641,36 @@ class MainActivity : AppCompatActivity() {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val quantity = qty.text.toString().filter(Char::isDigit)
-                if (order.text.isBlank() || size.text.isBlank() || quantity.toIntOrNull() == null) {
-                    toast("Провери налог, големина и парчиња.")
+                val rowsToSave = rowEditors.mapNotNull { (sizeEditor, qtyEditor) ->
+                    val sizeValue = sizeEditor.text.toString().trim()
+                    val quantityValue = qtyEditor.text.toString().filter(Char::isDigit)
+                    if (sizeValue.isBlank() && quantityValue.isBlank()) null else sizeValue to quantityValue
+                }
+                if (order.text.isBlank() || rowsToSave.isEmpty() ||
+                    rowsToSave.any { it.first.isBlank() || (it.second.toIntOrNull() ?: 0) <= 0 }) {
+                    toast("Провери го налогот и сите големини со нивните парчиња.")
                     return@setOnClickListener
                 }
                 nalogInput.setText(formatOrderNumber(order.text.toString().trim()))
                 nalogInput.isEnabled = false
-                sizeInput.setText(size.text.toString().trim())
-                quantityInput.setText(quantity)
                 articleInput.setText(master.text.toString().trim())
-                packageInput.setText(packageNo.text.toString().trim())
+                var confirmedPackage = packageNo.text.toString().trim()
+                if (confirmedPackage.isBlank()) {
+                    confirmedPackage = (db.getForDocument(activeDocumentId)
+                        .map { it.packageNo }.distinct().size + 1).toString()
+                }
+                packageInput.setText(confirmedPackage)
                 rawTextInput.setText(raw)
                 latestPhotoPath = saveFrame(bitmap)
-                if (saveCurrent(manual = false)) {
+
+                var allSaved = true
+                rowsToSave.forEach { (sizeValue, quantityValue) ->
+                    displayedRecord = null
+                    sizeInput.setText(sizeValue)
+                    quantityInput.setText(quantityValue)
+                    if (!saveCurrent(manual = false)) allSaved = false
+                }
+                if (allSaved) {
                     playSuccessSound()
                     dialog.dismiss()
                     if (isLastPackage(packageInput.text.toString())) {
