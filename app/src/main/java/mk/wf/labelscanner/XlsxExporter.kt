@@ -103,7 +103,7 @@ object XlsxExporter {
                     Cell.S(key.third),
                     Cell.S(packageNos),
                     Cell.N(groupRows.sumOf { it.quantity }.toString()),
-                    Cell.N(groupRows.size.toString())
+                    Cell.N(groupRows.map { it.packageNo }.distinct().size.toString())
                 )
             }
 
@@ -115,14 +115,14 @@ object XlsxExporter {
                 Cell.S(""),
                 Cell.S(orderRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")),
                 Cell.N(orderRows.sumOf { it.quantity }.toString(), true),
-                Cell.N(orderRows.size.toString(), true)
+                Cell.N(orderRows.map { it.packageNo }.distinct().size.toString(), true)
             )
         }
 
         rows.add(emptyList())
         rows += listOf(
             Cell.S("SITE NALOZI", true), Cell.S("VKUPNO", true), Cell.S(""), Cell.S(""),
-            Cell.N(records.sumOf { it.quantity }.toString(), true), Cell.N(records.size.toString(), true)
+            Cell.N(records.sumOf { it.quantity }.toString(), true), Cell.N(records.map { it.documentId to it.packageNo }.distinct().size.toString(), true)
         )
         return sheetXml(rows)
     }
