@@ -84,16 +84,16 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
     fun getForDocument(documentId: String): List<PackageRecord> =
         getAll().filter { it.documentId == documentId }
 
-    fun countAll(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM packages", null).use { c ->
-        c.moveToFirst(); c.getInt(0)
-    }
+    fun countAll(): Int = readableDatabase.rawQuery(
+        "SELECT COUNT(DISTINCT document_id || '|' || package_no) FROM packages", null
+    ).use { c -> c.moveToFirst(); c.getInt(0) }
 
     fun countForDocument(documentId: String): Int = readableDatabase.rawQuery(
-        "SELECT COUNT(*) FROM packages WHERE document_id = ?", arrayOf(documentId)
+        "SELECT COUNT(DISTINCT package_no) FROM packages WHERE document_id = ?", arrayOf(documentId)
     ).use { c -> c.moveToFirst(); c.getInt(0) }
 
     fun countForOrder(nalog: String): Int = readableDatabase.rawQuery(
-        "SELECT COUNT(*) FROM packages WHERE nalog = ?", arrayOf(nalog)
+        "SELECT COUNT(DISTINCT package_no) FROM packages WHERE nalog = ?", arrayOf(nalog)
     ).use { c -> c.moveToFirst(); c.getInt(0) }
 
     fun delete(id: Long) {
