@@ -97,6 +97,9 @@ class OrdersActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.card_background)
             addView(text("НАЛОГ $nalog", true))
             addView(text("Датум и време: $date"))
+            packages.firstOrNull()?.warehouse?.takeIf { it.isNotBlank() }?.let {
+                addView(text("Примен од магацин: $it", true))
+            }
             val packageCount = packages.map { it.packageNo }.distinct().size
             addView(text("$packageCount пакети • допри за да го отвориш Word документот"))
             addView(Button(this@OrdersActivity).apply {
@@ -104,6 +107,19 @@ class OrdersActivity : AppCompatActivity() {
                 setBackgroundColor(Color.rgb(244, 196, 0))
                 setTextColor(Color.BLACK)
                 setOnClickListener { openDocument(packages) }
+            })
+            addView(Button(this@OrdersActivity).apply {
+                text = "ОТВОРИ И ДОДАЈ ПАКЕТИ"
+                setBackgroundColor(Color.rgb(18, 35, 63))
+                setTextColor(Color.WHITE)
+                setOnClickListener {
+                    val documentId = packages.firstOrNull()?.documentId
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "legacy:$nalog"
+                    startActivity(Intent(this@OrdersActivity, MainActivity::class.java).apply {
+                        putExtra("reopenDocumentId", documentId)
+                    })
+                }
             })
             addView(Button(this@OrdersActivity).apply {
                 text = "ИЗБРИШИ НАЛОГ"
