@@ -512,7 +512,10 @@ class MainActivity : AppCompatActivity() {
                     insideTableColumns && box.top > headerBottom + 8 && stopWords.any(n::contains)
                 }
             }.minOrNull()
-            val tableBottom = nextSectionTop ?: (headerBottom + columnGap * 6)
+            // Only inspect the small table directly below the two headers. Do not
+            // continue searching down into the printed barcode sticker.
+            val headerHeight = maxOf(sizeAnchor.height(), qtyAnchor.height()).coerceAtLeast(24)
+            val tableBottom = nextSectionTop ?: (headerBottom + headerHeight * 9)
 
             data class CellValue(val value: String, val box: Rect)
             val sizeValues = elements.mapNotNull { element ->
@@ -567,7 +570,12 @@ class MainActivity : AppCompatActivity() {
                 possibleSize to possibleQty
             }
 
-            (pairedElements + pairedLines).distinct()
+            // Prefer clean, separately detected cells. Use the combined-line fallback
+            // only when ML Kit did not separate the two columns at all. Stop at four
+            // rows; numbers elsewhere on the label are deliberately ignored.
+            (if (pairedElements.isNotEmpty()) pairedElements else pairedLines)
+                .distinct()
+                .take(4)
         } else emptyList()
 
         val finalRows = rows.ifEmpty {
