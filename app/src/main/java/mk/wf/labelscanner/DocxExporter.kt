@@ -20,12 +20,14 @@ object DocxExporter {
         require(records.isNotEmpty())
         val nalog = records.first().nalog
         val date = records.maxOf { it.createdAt }
+        val warehouse = records.first().warehouse
         val details = records.map {
             listOf(it.packageNo, it.size, it.quantity.toString(), it.article)
         }
         val totals = records.groupBy { it.size }.toSortedMap().map { (size, rows) -> listOf(size, rows.sumOf { it.quantity }.toString()) }
         val body = "<w:p><w:r><w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr><w:t>WF Налог ${xml(nalog)}</w:t></w:r></w:p>" +
             "<w:p><w:r><w:t>Датум и време: ${xml(date)}</w:t></w:r></w:p>" +
+            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Примен од магацин: ${xml(warehouse)}</w:t></w:r></w:p>" +
             "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Пакети</w:t></w:r></w:p>" + table(listOf("Пакет", "Големина", "Парчиња", "Master number"), details) +
             "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Вкупен збир</w:t></w:r></w:p>" + table(listOf("Големина", "Парчиња"), totals) +
             "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Вкупно пакети: ${records.map { it.packageNo }.distinct().size}    Вкупно парчиња: ${records.sumOf { it.quantity }}</w:t></w:r></w:p>" +

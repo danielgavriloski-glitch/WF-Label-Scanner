@@ -97,6 +97,9 @@ class OrdersActivity : AppCompatActivity() {
             setBackgroundResource(R.drawable.card_background)
             addView(text("НАЛОГ $nalog", true))
             addView(text("Датум и време: $date"))
+            packages.firstOrNull()?.warehouse?.takeIf { it.isNotBlank() }?.let {
+                addView(text("Примен од магацин: $it", true))
+            }
             val packageCount = packages.map { it.packageNo }.distinct().size
             addView(text("$packageCount пакети • допри за да го отвориш Word документот"))
             addView(Button(this@OrdersActivity).apply {

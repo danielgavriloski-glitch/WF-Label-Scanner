@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", null, 3) {
+class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -22,7 +22,8 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
                 raw_text TEXT NOT NULL,
                 photo_path TEXT NOT NULL,
                 document_id TEXT NOT NULL DEFAULT '',
-                document_uri TEXT NOT NULL DEFAULT ''
+                document_uri TEXT NOT NULL DEFAULT '',
+                warehouse TEXT NOT NULL DEFAULT ''
             )
             """.trimIndent()
         )
@@ -31,6 +32,7 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE packages ADD COLUMN document_id TEXT NOT NULL DEFAULT '';")
         if (oldVersion < 3) db.execSQL("ALTER TABLE packages ADD COLUMN document_uri TEXT NOT NULL DEFAULT '';")
+        if (oldVersion < 4) db.execSQL("ALTER TABLE packages ADD COLUMN warehouse TEXT NOT NULL DEFAULT '';")
     }
 
     private fun values(record: PackageRecord) = ContentValues().apply {
@@ -46,6 +48,7 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
         put("photo_path", record.photoPath)
         put("document_id", record.documentId)
         put("document_uri", record.documentUri)
+        put("warehouse", record.warehouse)
     }
 
     fun insert(record: PackageRecord): Long = writableDatabase.insert("packages", null, values(record))
@@ -71,7 +74,8 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "wf_labels.db", 
                     rawText = c.getString(c.getColumnIndexOrThrow("raw_text")),
                     photoPath = c.getString(c.getColumnIndexOrThrow("photo_path")),
                     documentId = c.getString(c.getColumnIndexOrThrow("document_id")),
-                    documentUri = c.getString(c.getColumnIndexOrThrow("document_uri"))
+                    documentUri = c.getString(c.getColumnIndexOrThrow("document_uri")),
+                    warehouse = c.getString(c.getColumnIndexOrThrow("warehouse"))
                 )
             }
         }

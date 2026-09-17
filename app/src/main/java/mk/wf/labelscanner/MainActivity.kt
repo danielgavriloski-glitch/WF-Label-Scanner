@@ -917,6 +917,43 @@ class MainActivity : AppCompatActivity() {
         val records = db.getForDocument(activeDocumentId)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
 
+        val warehouseInput = EditText(this).apply {
+            hint = "На пример: Магацин 1"
+            setSingleLine(true)
+            val lastWarehouse = getSharedPreferences("wf_settings", MODE_PRIVATE)
+                .getString("last_warehouse", "").orEmpty()
+            setText(records.firstOrNull()?.warehouse?.ifBlank { lastWarehouse }.orEmpty())
+            setSelection(text.length)
+            setPadding(48, 24, 48, 24)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Од кој магацин е примен налогот?")
+            .setMessage("Магацинот ќе биде запишан во налогот и во документот.")
+            .setView(warehouseInput)
+            .setPositiveButton("ПРОДОЛЖИ", null)
+            .setNegativeButton("ОТКАЖИ", null)
+            .create()
+            .also { dialog ->
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val warehouse = warehouseInput.text.toString().trim()
+                        if (warehouse.isBlank()) {
+                            warehouseInput.error = "Внеси магацин"
+                            return@setOnClickListener
+                        }
+                        getSharedPreferences("wf_settings", MODE_PRIVATE).edit()
+                            .putString("last_warehouse", warehouse).apply()
+                        val updatedRecords = records.map { it.copy(warehouse = warehouse) }
+                        updatedRecords.forEach(db::update)
+                        dialog.dismiss()
+                        launchWordDocument(nalog, updatedRecords)
+                    }
+                }
+                dialog.show()
+            }
+    }
+
+    private fun launchWordDocument(nalog: String, records: List<PackageRecord>) {
         pendingWordRecords = records
         val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
         val safeNalog = nalog.replace(Regex("[^A-Za-z0-9_-]"), "_")

@@ -13,5 +13,6 @@ data class PackageRecord(
     val rawText: String,
     val photoPath: String,
     val documentId: String = "",
-    val documentUri: String = ""
+    val documentUri: String = "",
+    val warehouse: String = ""
 )
