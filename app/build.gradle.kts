@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 34
-        versionName = "5.12-simple-table-only"
+        versionCode = 35
+        versionName = "5.13-ignore-bottom-sticker"
     }
 
     compileOptions {
