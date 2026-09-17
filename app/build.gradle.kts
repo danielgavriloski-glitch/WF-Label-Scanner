@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 31
-        versionName = "5.9-handwriting-reopen"
+        versionCode = 32
+        versionName = "5.10-multi-size-handwriting"
     }
 
     compileOptions {
