@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 29
-        versionName = "5.7-aligned-cells"
+        versionCode = 31
+        versionName = "5.9-handwriting-reopen"
     }
 
     compileOptions {
@@ -34,4 +34,5 @@ dependencies {
     // Bundled ML Kit models: OCR + barcode scanning work on-device.
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    testImplementation(kotlin("test"))
 }
