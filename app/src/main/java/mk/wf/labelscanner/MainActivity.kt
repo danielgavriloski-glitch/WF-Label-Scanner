@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var bestPartialBitmap: Bitmap? = null
     private var bestPartialScore = -1
     private val accumulatedSizeRows = linkedMapOf<String, Pair<String, String>>()
+    private val sizeRowVotes = linkedMapOf<String, Int>()
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startCamera() else toast("Потребна е дозвола за камера.")
@@ -315,6 +316,7 @@ class MainActivity : AppCompatActivity() {
         bestPartialBitmap = null
         bestPartialScore = -1
         accumulatedSizeRows.clear()
+        sizeRowVotes.clear()
         scanRequested = true
         scanButton.isEnabled = false
         statusText.text = "Скенирам... држи ја етикетата право во рамката"
@@ -488,7 +490,13 @@ class MainActivity : AppCompatActivity() {
             val sizeLeft = sizeAnchor.left - columnGap / 2
             val sizeRight = middleX
             val qtyLeft = middleX
-            val qtyRight = qtyAnchor.right + columnGap / 2
+            // The printed vertical divider between GRÖSSE and STÜCK is the hard split.
+            // The MASTER/MODEL area begins immediately to the right of STÜCK and must
+            // never contribute a number to the quantity column.
+            val masterLeft = masterHeader?.boundingBox?.left
+            val naturalQtyRight = qtyAnchor.right + columnGap / 2
+            val qtyRight = masterLeft?.minus(6)?.coerceAtLeast(qtyAnchor.right)
+                ?.coerceAtMost(naturalQtyRight) ?: naturalQtyRight
 
             // Stop before the next printed section (KARTON/MASTER/BARCODE/etc.),
             // so numbers outside the size table can never become extra sizes.
@@ -600,7 +608,9 @@ class MainActivity : AppCompatActivity() {
             val cleanSize = row.first.trim().uppercase(Locale.ROOT)
             val cleanQty = row.second.filter(Char::isDigit)
             if (cleanSize.isNotBlank() && (cleanQty.toIntOrNull() ?: 0) > 0) {
-                accumulatedSizeRows["$cleanSize|$cleanQty"] = cleanSize to cleanQty
+                val rowKey = "$cleanSize|$cleanQty"
+                accumulatedSizeRows[rowKey] = cleanSize to cleanQty
+                sizeRowVotes[rowKey] = (sizeRowVotes[rowKey] ?: 0) + 1
             }
         }
 
@@ -663,11 +673,13 @@ class MainActivity : AppCompatActivity() {
         scanRequested = false
         runOnUiThread {
             scanButton.isEnabled = true
+            val confirmedRows = accumulatedSizeRows.filterKeys { (sizeRowVotes[it] ?: 0) >= 2 }.values
+                .toList().ifEmpty { accumulatedSizeRows.values.toList() }
             showScanConfirmation(
                 parsed,
                 combinedRaw,
                 bitmap,
-                accumulatedSizeRows.values.toList().ifEmpty { spatialFields?.rows.orEmpty() }
+                confirmedRows.ifEmpty { spatialFields?.rows.orEmpty() }
             )
         }
     }
