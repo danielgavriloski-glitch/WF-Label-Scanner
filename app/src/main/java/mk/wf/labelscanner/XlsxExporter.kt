@@ -65,7 +65,7 @@ object XlsxExporter {
     private fun detailsSheet(records: List<PackageRecord>): String {
         val rows = mutableListOf<List<Cell>>()
         rows += listOf(
-            "Datum", "Nalog", "Master number", "Paket", "Golemina", "Parcinja",
+            "Datum", "Nalog", "Magacin", "Master number", "Paket", "Golemina", "Parcinja",
             "Artikl / Model", "Klient", "Barcode", "Cel OCR tekst"
         ).map { Cell.S(it, true) }
 
@@ -73,6 +73,7 @@ object XlsxExporter {
             rows += listOf(
                 Cell.S(r.createdAt),
                 Cell.S(r.nalog),
+                Cell.S(r.warehouse),
                 Cell.S(masterNumber(r)),
                 Cell.S(r.packageNo),
                 Cell.S(r.size),
@@ -89,7 +90,7 @@ object XlsxExporter {
     private fun summarySheet(records: List<PackageRecord>): String {
         val rows = mutableListOf<List<Cell>>()
         rows += listOf(
-            "Nalog", "Master number", "Golemina", "Paketi", "Vkupno parcinja", "Broj paketi"
+            "Nalog", "Magacin", "Master number", "Golemina", "Paketi", "Vkupno parcinja", "Broj paketi"
         ).map { Cell.S(it, true) }
 
         val grouped = records.groupBy { Triple(it.nalog, masterNumber(it), it.size.ifBlank { "(bez golemina)" }) }
@@ -99,6 +100,7 @@ object XlsxExporter {
                 val packageNos = groupRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")
                 rows += listOf(
                     Cell.S(key.first),
+                    Cell.S(groupRows.first().warehouse),
                     Cell.S(key.second),
                     Cell.S(key.third),
                     Cell.S(packageNos),
@@ -111,6 +113,7 @@ object XlsxExporter {
         records.groupBy { it.nalog }.toSortedMap().forEach { (nalog, orderRows) ->
             rows += listOf(
                 Cell.S("NALOG $nalog", true),
+                Cell.S(orderRows.firstOrNull()?.warehouse.orEmpty(), true),
                 Cell.S("VKUPNO", true),
                 Cell.S(""),
                 Cell.S(orderRows.map { it.packageNo.ifBlank { "?" } }.distinct().joinToString(", ")),
@@ -121,7 +124,7 @@ object XlsxExporter {
 
         rows.add(emptyList())
         rows += listOf(
-            Cell.S("SITE NALOZI", true), Cell.S("VKUPNO", true), Cell.S(""), Cell.S(""),
+            Cell.S("SITE NALOZI", true), Cell.S(""), Cell.S("VKUPNO", true), Cell.S(""), Cell.S(""),
             Cell.N(records.sumOf { it.quantity }.toString(), true), Cell.N(records.map { it.documentId to it.packageNo }.distinct().size.toString(), true)
         )
         return sheetXml(rows)
