@@ -432,6 +432,18 @@ class MainActivity : AppCompatActivity() {
                 .minByOrNull { it.second }?.first.orEmpty()
         }
 
+        fun inlineDigits(line: Text.Line?, vararg keys: String): String {
+            val value = norm(line?.text.orEmpty())
+            for (key in keys) {
+                val index = value.indexOf(key)
+                if (index >= 0) {
+                    val digits = value.substring(index + key.length).filter(Char::isDigit)
+                    if (digits.isNotBlank()) return digits
+                }
+            }
+            return ""
+        }
+
         val orderHeader = header("NALOG", "AUFTRAG", "ORDER", "PAPOS", "KOMMISSION")
         val packageHeader = header("KARTON", "PAKET", "PACKAGE", "BOX", "KOLLI")
         val masterHeader = header("MASTER", "ARTIKEL", "ARTICLE", "MODEL")
@@ -443,10 +455,14 @@ class MainActivity : AppCompatActivity() {
             it.filter(Char::isDigit).length in 5..10
         }
         val nalog = normalizeDetectedOrder(rawNalog)
-        val packageNo = nearestValue(packageHeader) {
+        val packageNo = inlineDigits(packageHeader, "KARTONNR", "KARTON", "PAKET", "PACKAGE", "BOX")
+            .takeIf { it.length in 1..4 }
+            ?: nearestValue(packageHeader) {
             it.matches(Regex("^\\d{1,4}(/\\d{1,4})?$"))
         }
-        val article = nearestValue(masterHeader) {
+        val article = inlineDigits(masterHeader, "MASTER")
+            .takeIf { it.length in 5..8 }
+            ?: nearestValue(masterHeader) {
             it.matches(Regex("^[A-Z0-9./-]{3,16}$")) && !sizePattern.matches(it)
         }
         val size = nearestValue(sizeHeader) { sizePattern.matches(it) }
@@ -503,7 +519,10 @@ class MainActivity : AppCompatActivity() {
             // KARTON and MASTER are printed to the right of the size table on the
             // handwritten WF label. They must not shorten the table vertically,
             // otherwise the second/third handwritten size row is lost.
-            val stopWords = listOf("BARCODE", "EAN", "GTIN")
+            // A second GRÖSSE/MASTER heading belongs to the small printed sticker
+            // below the large handwritten label. Stop before it so its composition
+            // percentages and barcode digits cannot become extra size rows.
+            val stopWords = listOf("BARCODE", "EAN", "GTIN", "GROSSE", "GROESSE", "MASTERNR")
             val nextSectionTop = elements.mapNotNull { element ->
                 val box = element.boundingBox ?: return@mapNotNull null
                 val n = norm(element.text)
