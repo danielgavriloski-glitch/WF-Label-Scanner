@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 33
-        versionName = "5.11-strict-two-column-rows"
+        versionCode = 34
+        versionName = "5.12-simple-table-only"
     }
 
     compileOptions {
