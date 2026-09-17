@@ -168,6 +168,7 @@ class MainActivity : AppCompatActivity() {
 
         bindViews()
         installOrderFormatter()
+        restoreClosedOrderIfRequested()
         updateCount()
 
         scanButton.setOnClickListener { beginScan() }
@@ -434,9 +435,10 @@ class MainActivity : AppCompatActivity() {
         val quantityHeader = header("STUCK", "STUICK", "QTY", "QUANTITY", "KOLICINA", "PARCINJA", "PCS")
 
         val sizePattern = Regex("^(XXS|XS|S|M|L|XL|XXL|[2-6]XL|MN|ML|LN|XLN|XXLN|[2-4]XLN|L/N|[1-9]|[2-8][0-9])$")
-        val nalog = nearestValue(orderHeader) {
+        val rawNalog = nearestValue(orderHeader) {
             it.filter(Char::isDigit).length in 5..10
         }
+        val nalog = normalizeDetectedOrder(rawNalog)
         val packageNo = nearestValue(packageHeader) {
             it.matches(Regex("^\\d{1,4}(/\\d{1,4})?$"))
         }
@@ -466,21 +468,26 @@ class MainActivity : AppCompatActivity() {
             val headerBottom = maxOf(sizeAnchor.bottom, qtyAnchor.bottom)
             val middleX = (sizeAnchor.centerX() + qtyAnchor.centerX()) / 2
             val columnGap = kotlin.math.abs(qtyAnchor.centerX() - sizeAnchor.centerX()).coerceAtLeast(50)
-
-            // Stop before the next printed section (KARTON/MASTER/BARCODE/etc.),
-            // so numbers outside the size table can never become extra sizes.
-            val stopWords = listOf("KARTON", "PAKET", "PACKAGE", "BOX", "KOLLI", "MASTER", "BARCODE", "EAN", "GTIN")
-            val nextSectionTop = elements.mapNotNull { element ->
-                val box = element.boundingBox ?: return@mapNotNull null
-                val n = norm(element.text)
-                box.top.takeIf { box.top > headerBottom + 8 && stopWords.any(n::contains) }
-            }.minOrNull()
-            val tableBottom = nextSectionTop ?: (headerBottom + columnGap * 5)
-
             val sizeLeft = sizeAnchor.left - columnGap / 2
             val sizeRight = middleX
             val qtyLeft = middleX
             val qtyRight = qtyAnchor.right + columnGap / 2
+
+            // Stop before the next printed section (KARTON/MASTER/BARCODE/etc.),
+            // so numbers outside the size table can never become extra sizes.
+            // KARTON and MASTER are printed to the right of the size table on the
+            // handwritten WF label. They must not shorten the table vertically,
+            // otherwise the second/third handwritten size row is lost.
+            val stopWords = listOf("BARCODE", "EAN", "GTIN")
+            val nextSectionTop = elements.mapNotNull { element ->
+                val box = element.boundingBox ?: return@mapNotNull null
+                val n = norm(element.text)
+                val insideTableColumns = box.centerX() in sizeLeft..qtyRight
+                box.top.takeIf {
+                    insideTableColumns && box.top > headerBottom + 8 && stopWords.any(n::contains)
+                }
+            }.minOrNull()
+            val tableBottom = nextSectionTop ?: (headerBottom + columnGap * 6)
 
             data class CellValue(val value: String, val box: Rect)
             val sizeValues = elements.mapNotNull { element ->
@@ -734,6 +741,22 @@ class MainActivity : AppCompatActivity() {
     private fun normalizeOrder(value: String): String =
         value.uppercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
+    /**
+     * PA/POS on handwritten WF labels contains a five-digit order followed by
+     * a slash and position/total (for example 00 289/10). Only the first five
+     * digits are the order; the app expands them to 26-010-00289.
+     */
+    private fun normalizeDetectedOrder(value: String): String {
+        val beforeSlash = value.substringBefore('/').filter(Char::isDigit)
+        if (beforeSlash.length == 5) return "26-010-$beforeSlash"
+        val digits = value.filter(Char::isDigit)
+        return when {
+            digits.length == 5 -> "26-010-$digits"
+            digits.length >= 10 -> "${digits.take(2)}-${digits.substring(2, 5)}-${digits.substring(5, 10)}"
+            else -> value
+        }
+    }
+
     private fun normalizeText(value: String): String =
         value.uppercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
@@ -884,6 +907,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun newDocumentId(): String = "${System.currentTimeMillis()}-${java.util.UUID.randomUUID()}"
 
+    private fun restoreClosedOrderIfRequested() {
+        val requestedDocumentId = intent.getStringExtra("reopenDocumentId").orEmpty()
+        if (requestedDocumentId.isBlank()) return
+        val records = if (requestedDocumentId.startsWith("legacy:")) {
+            db.getForOrder(requestedDocumentId.removePrefix("legacy:"))
+        } else {
+            db.getForDocument(requestedDocumentId)
+        }
+        if (records.isEmpty()) return
+        activeDocumentId = if (requestedDocumentId.startsWith("legacy:")) newDocumentId() else requestedDocumentId
+        val nalog = records.first().nalog
+        nalogInput.setText(nalog)
+        nalogInput.isEnabled = false
+        clearPackageFields(keepNalog = true)
+        displayedRecord = null
+        lastSavedFingerprint = ""
+        statusText.text = "Налог $nalog е повторно отворен — скенирај го дополнителниот пакет"
+    }
+
     private fun startNewOrder() {
         activeDocumentId = newDocumentId()
         lastSavedFingerprint = ""
@@ -917,6 +959,43 @@ class MainActivity : AppCompatActivity() {
         val records = db.getForDocument(activeDocumentId)
         if (records.isEmpty()) return toast("Нема зачувани пакети за налог $nalog.")
 
+        val warehouseInput = EditText(this).apply {
+            hint = "На пример: Магацин 1"
+            setSingleLine(true)
+            val lastWarehouse = getSharedPreferences("wf_settings", MODE_PRIVATE)
+                .getString("last_warehouse", "").orEmpty()
+            setText(records.firstOrNull()?.warehouse?.ifBlank { lastWarehouse }.orEmpty())
+            setSelection(text.length)
+            setPadding(48, 24, 48, 24)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Од кој магацин е примен налогот?")
+            .setMessage("Магацинот ќе биде запишан во налогот и во документот.")
+            .setView(warehouseInput)
+            .setPositiveButton("ПРОДОЛЖИ", null)
+            .setNegativeButton("ОТКАЖИ", null)
+            .create()
+            .also { dialog ->
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val warehouse = warehouseInput.text.toString().trim()
+                        if (warehouse.isBlank()) {
+                            warehouseInput.error = "Внеси магацин"
+                            return@setOnClickListener
+                        }
+                        getSharedPreferences("wf_settings", MODE_PRIVATE).edit()
+                            .putString("last_warehouse", warehouse).apply()
+                        val updatedRecords = records.map { it.copy(warehouse = warehouse) }
+                        updatedRecords.forEach(db::update)
+                        dialog.dismiss()
+                        launchWordDocument(nalog, updatedRecords)
+                    }
+                }
+                dialog.show()
+            }
+    }
+
+    private fun launchWordDocument(nalog: String, records: List<PackageRecord>) {
         pendingWordRecords = records
         val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
         val safeNalog = nalog.replace(Regex("[^A-Za-z0-9_-]"), "_")
