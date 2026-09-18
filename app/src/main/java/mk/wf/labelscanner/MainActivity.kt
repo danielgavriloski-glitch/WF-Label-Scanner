@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toneGenerator: ToneGenerator
 
     private val processing = AtomicBoolean(false)
+    private val frozenFrameProcessing = AtomicBoolean(false)
     private var cameraProvider: ProcessCameraProvider? = null
     private var lensFacing = CameraSelector.LENS_FACING_BACK
     private var latestPhotoPath = ""
@@ -318,12 +319,14 @@ class MainActivity : AppCompatActivity() {
         accumulatedSizeRows.clear()
         sizeRowVotes.clear()
         scanRequested = true
+        frozenFrameProcessing.set(false)
         scanButton.isEnabled = false
-        statusText.text = "Скенирам... држи ја етикетата право во рамката"
+        statusText.text = "Фотографирам... држи ја етикетата право во рамката"
     }
 
     private fun stopScan(message: String) = runOnUiThread {
         scanRequested = false
+        frozenFrameProcessing.set(false)
         scanButton.isEnabled = true
         candidateKey = ""
         candidateCount = 0
@@ -338,7 +341,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val now = System.currentTimeMillis()
-        if (now - lastAnalysisAt < ANALYSIS_INTERVAL_MS || !processing.compareAndSet(false, true)) {
+        if (now - lastAnalysisAt < ANALYSIS_INTERVAL_MS ||
+            frozenFrameProcessing.get() || !processing.compareAndSet(false, true)) {
             proxy.close()
             return
         }
@@ -354,7 +358,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         val scanBitmap = cropToScanFrame(bitmap)
-        val image = InputImage.fromBitmap(scanBitmap, rotation)
+        frozenFrameProcessing.set(true)
+        runOnUiThread { statusText.text = "Сликата е направена — проверувам 1/2" }
+        verifyFrozenFrame(scanBitmap, rotation, pass = 1)
+        processing.set(false)
+    }
+
+    /**
+     * Both verification passes use the exact same captured frame. This avoids
+     * mixing text from two labels while the hand or camera is moving.
+     */
+    private fun verifyFrozenFrame(bitmap: Bitmap, rotation: Int, pass: Int) {
+        if (!scanRequested) {
+            frozenFrameProcessing.set(false)
+            return
+        }
+        val image = InputImage.fromBitmap(bitmap, rotation)
         recognizer.process(image)
             .addOnSuccessListener { textResult ->
                 val raw = textResult.text
@@ -362,15 +381,43 @@ class MainActivity : AppCompatActivity() {
                 barcodeScanner.process(image)
                     .addOnSuccessListener { codes ->
                         val code = codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue.orEmpty()
-                        handleScanResult(raw, code, scanBitmap, spatialFields)
+                        handleScanResult(raw, code, bitmap, spatialFields)
                     }
-                    .addOnFailureListener { handleScanResult(raw, "", scanBitmap, spatialFields) }
-                    .addOnCompleteListener { processing.set(false) }
+                    .addOnFailureListener { handleScanResult(raw, "", bitmap, spatialFields) }
+                    .addOnCompleteListener { finishFrozenPass(bitmap, rotation, pass) }
             }
             .addOnFailureListener {
                 registerBadRead()
-                processing.set(false)
+                finishFrozenPass(bitmap, rotation, pass)
             }
+    }
+
+    private fun finishFrozenPass(bitmap: Bitmap, rotation: Int, pass: Int) {
+        if (!scanRequested) {
+            frozenFrameProcessing.set(false)
+            return
+        }
+        if (pass < REQUIRED_STABLE_READS) {
+            runOnUiThread { statusText.text = "Ја проверувам истата слика... 2/2" }
+            verifyFrozenFrame(bitmap, rotation, pass + 1)
+            return
+        }
+
+        frozenFrameProcessing.set(false)
+        val partial = bestPartial
+        val partialBitmap = bestPartialBitmap
+        runOnUiThread {
+            if (partial != null && partialBitmap != null && bestPartialScore > 0) {
+                scanRequested = false
+                scanButton.isEnabled = true
+                statusText.text = "Не е прочитано сè — провери и дополни"
+                showScanConfirmation(partial, bestPartialRaw, partialBitmap)
+            } else {
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 450)
+                vibrate(250)
+                stopScan("Не прочитав ништо — намести ја етикетата и притисни СКЕНИРАЈ")
+            }
+        }
     }
 
     private fun cropToScanFrame(bitmap: Bitmap): Bitmap {
@@ -1021,6 +1068,7 @@ class MainActivity : AppCompatActivity() {
         clearPackageFields(keepNalog = false)
         nalogInput.isEnabled = true
         scanRequested = false
+        frozenFrameProcessing.set(false)
         scanButton.isEnabled = true
         candidateKey = ""
         candidateCount = 0

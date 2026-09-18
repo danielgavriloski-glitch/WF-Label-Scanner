@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 35
-        versionName = "5.13-ignore-bottom-sticker"
+        versionCode = 36
+        versionName = "5.14-frozen-photo-double-check"
     }
 
     compileOptions {
