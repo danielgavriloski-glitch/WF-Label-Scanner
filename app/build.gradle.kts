@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 37
-        versionName = "5.15-strict-camera-zones"
+        versionCode = 38
+        versionName = "5.16-wf-label-zones"
     }
 
     compileOptions {

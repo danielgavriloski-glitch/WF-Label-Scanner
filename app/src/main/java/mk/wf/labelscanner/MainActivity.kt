@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.util.Size
 import android.media.AudioManager
@@ -357,10 +358,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val scanBitmap = cropToScanFrame(bitmap)
+        val scanBitmap = cropToScanFrame(bitmap, rotation)
         frozenFrameProcessing.set(true)
         runOnUiThread { statusText.text = "Сликата е направена — проверувам 1/2" }
-        verifyFrozenFrame(scanBitmap, rotation, pass = 1)
+        verifyFrozenFrame(scanBitmap, rotation = 0, pass = 1)
         processing.set(false)
     }
 
@@ -422,15 +423,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun cropToScanFrame(bitmap: Bitmap): Bitmap {
-        // The yellow guide occupies the center of the preview. Ignoring the outer area
-        // prevents text from nearby cartons and shelves from contaminating one label.
-        val cropWidth = (bitmap.width * 0.97f).toInt().coerceAtLeast(1)
-        val cropHeight = (bitmap.height * 0.88f).toInt().coerceAtLeast(1)
-        val left = ((bitmap.width - cropWidth) / 2).coerceAtLeast(0)
-        val top = ((bitmap.height - cropHeight) / 2).coerceAtLeast(0)
-        return runCatching { Bitmap.createBitmap(bitmap, left, top, cropWidth, cropHeight) }
-            .getOrDefault(bitmap)
+    private fun cropToScanFrame(bitmap: Bitmap, rotation: Int): Bitmap {
+        // Rotate first so OCR coordinates match the landscape label guide shown
+        // on screen, then keep only the large white WF label (about 1.64:1).
+        val upright = if (rotation == 0) bitmap else runCatching {
+            Bitmap.createBitmap(
+                bitmap, 0, 0, bitmap.width, bitmap.height,
+                Matrix().apply { postRotate(rotation.toFloat()) }, true
+            )
+        }.getOrDefault(bitmap)
+        val cropWidth = (upright.width * 0.95f).toInt().coerceAtLeast(1)
+        val wantedHeight = (cropWidth / 1.64f).toInt()
+        val cropHeight = wantedHeight.coerceAtMost((upright.height * 0.72f).toInt()).coerceAtLeast(1)
+        val left = ((upright.width - cropWidth) / 2).coerceAtLeast(0)
+        val top = ((upright.height - cropHeight) / 2).coerceAtLeast(0)
+        return runCatching { Bitmap.createBitmap(upright, left, top, cropWidth, cropHeight) }
+            .getOrDefault(upright)
     }
 
     private fun extractSpatialFields(
@@ -655,12 +663,12 @@ class MainActivity : AppCompatActivity() {
         // outside the two visible boxes drawn over the preview.
         val uprightWidth = if (rotation == 90 || rotation == 270) bitmapHeight else bitmapWidth
         val uprightHeight = if (rotation == 90 || rotation == 270) bitmapWidth else bitmapHeight
-        val zoneTop = (uprightHeight * 0.56f).toInt()
-        val zoneBottom = (uprightHeight * 0.91f).toInt()
-        val sizeLeft = (uprightWidth * 0.03f).toInt()
-        val sizeRight = (uprightWidth * 0.49f).toInt()
-        val qtyLeft = (uprightWidth * 0.51f).toInt()
-        val qtyRight = (uprightWidth * 0.97f).toInt()
+        val zoneTop = (uprightHeight * 0.47f).toInt()
+        val zoneBottom = (uprightHeight * 0.96f).toInt()
+        val sizeLeft = (uprightWidth * 0.02f).toInt()
+        val sizeRight = (uprightWidth * 0.19f).toInt()
+        val qtyLeft = (uprightWidth * 0.20f).toInt()
+        val qtyRight = (uprightWidth * 0.38f).toInt()
 
         data class StrictCell(val value: String, val box: Rect)
         val strictSizes = elements.mapNotNull { element ->
