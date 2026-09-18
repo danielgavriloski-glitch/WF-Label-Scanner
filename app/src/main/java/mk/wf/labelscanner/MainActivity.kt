@@ -377,7 +377,9 @@ class MainActivity : AppCompatActivity() {
         recognizer.process(image)
             .addOnSuccessListener { textResult ->
                 val raw = textResult.text
-                val spatialFields = extractSpatialFields(textResult)
+                val spatialFields = extractSpatialFields(
+                    textResult, bitmap.width, bitmap.height, rotation
+                )
                 barcodeScanner.process(image)
                     .addOnSuccessListener { codes ->
                         val code = codes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue.orEmpty()
@@ -431,7 +433,12 @@ class MainActivity : AppCompatActivity() {
             .getOrDefault(bitmap)
     }
 
-    private fun extractSpatialFields(result: Text): SpatialFields? {
+    private fun extractSpatialFields(
+        result: Text,
+        bitmapWidth: Int,
+        bitmapHeight: Int,
+        rotation: Int
+    ): SpatialFields? {
         val lines = result.textBlocks.flatMap { it.lines }.filter { it.boundingBox != null }
         if (lines.isEmpty()) return null
 
@@ -644,9 +651,51 @@ class MainActivity : AppCompatActivity() {
                 .take(4)
         } else emptyList()
 
-        val finalRows = rows.ifEmpty {
-            if (size.isNotBlank() && quantity.isNotBlank()) listOf(size to quantity) else emptyList()
-        }
+        // Hard camera zones. Size and quantity are never accepted from anywhere
+        // outside the two visible boxes drawn over the preview.
+        val uprightWidth = if (rotation == 90 || rotation == 270) bitmapHeight else bitmapWidth
+        val uprightHeight = if (rotation == 90 || rotation == 270) bitmapWidth else bitmapHeight
+        val zoneTop = (uprightHeight * 0.56f).toInt()
+        val zoneBottom = (uprightHeight * 0.91f).toInt()
+        val sizeLeft = (uprightWidth * 0.03f).toInt()
+        val sizeRight = (uprightWidth * 0.49f).toInt()
+        val qtyLeft = (uprightWidth * 0.51f).toInt()
+        val qtyRight = (uprightWidth * 0.97f).toInt()
+
+        data class StrictCell(val value: String, val box: Rect)
+        val strictSizes = elements.mapNotNull { element ->
+            val box = element.boundingBox ?: return@mapNotNull null
+            val original = norm(element.text).replace("|", "/")
+            val numeric = handwrittenNumber(original)
+            val value = if (numeric.length in 1..2) numeric else original
+            val inside = box.centerX() in sizeLeft..sizeRight && box.centerY() in zoneTop..zoneBottom
+            if (inside && sizePattern.matches(value)) StrictCell(value, box) else null
+        }.sortedBy { it.box.centerY() }
+
+        val strictQuantities = elements.mapNotNull { element ->
+            val box = element.boundingBox ?: return@mapNotNull null
+            val value = handwrittenNumber(element.text)
+            val number = value.toIntOrNull()
+            val inside = box.centerX() in qtyLeft..qtyRight && box.centerY() in zoneTop..zoneBottom
+            if (inside && number != null && number in 1..500) StrictCell(value, box) else null
+        }.sortedBy { it.box.centerY() }
+
+        val usedStrictQuantities = mutableSetOf<Int>()
+        val finalRows = strictSizes.mapNotNull { sizeCell ->
+            val quantityIndex = strictQuantities.indices
+                .filterNot(usedStrictQuantities::contains)
+                .minByOrNull { index ->
+                    kotlin.math.abs(strictQuantities[index].box.centerY() - sizeCell.box.centerY())
+                } ?: return@mapNotNull null
+            val quantityCell = strictQuantities[quantityIndex]
+            val tolerance = (maxOf(sizeCell.box.height(), quantityCell.box.height()) * 2.2f)
+                .toInt().coerceAtLeast(28)
+            if (kotlin.math.abs(quantityCell.box.centerY() - sizeCell.box.centerY()) > tolerance) {
+                return@mapNotNull null
+            }
+            usedStrictQuantities += quantityIndex
+            sizeCell.value to quantityCell.value
+        }.distinct().take(4)
         val firstRow = finalRows.firstOrNull()
         return SpatialFields(
             nalog, packageNo, article,
@@ -672,10 +721,10 @@ class MainActivity : AppCompatActivity() {
                     nalog = fields.nalog.ifBlank { withBarcode.nalog },
                     packageNo = fields.packageNo.ifBlank { withBarcode.packageNo },
                     article = fields.article.ifBlank { withBarcode.article },
-                    size = fields.size.ifBlank { withBarcode.size },
-                    quantity = fields.quantity.ifBlank { withBarcode.quantity }
+                    size = fields.size,
+                    quantity = fields.quantity
                 )
-            } ?: withBarcode
+            } ?: withBarcode.copy(size = "", quantity = "")
         }
 
         spatialFields?.rows.orEmpty().forEach { row ->

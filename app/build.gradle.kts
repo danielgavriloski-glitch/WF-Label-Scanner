@@ -11,8 +11,8 @@ android {
         applicationId = "mk.wf.labelscanner"
         minSdk = 24
         targetSdk = 35
-        versionCode = 36
-        versionName = "5.14-frozen-photo-double-check"
+        versionCode = 37
+        versionName = "5.15-strict-camera-zones"
     }
 
     compileOptions {

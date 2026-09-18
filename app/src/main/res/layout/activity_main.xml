@@ -44,7 +44,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="v5.13 • Само точните полиња"
+                    android:text="v5.15 • Строги зони за читање"
                     android:textColor="#666666"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -91,6 +91,42 @@
                 android:layout_gravity="center"
                 android:layout_marginHorizontal="5dp"
                 android:background="@drawable/scan_frame" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="130dp"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:layout_marginBottom="34dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/scan_zone_size"
+                    android:gravity="top|center_horizontal"
+                    android:paddingTop="5dp"
+                    android:text="ГОЛЕМИНА"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/scan_zone_quantity"
+                    android:gravity="top|center_horizontal"
+                    android:paddingTop="5dp"
+                    android:text="КОЛИЧИНА"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </FrameLayout>
 
         <TextView
