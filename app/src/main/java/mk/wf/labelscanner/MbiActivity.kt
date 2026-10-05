@@ -252,9 +252,11 @@ class MbiActivity : AppCompatActivity() {
         p.menu.add(0, 3, 2, "Додај вработен")
         p.menu.add(0, 4, 3, "Евиденција")
         p.menu.add(0, 5, 4, "Извештаи")
-        p.menu.add(0, 6, 5, "Поставки")
-        p.menu.add(0, 7, 6, "Историја на промени")
-        p.menu.add(0, 8, 7, "Одјава")
+        p.menu.add(0, 6, 5, "Барања за слободен ден")
+        p.menu.add(0, 7, 6, "Отсуства")
+        p.menu.add(0, 8, 7, "Поставки")
+        p.menu.add(0, 9, 8, "Историја на промени")
+        p.menu.add(0, 10, 9, "Одјава")
         p.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> adminDashboard()
@@ -262,9 +264,11 @@ class MbiActivity : AppCompatActivity() {
                 3 -> adminAddEmployee()
                 4 -> adminAttendance(false)
                 5 -> adminAttendance(true)
-                6 -> adminSettings()
-                7 -> adminAudit()
-                8 -> { auth.signOut(); loginScreen() }
+                6 -> adminLeaveRequests()
+                7 -> adminAbsences()
+                8 -> adminSettings()
+                9 -> adminAudit()
+                10 -> { auth.signOut(); loginScreen() }
             }
             true
         }
@@ -361,6 +365,7 @@ class MbiActivity : AppCompatActivity() {
         root.addView(button("Почеток на пауза", gold, Color.BLACK) { employeeAction("break_start") })
         root.addView(button("Продолжи со работа", blue, Color.WHITE) { employeeAction("break_end") })
         root.addView(button("Заврши смена", red, Color.WHITE) { employeeAction("work_end") })
+        root.addView(button("Побарај слободен ден", panel2, Color.WHITE) { requestLeaveDay() })
 
         root.addView(space(12))
         val statusBox = LinearLayout(this).apply {
@@ -374,6 +379,12 @@ class MbiActivity : AppCompatActivity() {
         statusBox.addView(status)
         root.addView(statusBox)
         loadMyLastStatus(status)
+
+        root.addView(space(12))
+        root.addView(text("Мои барања за слободен ден", 17f, Color.WHITE, true))
+        val leaveHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(leaveHolder)
+        loadMyLeaveRequests(leaveHolder)
 
         root.addView(space(8))
         root.addView(button("Одјава", panel2, Color.WHITE) { auth.signOut(); loginScreen() })
@@ -526,6 +537,11 @@ class MbiActivity : AppCompatActivity() {
 
         root.addView(button("Додај вработен", gold, Color.BLACK) { adminAddEmployee() })
         root.addView(button("Отвори евиденција", blue, Color.WHITE) { adminAttendance(false) })
+        val leaveBtn = button("Барања за слободен ден", gold, Color.BLACK) { adminLeaveRequests() }
+        root.addView(leaveBtn)
+        db.collection("leaveRequests").whereEqualTo("status", "pending").get().addOnSuccessListener { q ->
+            leaveBtn.text = "Барања за слободен ден (${q.size()})"
+        }
         root.addView(space(10))
         root.addView(text("Моментална состојба", 20f, Color.WHITE, true))
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -779,6 +795,150 @@ class MbiActivity : AppCompatActivity() {
                     .addOnFailureListener { e -> toast("Не може да се креира новата најава: ${e.localizedMessage}") }
             }
             .setNegativeButton("Откажи", null)
+            .show()
+    }
+
+    private fun requestLeaveDay() {
+        val selected = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), 0)
+        }
+        val dateLabel = text("Датум: ${df.format(selected.time)}", 16f, Color.WHITE, true)
+        val reason = field("Причина / забелешка (опционално)")
+        val pick = button("Избери датум", panel2, Color.WHITE, true) {
+            DatePickerDialog(this, { _, y, m, d ->
+                selected.set(Calendar.YEAR, y); selected.set(Calendar.MONTH, m); selected.set(Calendar.DAY_OF_MONTH, d)
+                dateLabel.text = "Датум: ${df.format(selected.time)}"
+            }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH)).show()
+        }
+        box.addView(dateLabel); box.addView(pick); box.addView(reason)
+        AlertDialog.Builder(this)
+            .setTitle("Побарај слободен ден")
+            .setView(box)
+            .setPositiveButton("Испрати") { _, _ ->
+                val id = docId ?: return@setPositiveButton
+                val data = hashMapOf<String, Any>(
+                    "employeeId" to id,
+                    "employeeUid" to (auth.currentUser?.uid ?: ""),
+                    "employeeName" to (profile["name"]?.toString() ?: "Вработен"),
+                    "requestedDate" to Timestamp(selected.time),
+                    "reason" to reason.text.toString().trim(),
+                    "status" to "pending",
+                    "requestedAt" to FieldValue.serverTimestamp()
+                )
+                db.collection("leaveRequests").add(data)
+                    .addOnSuccessListener {
+                        toast("Барањето е испратено до администраторот.")
+                        employeeHome()
+                    }
+                    .addOnFailureListener { e -> toast("Не може да се испрати барањето: ${e.localizedMessage}") }
+            }
+            .setNegativeButton("Откажи", null)
+            .show()
+    }
+
+    private fun loadMyLeaveRequests(holder: LinearLayout) {
+        val id = docId ?: return
+        db.collection("leaveRequests").whereEqualTo("employeeId", id).get()
+            .addOnSuccessListener { q ->
+                holder.removeAllViews()
+                val docs = q.documents.sortedByDescending {
+                    it.getTimestamp("requestedDate")?.toDate()?.time ?: 0L
+                }.take(8)
+                if (docs.isEmpty()) {
+                    holder.addView(card("Нема барања", "Кога ќе побараш слободен ден, статусот ќе се појави тука."))
+                }
+                docs.forEach { d ->
+                    val status = d.getString("status") ?: "pending"
+                    val stateLabel = when (status) {
+                        "approved" -> "ОДОБРЕНО"
+                        "denied" -> "ОДБИЕНО"
+                        else -> "ЧЕКА ОДЛУКА"
+                    }
+                    val accent = when (status) {
+                        "approved" -> green
+                        "denied" -> red
+                        else -> gold
+                    }
+                    val date = d.getTimestamp("requestedDate")?.toDate()?.let { df.format(it) } ?: ""
+                    val reason = d.getString("reason").orEmpty()
+                    holder.addView(card("${date} • ${stateLabel}", reason, accent))
+                }
+            }
+    }
+
+    private fun adminLeaveRequests() {
+        adminHeader("Барања за слободен ден", "Одобри или одбиј барање. Одобреното останува во евиденција.")
+        val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(holder)
+        db.collection("leaveRequests").get().addOnSuccessListener { q ->
+            holder.removeAllViews()
+            val docs = q.documents.sortedWith(compareBy(
+                { if (it.getString("status") == "pending") 0 else 1 },
+                { it.getTimestamp("requestedDate")?.toDate()?.time ?: Long.MAX_VALUE }
+            ))
+            if (docs.isEmpty()) holder.addView(card("Нема барања", "Сè уште нема поднесени барања."))
+            docs.forEach { d ->
+                val status = d.getString("status") ?: "pending"
+                val date = d.getTimestamp("requestedDate")?.toDate()?.let { df.format(it) } ?: ""
+                val name = d.getString("employeeName") ?: "Вработен"
+                val reason = d.getString("reason").orEmpty()
+                val statusText = when (status) {
+                    "approved" -> "ОДОБРЕНО"
+                    "denied" -> "ОДБИЕНО"
+                    else -> "ЧЕКА ОДЛУКА"
+                }
+                val accent = when (status) {
+                    "approved" -> green
+                    "denied" -> red
+                    else -> gold
+                }
+                val subtitle = statusText + if (reason.isNotBlank()) "\n" + reason else ""
+                holder.addView(card("${name} • ${date}", subtitle, accent) {
+                    if (status == "pending") resolveLeaveRequest(d.id, d.data ?: emptyMap())
+                })
+            }
+        }.addOnFailureListener { e ->
+            holder.removeAllViews()
+            holder.addView(card("Грешка", e.localizedMessage ?: "Не може да се вчитаат барањата.", red))
+        }
+    }
+
+    private fun resolveLeaveRequest(requestId: String, data: Map<String, Any>) {
+        val name = data["employeeName"]?.toString() ?: "Вработен"
+        val date = (data["requestedDate"] as? Timestamp)?.toDate()?.let { df.format(it) } ?: ""
+        AlertDialog.Builder(this)
+            .setTitle("${name} • ${date}")
+            .setMessage(data["reason"]?.toString()?.ifBlank { "Без забелешка." } ?: "Без забелешка.")
+            .setPositiveButton("Одобри") { _, _ ->
+                db.collection("leaveRequests").document(requestId).update(
+                    mapOf(
+                        "status" to "approved",
+                        "resolvedBy" to (profile["name"]?.toString() ?: "Admin"),
+                        "resolvedAt" to FieldValue.serverTimestamp()
+                    )
+                ).addOnSuccessListener {
+                    audit("Одобрен слободен ден", "${name} • ${date}")
+                    adminLeaveRequests()
+                }
+            }
+            .setNegativeButton("Одбиј") { _, _ ->
+                db.collection("leaveRequests").document(requestId).update(
+                    mapOf(
+                        "status" to "denied",
+                        "resolvedBy" to (profile["name"]?.toString() ?: "Admin"),
+                        "resolvedAt" to FieldValue.serverTimestamp()
+                    )
+                ).addOnSuccessListener {
+                    audit("Одбиен слободен ден", "${name} • ${date}")
+                    adminLeaveRequests()
+                }
+            }
+            .setNeutralButton("Откажи", null)
             .show()
     }
 
