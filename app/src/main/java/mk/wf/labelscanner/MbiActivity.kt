@@ -2,6 +2,8 @@ package mk.wf.labelscanner
 
 import android.Manifest
 import android.app.DatePickerDialog
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
@@ -27,6 +29,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import java.security.MessageDigest
@@ -40,6 +43,8 @@ class MbiActivity : AppCompatActivity() {
     private lateinit var root: LinearLayout
     private var docId: String? = null
     private var profile: Map<String, Any> = emptyMap()
+    private var leaveListener: ListenerRegistration? = null
+    private var leaveListenerPrimed = false
 
     private val bg = Color.rgb(15, 18, 21)
     private val top = Color.rgb(22, 26, 30)
@@ -538,6 +543,7 @@ class MbiActivity : AppCompatActivity() {
     private fun adminDashboard() {
         val name = profile["name"]?.toString() ?: "Администратор"
         adminHeader("Контролен панел", "Здраво, $name. Моментална состојба на фирмата.")
+        startLeaveNotifications()
 
         val metrics = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val atWork = metric("…", "На работа", green)
@@ -916,6 +922,47 @@ class MbiActivity : AppCompatActivity() {
                     val reason = d.getString("reason").orEmpty()
                     holder.addView(card("${date} • ${stateLabel}", reason, accent))
                 }
+            }
+    }
+
+    private fun startLeaveNotifications() {
+        val channelId = "mbi_leave_requests"
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(channelId, "MBI барања за слободен ден", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 777)
+        }
+        leaveListener?.remove()
+        leaveListenerPrimed = false
+        leaveListener = db.collection("leaveRequests")
+            .whereEqualTo("status", "pending")
+            .addSnapshotListener { snap, _ ->
+                if (snap == null) return@addSnapshotListener
+                if (!leaveListenerPrimed) {
+                    leaveListenerPrimed = true
+                    return@addSnapshotListener
+                }
+                snap.documentChanges
+                    .filter { it.type == com.google.firebase.firestore.DocumentChange.Type.ADDED }
+                    .forEach { change ->
+                        val name = change.document.getString("employeeName") ?: "Вработен"
+                        val date = change.document.getTimestamp("requestedDate")?.toDate()?.let { df.format(it) } ?: ""
+                        if (Build.VERSION.SDK_INT < 33 ||
+                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            val notification = android.app.Notification.Builder(this, channelId)
+                                .setSmallIcon(R.drawable.mbi_logo)
+                                .setContentTitle("Ново барање за слободен ден")
+                                .setContentText(name + if (date.isNotBlank()) " • " + date else "")
+                                .setAutoCancel(true)
+                                .build()
+                            manager.notify(change.document.id.hashCode(), notification)
+                        }
+                    }
             }
     }
 
