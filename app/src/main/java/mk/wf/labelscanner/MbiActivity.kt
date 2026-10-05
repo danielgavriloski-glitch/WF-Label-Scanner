@@ -74,6 +74,7 @@ class MbiActivity : AppCompatActivity() {
     private var filterEmployeeName: String = "Сите вработени"
     private var lastDailyExportRows: List<List<String>> = emptyList()
     private var lastWeeklyExportRows: List<List<String>> = emptyList()
+    private var reportHeading = "Извештај за работно време"
 
     data class AttEvent(
         val id: String,
@@ -1254,6 +1255,8 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun adminAttendance(reportOnly: Boolean) {
+        reportHeading = "Извештај за работно време"
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList()
         if (accountant && !reportOnly) return adminAttendance(true)
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
 
@@ -1725,15 +1728,15 @@ class MbiActivity : AppCompatActivity() {
         }
 
         fun safeLine(text: String, header: Boolean = false) {
-            if (page == null || y > 812f) newPage("Извештај за работно време")
+            if (page == null || y > 812f) newPage(reportHeading)
             val p = if (header) bold else paint
             val clean = if (text.length > 115) text.take(112) + "…" else text
             page!!.canvas.drawText(clean, 28f, y, p)
             y += if (header) 18f else 15f
         }
 
-        newPage("Неделен и дневен извештај")
-        safeLine("НЕДЕЛЕН ПРЕСЕК", true)
+        newPage(reportHeading)
+        safeLine(if(reportHeading.contains("одмор")) "БОЛУВАЊА" else "НЕДЕЛЕН ПРЕСЕК", true)
         lastWeeklyExportRows.forEachIndexed { index, row ->
             safeLine(row.joinToString(" | "), index == 0)
         }
@@ -2038,14 +2041,42 @@ class MbiActivity : AppCompatActivity() {
         lastDailyExportRows = daily; lastWeeklyExportRows = weekly
     }
 
-    private fun personnelRecords() {
+    private fun personnelRecords(year: Int = Calendar.getInstance().get(Calendar.YEAR)) {
         if (!administrator && !accountant) return
-        adminHeader("Одмор и болување", "Преглед по вработен. Болувањето не се одзема од годишниот одмор.")
+        reportHeading = "Годишен одмор и болување • $year"
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList()
+        adminHeader("Одмор и болување • $year", "Преглед по вработен. Болувањето не се одзема од годишниот одмор.")
+        root.addView(button("◀ ${year-1}",panel2,Color.WHITE) { personnelRecords(year-1) })
+        root.addView(button("${year+1} ▶",panel2,Color.WHITE) { personnelRecords(year+1) })
+        val exportPdf = button("PDF извештај",red,Color.WHITE) { requestReportExport("pdf") }.apply { isEnabled=false }
+        val exportXlsx = button("Excel извештај",green,Color.WHITE) { requestReportExport("xlsx") }.apply { isEnabled=false }
+        root.addView(exportPdf); root.addView(exportXlsx)
         db.collection("employees").get().addOnSuccessListener { q ->
-            q.documents.filter { it.getBoolean("isAdmin") != true && it.getBoolean("isAccountant") != true }
-                .sortedBy { it.getString("name") ?: it.id }.forEach { d ->
-                    root.addView(card(d.getString("name") ?: d.id, "Годишен одмор • Болување", blue) { personnelDetail(d.id, d.data ?: emptyMap()) })
+            db.collection("leaveBalances").whereEqualTo("year",year).get().addOnSuccessListener { balances ->
+                val records = balances.documents.associateBy { it.getString("employeeId") }
+                val rows = mutableListOf(listOf("Вработен","Година","Следуваат","Искористени","Преостанати"))
+                val people=q.documents.filter { it.getBoolean("isAdmin") != true && it.getBoolean("isAccountant") != true }
+                    .sortedBy { it.getString("name") ?: it.id }
+                people.forEach { d ->
+                    val name=d.getString("name") ?: d.id
+                    val legacy=year==Calendar.getInstance().get(Calendar.YEAR)
+                    val total=if(legacy) d.getLong("annualLeaveTotal") ?: 0L else records[d.id]?.getLong("total") ?: 0L
+                    val used=if(legacy) d.getLong("annualLeaveUsed") ?: 0L else records[d.id]?.getLong("used") ?: 0L
+                    rows.add(listOf(name,year.toString(),total.toString(),used.toString(),(total-used).coerceAtLeast(0).toString()))
+                    root.addView(card(name,"Одмор: $used / $total • Преостанати: ${(total-used).coerceAtLeast(0)}",blue) { personnelDetail(d.id,d.data ?: emptyMap(),year) })
                 }
+                db.collection("sickLeaves").get().addOnSuccessListener { sick ->
+                    val sickness=mutableListOf(listOf("Вработен","Од","До","Причина"))
+                    sick.documents.sortedBy { it.getTimestamp("startDate")?.seconds ?: 0L }.forEach { d ->
+                        val from=d.getTimestamp("startDate")?.toDate() ?: return@forEach
+                        val to=d.getTimestamp("endDate")?.toDate() ?: from
+                        if(Calendar.getInstance().apply { time=from }.get(Calendar.YEAR)<=year && Calendar.getInstance().apply { time=to }.get(Calendar.YEAR)>=year)
+                            sickness.add(listOf(d.getString("employeeName") ?: "",df.format(from),df.format(to),d.getString("reason") ?: ""))
+                    }
+                    lastDailyExportRows=rows; lastWeeklyExportRows=sickness
+                    exportPdf.isEnabled=true; exportXlsx.isEnabled=true
+                }.addOnFailureListener { toast("Не може да се вчита болувањето: ${it.localizedMessage}") }
+            }.addOnFailureListener { toast("Не може да се вчита одморот: ${it.localizedMessage}") }
         }.addOnFailureListener { toast("Не може да се вчитаат вработените: ${it.localizedMessage}") }
     }
 
