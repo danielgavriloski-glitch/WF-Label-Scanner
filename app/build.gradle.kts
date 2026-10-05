@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "mk.wf.labelscanner"
  compileSdk = 35
- defaultConfig { applicationId = "com.mbidesign.app"; minSdk = 26; targetSdk = 35; versionCode = 2; versionName = "2.0" }
+ defaultConfig { applicationId = "com.mbidesign.app.next"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "4.0" }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
 }
@@ -25,4 +25,5 @@ dependencies {
  implementation("com.google.firebase:firebase-firestore")
  implementation("com.google.guava:guava:33.3.1-android")
  testImplementation(kotlin("test"))
+ testImplementation("junit:junit:4.13.2")
 }
