@@ -2015,16 +2015,14 @@ class MbiActivity : AppCompatActivity() {
         val daily = mutableListOf(listOf("Вработен", "Датум", "Редовни часови"))
         val weekly = mutableListOf(listOf("Вработен", "Недела", "Редовни часови"))
         val dayCap = 8L * 3600000L
-        val weekCap = 40L * 3600000L
-        for ((id, name) in employees) {
+                for ((id, name) in employees) {
             val perDay = events.filter { it.employeeId == id }.groupBy { dayKey(it.time) }
                 .mapValues { minOf(dayCap, dailyWorkedMillis(it.value)) }.toSortedMap()
             perDay.entries.groupBy { weekMondayKey(dateAtNoon(it.key)) }.toSortedMap().forEach { (wk, entries) ->
-                var remaining = weekCap
+                val allocation = RegularHours.allocateWeek(entries.associate { it.key to it.value })
                 var displayedTotal = 0L
                 entries.sortedBy { it.key }.forEach { (day, hours) ->
-                    val allowed = minOf(hours, remaining)
-                    remaining -= allowed
+                    val allowed = allocation[day] ?: 0L
                     val date = dateAtNoon(day)
                     if (date >= filterFrom.time && date <= filterTo.time) {
                         daily.add(listOf(name, df.format(date), formatDuration(allowed)))

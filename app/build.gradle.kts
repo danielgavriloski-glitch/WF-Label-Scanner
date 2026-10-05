@@ -25,4 +25,5 @@ dependencies {
  implementation("com.google.firebase:firebase-firestore")
  implementation("com.google.guava:guava:33.3.1-android")
  testImplementation(kotlin("test"))
+ testImplementation("junit:junit:4.13.2")
 }
