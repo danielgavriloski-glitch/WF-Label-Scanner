@@ -12,6 +12,7 @@ import android.graphics.Typeface
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
@@ -1443,6 +1444,96 @@ class MbiActivity : AppCompatActivity() {
         val h = min / 60
         val m = min % 60
         return "${h}ч ${m}м"
+    }
+
+    private fun requestReportExport(type: String) {
+        if (lastDailyExportRows.size <= 1 && lastWeeklyExportRows.size <= 1) {
+            toast("Прво почекај извештајот да се вчита.")
+            return
+        }
+        val stamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            if (type == "pdf") {
+                setType("application/pdf")
+                putExtra(Intent.EXTRA_TITLE, "MBI_izvestaj_${stamp}.pdf")
+            } else {
+                setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                putExtra(Intent.EXTRA_TITLE, "MBI_izvestaj_${stamp}.xlsx")
+            }
+        }
+        startActivityForResult(intent, if (type == "pdf") 9101 else 9102)
+    }
+
+    @Deprecated("Deprecated in Android SDK, retained for document export compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        try {
+            when (requestCode) {
+                9101 -> writeReportPdf(uri)
+                9102 -> contentResolver.openOutputStream(uri)?.use {
+                    AttendanceXlsxExporter.write(it, lastDailyExportRows, lastWeeklyExportRows)
+                } ?: throw IllegalStateException("Не може да се отвори избраниот фајл.")
+                else -> return
+            }
+            toast("Извештајот е зачуван.")
+        } catch (e: Exception) {
+            toast("Не може да се зачува извештајот: ${e.localizedMessage ?: "непозната грешка"}")
+        }
+    }
+
+    private fun writeReportPdf(uri: Uri) {
+        val doc = PdfDocument()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 9f }
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 17f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        var pageNo = 0
+        var page: PdfDocument.Page? = null
+        var y = 0f
+
+        fun newPage(title: String) {
+            if (page != null) doc.finishPage(page!!)
+            pageNo++
+            page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNo).create())
+            val canvas = page!!.canvas
+            canvas.drawText("MBI METAL DESIGN", 34f, 38f, titlePaint)
+            canvas.drawText(title, 34f, 60f, bold)
+            canvas.drawText("Период: " + df.format(filterFrom.time) + " - " + df.format(filterTo.time), 34f, 78f, paint)
+            y = 102f
+        }
+
+        fun safeLine(text: String, header: Boolean = false) {
+            if (page == null || y > 812f) newPage("Извештај за работно време")
+            val p = if (header) bold else paint
+            val clean = if (text.length > 115) text.take(112) + "…" else text
+            page!!.canvas.drawText(clean, 28f, y, p)
+            y += if (header) 18f else 15f
+        }
+
+        newPage("Неделен и дневен извештај")
+        safeLine("НЕДЕЛЕН ПРЕСЕК", true)
+        lastWeeklyExportRows.forEachIndexed { index, row ->
+            safeLine(row.joinToString(" | "), index == 0)
+        }
+        y += 10f
+        safeLine("ДНЕВНА ЕВИДЕНЦИЈА", true)
+        lastDailyExportRows.forEachIndexed { index, row ->
+            safeLine(row.joinToString(" | "), index == 0)
+        }
+        if (page != null) doc.finishPage(page!!)
+        contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) }
+            ?: throw IllegalStateException("Не може да се отвори избраниот PDF.")
+        doc.close()
     }
 
     private fun editAttendance(ev: AttEvent) {
