@@ -709,6 +709,7 @@ class MbiActivity : AppCompatActivity() {
                     "isAdmin" to false,
                     "isAccountant" to isAccountant,
                     "active" to true,
+                    "annualLeaveYear" to Calendar.getInstance().get(Calendar.YEAR),
                     "annualLeaveTotal" to 0L,
                     "annualLeaveUsed" to 0L,
                     "createdAt" to FieldValue.serverTimestamp()
@@ -744,33 +745,11 @@ class MbiActivity : AppCompatActivity() {
             val leaveUsed = (data["annualLeaveUsed"] as? Number)?.toLong() ?: 0L
             val leaveRemaining = (leaveTotal - leaveUsed).coerceAtLeast(0L)
             root.addView(card(
-                "Годишен одмор",
+                "Годишен одмор • ${(data["annualLeaveYear"] as? Number)?.toInt() ?: 2026}",
                 "Вкупно: ${leaveTotal} дена • Искористени: ${leaveUsed} • Преостанати: ${leaveRemaining}",
                 blue
             ))
-            root.addView(button("Постави број на денови годишен одмор", panel2, Color.WHITE) {
-                val e = field("Вкупно денови").apply {
-                    inputType = InputType.TYPE_CLASS_NUMBER
-                    setText(leaveTotal.toString())
-                }
-                AlertDialog.Builder(this)
-                    .setTitle("Годишен одмор • ${name}")
-                    .setView(e)
-                    .setPositiveButton("Зачувај") { _, _ ->
-                        val total = e.text.toString().toLongOrNull()
-                        if (total == null || total < 0L) {
-                            toast("Внеси валиден број на денови.")
-                        } else {
-                            db.collection("employees").document(id).update("annualLeaveTotal", total)
-                                .addOnSuccessListener {
-                                    audit("Променет годишен одмор", "${name}: ${total} дена")
-                                    adminEmployees()
-                                }
-                        }
-                    }
-                    .setNegativeButton("Откажи", null)
-                    .show()
-            })
+            root.addView(button("Постави годишно право / искористени денови",panel2,Color.WHITE) { personnelDetail(id,data) })
 
             root.addView(button("Промени име", blue, Color.WHITE) {
                 val e = field("Име и презиме").apply { setText(name) }
@@ -2059,7 +2038,7 @@ class MbiActivity : AppCompatActivity() {
                     .sortedBy { it.getString("name") ?: it.id }
                 people.forEach { d ->
                     val name=d.getString("name") ?: d.id
-                    val legacy=year==Calendar.getInstance().get(Calendar.YEAR)
+                    val legacy=((d.getLong("annualLeaveYear") ?: 2026L).toInt()==year)
                     val total=if(legacy) d.getLong("annualLeaveTotal") ?: 0L else records[d.id]?.getLong("total") ?: 0L
                     val used=if(legacy) d.getLong("annualLeaveUsed") ?: 0L else records[d.id]?.getLong("used") ?: 0L
                     rows.add(listOf(name,year.toString(),total.toString(),used.toString(),(total-used).coerceAtLeast(0).toString()))
@@ -2091,7 +2070,7 @@ class MbiActivity : AppCompatActivity() {
         val balanceRef = db.collection("leaveBalances").document("${id}_$year")
         balanceRef.get().addOnSuccessListener { d ->
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-            val legacy = year == currentYear
+            val legacy = ((data["annualLeaveYear"] as? Number)?.toInt() ?: 2026) == year
             val total = if (legacy) (data["annualLeaveTotal"] as? Number)?.toLong() ?: 0L else d.getLong("total") ?: 0L
             val used = if (legacy) (data["annualLeaveUsed"] as? Number)?.toLong() ?: 0L else d.getLong("used") ?: 0L
             root.addView(card("Годишен одмор • $year", "Следуваат: $total дена\nИскористени: $used дена\nПреостанати: ${(total-used).coerceAtLeast(0)} дена", blue))
@@ -2107,7 +2086,11 @@ class MbiActivity : AppCompatActivity() {
                         else {
                             val batch = db.batch()
                             batch.set(balanceRef, mapOf("employeeId" to id, "year" to year, "total" to tv, "used" to uv, "updatedAt" to FieldValue.serverTimestamp()))
-                            if (legacy) batch.update(db.collection("employees").document(id), mapOf("annualLeaveTotal" to tv, "annualLeaveUsed" to uv))
+                            if (legacy || year == currentYear) {
+                                val previousYear=(data["annualLeaveYear"] as? Number)?.toInt() ?: 2026
+                                if(previousYear != year) batch.set(db.collection("leaveBalances").document("${id}_$previousYear"),mapOf("employeeId" to id,"year" to previousYear,"total" to ((data["annualLeaveTotal"] as? Number)?.toLong() ?: 0L),"used" to ((data["annualLeaveUsed"] as? Number)?.toLong() ?: 0L)),SetOptions.merge())
+                                batch.update(db.collection("employees").document(id),mapOf("annualLeaveYear" to year,"annualLeaveTotal" to tv,"annualLeaveUsed" to uv))
+                            }
                             batch.commit().addOnSuccessListener { audit("Променет годишен одмор", "$name • $year • $tv/$uv"); db.collection("employees").document(id).get().addOnSuccessListener { fresh -> personnelDetail(id,fresh.data ?: data,year) } }
                                 .addOnFailureListener { toast("Не е зачувано: ${it.localizedMessage}") }
                         }
@@ -2183,7 +2166,7 @@ class MbiActivity : AppCompatActivity() {
             val person=tx.get(employee)
             val stored=tx.get(balance)
             if(existing.getString("status")!="pending") throw IllegalStateException("Барањето веќе е обработено.")
-            val legacy=year==Calendar.getInstance().get(Calendar.YEAR)
+            val legacy=(person.getLong("annualLeaveYear") ?: 2026L).toInt()==year
             val total=if(legacy) person.getLong("annualLeaveTotal") ?: 0L else stored.getLong("total") ?: 0L
             val used=if(legacy) person.getLong("annualLeaveUsed") ?: 0L else stored.getLong("used") ?: 0L
             if(annual && used+days>total) throw IllegalStateException("Нема доволно преостанати денови одмор.")
