@@ -197,9 +197,14 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun brandHeader(tag: String = "") {
-        val logo = text("MBI", 40f, gold, true, Gravity.CENTER)
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.mbi_logo)
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = LinearLayout.LayoutParams(-1, dp(92)).apply { setMargins(0, 0, 0, dp(4)) }
+        }
         root.addView(logo)
-        root.addView(text("METAL DESIGN", 16f, Color.WHITE, true, Gravity.CENTER))
+        root.addView(text("MBI METAL DESIGN", 17f, Color.WHITE, true, Gravity.CENTER))
         if (tag.isNotBlank()) {
             val t = text(tag, 12f, steel, false, Gravity.CENTER)
             t.setPadding(0, dp(4), 0, dp(12))
@@ -674,6 +679,8 @@ class MbiActivity : AppCompatActivity() {
                     "email" to email,
                     "isAdmin" to false,
                     "active" to true,
+                    "annualLeaveTotal" to 0L,
+                    "annualLeaveUsed" to 0L,
                     "createdAt" to FieldValue.serverTimestamp()
                 )
                 d.set(data)
@@ -701,6 +708,38 @@ class MbiActivity : AppCompatActivity() {
         ))
 
         if (!admin) {
+            val leaveTotal = (data["annualLeaveTotal"] as? Number)?.toLong() ?: 0L
+            val leaveUsed = (data["annualLeaveUsed"] as? Number)?.toLong() ?: 0L
+            val leaveRemaining = (leaveTotal - leaveUsed).coerceAtLeast(0L)
+            root.addView(card(
+                "Годишен одмор",
+                "Вкупно: ${leaveTotal} дена • Искористени: ${leaveUsed} • Преостанати: ${leaveRemaining}",
+                blue
+            ))
+            root.addView(button("Постави број на денови годишен одмор", panel2, Color.WHITE) {
+                val e = field("Вкупно денови").apply {
+                    inputType = InputType.TYPE_CLASS_NUMBER
+                    setText(leaveTotal.toString())
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Годишен одмор • ${name}")
+                    .setView(e)
+                    .setPositiveButton("Зачувај") { _, _ ->
+                        val total = e.text.toString().toLongOrNull()
+                        if (total == null || total < 0L) {
+                            toast("Внеси валиден број на денови.")
+                        } else {
+                            db.collection("employees").document(id).update("annualLeaveTotal", total)
+                                .addOnSuccessListener {
+                                    audit("Променет годишен одмор", "${name}: ${total} дена")
+                                    adminEmployees()
+                                }
+                        }
+                    }
+                    .setNegativeButton("Откажи", null)
+                    .show()
+            })
+
             root.addView(button("Промени име", blue, Color.WHITE) {
                 val e = field("Име и презиме").apply { setText(name) }
                 AlertDialog.Builder(this)
@@ -931,6 +970,11 @@ class MbiActivity : AppCompatActivity() {
                         "resolvedAt" to FieldValue.serverTimestamp()
                     )
                 ).addOnSuccessListener {
+                    val employeeId = data["employeeId"]?.toString()
+                    if (!employeeId.isNullOrBlank()) {
+                        db.collection("employees").document(employeeId)
+                            .update("annualLeaveUsed", FieldValue.increment(1L))
+                    }
                     audit("Одобрен слободен ден", "${name} • ${date}")
                     adminLeaveRequests()
                 }
