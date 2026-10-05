@@ -4,10 +4,13 @@ import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.graphics.drawable.GradientDrawable
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -59,7 +62,10 @@ class MbiActivity : AppCompatActivity() {
         set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
     }
     private var filterEmployeeId: String? = null
+    private val filterEmployeeIds = linkedSetOf<String>()
     private var filterEmployeeName: String = "Сите вработени"
+    private var lastDailyExportRows: List<List<String>> = emptyList()
+    private var lastWeeklyExportRows: List<List<String>> = emptyList()
 
     data class AttEvent(
         val id: String,
@@ -750,6 +756,8 @@ class MbiActivity : AppCompatActivity() {
         root.addView(space(8))
         root.addView(button("Евиденција за овој вработен", panel2, Color.WHITE) {
             filterEmployeeId = id
+            filterEmployeeIds.clear()
+            filterEmployeeIds.add(id)
             filterEmployeeName = name
             adminAttendance(false)
         })
@@ -1085,21 +1093,31 @@ class MbiActivity : AppCompatActivity() {
     private fun chooseEmployee(done: () -> Unit) {
         db.collection("employees").get().addOnSuccessListener { q ->
             val list = q.documents.filter { it.getBoolean("isAdmin") != true }.sortedBy { it.getString("name") ?: it.id }
-            val names = mutableListOf("Сите вработени")
-            names.addAll(list.map { it.getString("name") ?: it.id })
+            val names = list.map { it.getString("name") ?: it.id }.toTypedArray()
+            val checked = BooleanArray(list.size) { filterEmployeeIds.contains(list[it].id) }
             AlertDialog.Builder(this)
-                .setTitle("Избери вработен")
-                .setItems(names.toTypedArray()) { _, which ->
-                    if (which == 0) {
-                        filterEmployeeId = null
-                        filterEmployeeName = "Сите вработени"
-                    } else {
-                        val d = list[which - 1]
-                        filterEmployeeId = d.id
-                        filterEmployeeName = d.getString("name") ?: d.id
+                .setTitle("Избери вработени")
+                .setMultiChoiceItems(names, checked) { _, which, isChecked -> checked[which] = isChecked }
+                .setPositiveButton("Примени") { _, _ ->
+                    filterEmployeeId = null
+                    filterEmployeeIds.clear()
+                    list.forEachIndexed { index, d -> if (checked[index]) filterEmployeeIds.add(d.id) }
+                    filterEmployeeName = when (filterEmployeeIds.size) {
+                        0 -> "Сите вработени"
+                        1 -> list.firstOrNull { it.id in filterEmployeeIds }?.getString("name") ?: "1 вработен"
+                        2 -> list.filter { it.id in filterEmployeeIds }.joinToString(", ") { it.getString("name") ?: it.id }
+                        else -> filterEmployeeIds.size.toString() + " вработени"
                     }
                     done()
-                }.show()
+                }
+                .setNeutralButton("Сите") { _, _ ->
+                    filterEmployeeId = null
+                    filterEmployeeIds.clear()
+                    filterEmployeeName = "Сите вработени"
+                    done()
+                }
+                .setNegativeButton("Откажи", null)
+                .show()
         }
     }
 
