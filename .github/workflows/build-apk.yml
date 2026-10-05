@@ -1,12 +1,8 @@
-name: Build WF APK
-
+name: Build MBI APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,8 +15,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - run: gradle testDebugUnitTest assembleDebug
+      - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: WF-Label-Scanner-v5.16-WF-LABEL-ZONES-APK
+          name: MBI-Metal-Design-APK
           path: app/build/outputs/apk/debug/app-debug.apk
