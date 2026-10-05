@@ -942,6 +942,118 @@ class MbiActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun adminAbsences() {
+        adminHeader("Отсуства", "Денови без евидентирано доаѓање се означени црвено. Ти ја носиш конечната одлука.")
+        val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(holder)
+        val from = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val to = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59)
+        }
+
+        db.collection("employees").get().addOnSuccessListener { eq ->
+            val employees = eq.documents.filter { it.getBoolean("isAdmin") != true && (it.getBoolean("active") ?: true) }
+            db.collection("attendance")
+                .whereGreaterThanOrEqualTo("timestamp", Timestamp(from.time))
+                .whereLessThanOrEqualTo("timestamp", Timestamp(to.time))
+                .get().addOnSuccessListener { aq ->
+                    db.collection("leaveRequests").whereEqualTo("status", "approved").get().addOnSuccessListener { lq ->
+                        db.collection("absenceDecisions").get().addOnSuccessListener { dq ->
+                            holder.removeAllViews()
+                            val attendanceKeys = aq.documents.mapNotNull { d ->
+                                val eid = d.getString("employeeId") ?: return@mapNotNull null
+                                val date = d.getTimestamp("timestamp")?.toDate() ?: return@mapNotNull null
+                                eid + "_" + dayKey(date)
+                            }.toSet()
+                            val leaveKeys = lq.documents.mapNotNull { d ->
+                                val eid = d.getString("employeeId") ?: return@mapNotNull null
+                                val date = d.getTimestamp("requestedDate")?.toDate() ?: return@mapNotNull null
+                                eid + "_" + dayKey(date)
+                            }.toSet()
+                            val decisions = dq.documents.associateBy { it.id }
+                            var count = 0
+                            employees.forEach { e ->
+                                val eid = e.id
+                                val name = e.getString("name") ?: "Вработен"
+                                val cal = from.clone() as Calendar
+                                while (!cal.after(to)) {
+                                    val dow = cal.get(Calendar.DAY_OF_WEEK)
+                                    val workday = dow != Calendar.SATURDAY && dow != Calendar.SUNDAY
+                                    val key = dayKey(cal.time)
+                                    val compound = eid + "_" + key
+                                    if (workday && compound !in attendanceKeys && compound !in leaveKeys) {
+                                        count++
+                                        val decision = decisions[compound]?.getString("decision") ?: "unresolved"
+                                        val label = when (decision) {
+                                            "annual_leave" -> "ОД ГОДИШЕН ОДМОР"
+                                            "make_up" -> "ЌЕ ОДРАБОТИ"
+                                            "justified" -> "ОПРАВДАНО ОТСУСТВО"
+                                            "unpaid" -> "НЕОПРАВДАНО ОТСУСТВО"
+                                            else -> "НЕМА ЕВИДЕНЦИЈА — ЧЕКА ОДЛУКА"
+                                        }
+                                        val accent = if (decision == "unresolved" || decision == "unpaid") red else gold
+                                        holder.addView(card(name, "${df.format(cal.time)} • ${label}", accent) {
+                                            decideAbsence(eid, name, key, decision)
+                                        })
+                                    }
+                                    cal.add(Calendar.DAY_OF_MONTH, 1)
+                                }
+                            }
+                            if (count == 0) holder.addView(card("Нема нерешени отсуства", "За тековниот месец нема работен ден без евиденција.", green))
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun decideAbsence(employeeId: String, employeeName: String, dateKey: String, previous: String) {
+        val labels = arrayOf("Од годишен одмор", "Неоправдано отсуство", "Ќе одработи друг ден", "Оправдано отсуство")
+        val codes = arrayOf("annual_leave", "unpaid", "make_up", "justified")
+        val note = field("Администраторска забелешка")
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), 0)
+        }
+        val spinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MbiActivity, android.R.layout.simple_spinner_dropdown_item, labels)
+        }
+        box.addView(spinner); box.addView(note)
+        AlertDialog.Builder(this)
+            .setTitle("${employeeName} • ${df.format(dateAtNoon(dateKey))}")
+            .setView(box)
+            .setPositiveButton("Зачувај") { _, _ ->
+                val decision = codes[spinner.selectedItemPosition]
+                val ref = db.collection("absenceDecisions").document(employeeId + "_" + dateKey)
+                ref.set(mapOf(
+                    "employeeId" to employeeId,
+                    "employeeName" to employeeName,
+                    "dateKey" to dateKey,
+                    "date" to Timestamp(dateAtNoon(dateKey)),
+                    "decision" to decision,
+                    "note" to note.text.toString().trim(),
+                    "updatedBy" to (profile["name"]?.toString() ?: "Admin"),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ), SetOptions.merge()).addOnSuccessListener {
+                    val delta = when {
+                        previous != "annual_leave" && decision == "annual_leave" -> 1L
+                        previous == "annual_leave" && decision != "annual_leave" -> -1L
+                        else -> 0L
+                    }
+                    if (delta != 0L) {
+                        db.collection("employees").document(employeeId)
+                            .update("annualLeaveUsed", FieldValue.increment(delta))
+                    }
+                    audit("Одлука за отсуство", "${employeeName} • ${df.format(dateAtNoon(dateKey))} • ${labels[spinner.selectedItemPosition]}")
+                    adminAbsences()
+                }
+            }
+            .setNegativeButton("Откажи", null)
+            .show()
+    }
+
     private fun adminAttendance(reportOnly: Boolean) {
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
 
@@ -1063,26 +1175,53 @@ class MbiActivity : AppCompatActivity() {
             }
     }
 
-    private fun workedMillis(events: List<AttEvent>): Long {
+    private fun workedMillis(events: List<AttEvent>): Long =
+        events.groupBy { dayKey(it.time) }.values.sumOf { dailyWorkedMillis(it) }
+
+    private fun dailyWorkedMillis(events: List<AttEvent>): Long {
         val sorted = events.sortedBy { it.time }
-        var activeStart: Long? = null
+        var shiftStart: Long? = null
         var total = 0L
         for (e in sorted) {
             when (e.type) {
-                "work_start" -> activeStart = e.time.time
-                "break_start" -> {
-                    if (activeStart != null) total += (e.time.time - activeStart!!).coerceAtLeast(0)
-                    activeStart = null
-                }
-                "break_end" -> activeStart = e.time.time
+                "work_start" -> if (shiftStart == null) shiftStart = e.time.time
                 "work_end" -> {
-                    if (activeStart != null) total += (e.time.time - activeStart!!).coerceAtLeast(0)
-                    activeStart = null
+                    if (shiftStart != null) total += (e.time.time - shiftStart!!).coerceAtLeast(0)
+                    shiftStart = null
+                }
+            }
+        }
+        if (shiftStart != null && sorted.isNotEmpty() && dayKey(sorted.first().time) == dayKey(Date())) {
+            total += (System.currentTimeMillis() - shiftStart!!).coerceAtLeast(0)
+        }
+        return total
+    }
+
+    private fun breakMillis(events: List<AttEvent>): Long {
+        val sorted = events.sortedBy { it.time }
+        var start: Long? = null
+        var total = 0L
+        for (e in sorted) {
+            when (e.type) {
+                "break_start" -> if (start == null) start = e.time.time
+                "break_end" -> {
+                    if (start != null) total += (e.time.time - start!!).coerceAtLeast(0)
+                    start = null
+                }
+                "work_end" -> {
+                    if (start != null) total += (e.time.time - start!!).coerceAtLeast(0)
+                    start = null
                 }
             }
         }
         return total
     }
+
+    private fun dayKey(date: Date): String = SimpleDateFormat("yyyyMMdd", Locale.US).format(date)
+
+    private fun dateAtNoon(key: String): Date =
+        SimpleDateFormat("yyyyMMdd HH:mm", Locale.US).parse("$key 12:00") ?: Date()
+
 
     private fun formatDuration(ms: Long): String {
         val min = ms / 60000
