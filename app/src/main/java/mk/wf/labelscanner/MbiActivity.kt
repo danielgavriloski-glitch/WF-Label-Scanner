@@ -82,7 +82,7 @@ class MbiActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(bg)
-            addView(root, ScrollView.LayoutParams(-1, -2))
+            addView(root)
         }
         setContentView(scroll)
 
