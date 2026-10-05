@@ -1085,6 +1085,17 @@ class MbiActivity : AppCompatActivity() {
         root.addView(dates)
         root.addView(space(8))
 
+        if (reportOnly) {
+            val exports = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val pdfBtn = button("PDF", red, Color.WHITE, true) { requestReportExport("pdf") }
+            val xlsxBtn = button("Excel", green, Color.WHITE, true) { requestReportExport("xlsx") }
+            pdfBtn.layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(0, dp(4), dp(4), dp(4)) }
+            xlsxBtn.layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(4), dp(4), 0, dp(4)) }
+            exports.addView(pdfBtn); exports.addView(xlsxBtn)
+            root.addView(exports)
+            root.addView(space(8))
+        }
+
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(holder)
         loadAttendance(holder, reportOnly)
@@ -1135,62 +1146,248 @@ class MbiActivity : AppCompatActivity() {
     private fun loadAttendance(holder: LinearLayout, reportOnly: Boolean) {
         holder.removeAllViews()
         holder.addView(card("Вчитувам…", "Момент, податоците се синхронизираат.", border))
+        db.collection("employees").get().addOnSuccessListener { eq ->
+            db.collection("attendance")
+                .whereGreaterThanOrEqualTo("timestamp", Timestamp(filterFrom.time))
+                .whereLessThanOrEqualTo("timestamp", Timestamp(filterTo.time))
+                .get().addOnSuccessListener { aq ->
+                    db.collection("leaveRequests").get().addOnSuccessListener { lq ->
+                        db.collection("absenceDecisions").get().addOnSuccessListener { dq ->
+                            val employees = eq.documents
+                                .filter { it.getBoolean("isAdmin") != true }
+                                .filter {
+                                    when {
+                                        filterEmployeeIds.isNotEmpty() -> it.id in filterEmployeeIds
+                                        filterEmployeeId != null -> it.id == filterEmployeeId
+                                        else -> true
+                                    }
+                                }
+                                .sortedBy { it.getString("name") ?: it.id }
 
-        db.collection("attendance").orderBy("timestamp", Query.Direction.DESCENDING).limit(1500).get()
-            .addOnSuccessListener { q ->
-                val events = q.documents.mapNotNull { d ->
-                    val t = d.getTimestamp("timestamp")?.toDate() ?: return@mapNotNull null
-                    val eid = d.getString("employeeId") ?: ""
-                    if (t.before(filterFrom.time) || t.after(filterTo.time)) return@mapNotNull null
-                    if (filterEmployeeId != null && eid != filterEmployeeId) return@mapNotNull null
-                    AttEvent(
-                        d.id,
-                        eid,
-                        d.getString("employeeName") ?: "Вработен",
-                        d.getString("type") ?: "",
-                        t
-                    )
-                }
-                holder.removeAllViews()
-
-                if (events.isEmpty()) {
-                    holder.addView(card("Нема резултати", "За избраниот период нема евиденција."))
-                    return@addOnSuccessListener
-                }
-
-                holder.addView(text("Вкупно работно време", 19f, Color.WHITE, true))
-                val grouped = events.groupBy { it.employeeId }
-                grouped.entries.sortedBy { it.value.firstOrNull()?.employeeName ?: "" }.forEach { (_, ev) ->
-                    val total = workedMillis(ev)
-                    holder.addView(card(
-                        ev.firstOrNull()?.employeeName ?: "Вработен",
-                        "Вкупно: ${formatDuration(total)} • ${ev.size} активности",
-                        green
-                    ))
-                }
-
-                if (!reportOnly) {
-                    holder.addView(space(12))
-                    holder.addView(text("Детална евиденција", 19f, Color.WHITE, true))
-                    events.sortedByDescending { it.time }.forEach { ev ->
-                        holder.addView(card(
-                            ev.employeeName,
-                            "${label(ev.type)}\n${dtf.format(ev.time)}",
-                            when (ev.type) {
-                                "work_start", "break_end" -> green
-                                "break_start" -> gold
-                                "work_end" -> red
-                                else -> border
+                            val selectedIds = employees.map { it.id }.toSet()
+                            val events = aq.documents.mapNotNull { d ->
+                                val t = d.getTimestamp("timestamp")?.toDate() ?: return@mapNotNull null
+                                val eid = d.getString("employeeId") ?: return@mapNotNull null
+                                if (eid !in selectedIds) return@mapNotNull null
+                                AttEvent(d.id, eid, d.getString("employeeName") ?: "Вработен", d.getString("type") ?: "", t)
                             }
-                        ) { editAttendance(ev) })
+                            val approvedLeaveKeys = lq.documents.mapNotNull { d ->
+                                if (d.getString("status") != "approved") return@mapNotNull null
+                                val eid = d.getString("employeeId") ?: return@mapNotNull null
+                                if (eid !in selectedIds) return@mapNotNull null
+                                val date = d.getTimestamp("requestedDate")?.toDate() ?: return@mapNotNull null
+                                if (date.before(filterFrom.time) || date.after(filterTo.time)) return@mapNotNull null
+                                eid + "_" + dayKey(date)
+                            }.toSet()
+                            val decisions = dq.documents
+                                .filter { it.getString("employeeId") in selectedIds }
+                                .associateBy { it.id }
+
+                            renderAttendanceReport(holder, employees.map { it.id to (it.getString("name") ?: it.id) }, events, approvedLeaveKeys, decisions, reportOnly)
+                        }
                     }
-                    holder.addView(text("Допри на запис за корекција.", 12f, steel))
+                }.addOnFailureListener { e ->
+                    holder.removeAllViews()
+                    holder.addView(card("Грешка", e.localizedMessage ?: "Не може да се вчита евиденција.", red))
                 }
+        }.addOnFailureListener { e ->
+            holder.removeAllViews()
+            holder.addView(card("Грешка", e.localizedMessage ?: "Не може да се вчитаат вработените.", red))
+        }
+    }
+
+    private fun renderAttendanceReport(
+        holder: LinearLayout,
+        employees: List<Pair<String, String>>,
+        events: List<AttEvent>,
+        approvedLeaveKeys: Set<String>,
+        decisions: Map<String, com.google.firebase.firestore.DocumentSnapshot>,
+        reportOnly: Boolean
+    ) {
+        holder.removeAllViews()
+        val HOUR = 60L * 60L * 1000L
+        val DAY_TARGET = 8L * HOUR
+        val WEEK_TARGET = 40L * HOUR
+        val dailyRows = mutableListOf(listOf("Вработен", "Датум", "Работено", "Пауза", "Редовен фонд", "Прекувремено", "Статус"))
+        val weeklyRows = mutableListOf(listOf("Вработен", "Недела", "Работено", "Одмор/оправдано", "Редовен фонд", "Прекувремено", "Недостига"))
+        val today = Calendar.getInstance()
+        val cap = Calendar.getInstance().apply { time = filterTo.time }
+        if (cap.after(today)) cap.time = today.time
+
+        data class DayInfo(
+            val date: Date,
+            val key: String,
+            val weekKey: String,
+            val weekend: Boolean,
+            val worked: Long,
+            val pause: Long,
+            val weekdayRegular: Long,
+            val weekdayOt: Long,
+            val covered: Long,
+            val status: String
+        )
+
+        if (employees.isEmpty()) {
+            holder.addView(card("Нема вработени", "Нема профили за избраниот филтер."))
+            lastDailyExportRows = dailyRows
+            lastWeeklyExportRows = weeklyRows
+            return
+        }
+
+        holder.addView(text("Неделен пресек", 20f, Color.WHITE, true))
+        employees.forEach { employee ->
+            val eid = employee.first
+            val name = employee.second
+            val byDay = events.filter { it.employeeId == eid }.groupBy { dayKey(it.time) }
+            val days = mutableListOf<DayInfo>()
+            val cal = Calendar.getInstance().apply {
+                time = filterFrom.time
+                set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
             }
-            .addOnFailureListener { e ->
-                holder.removeAllViews()
-                holder.addView(card("Грешка", e.localizedMessage ?: "Не може да се вчита евиденција.", red))
+            while (!cal.after(cap)) {
+                val date = cal.time
+                val key = dayKey(date)
+                val dow = cal.get(Calendar.DAY_OF_WEEK)
+                val weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
+                val dayEvents = byDay[key].orEmpty()
+                val worked = dailyWorkedMillis(dayEvents)
+                val pause = breakMillis(dayEvents)
+                val compound = eid + "_" + key
+                val decision = decisions[compound]?.getString("decision") ?: ""
+                val approvedLeave = compound in approvedLeaveKeys
+                val covered = if (!weekend && worked == 0L && (approvedLeave || decision == "annual_leave" || decision == "justified")) DAY_TARGET else 0L
+                val weekdayRegular = if (!weekend) minOf(worked, DAY_TARGET) + covered else 0L
+                val weekdayOt = if (!weekend) (worked - DAY_TARGET).coerceAtLeast(0L) else 0L
+                val status = when {
+                    weekend && worked > 0L -> "Работа за викенд"
+                    weekend -> "Викенд"
+                    worked >= DAY_TARGET -> if (worked > DAY_TARGET) "Исполнето + прекувремено" else "Исполнето"
+                    worked > 0L -> "Недостига " + formatDuration(DAY_TARGET - worked) + " до 8ч"
+                    approvedLeave -> "Одобрен слободен ден"
+                    decision == "annual_leave" -> "Од годишен одмор"
+                    decision == "justified" -> "Оправдано отсуство"
+                    decision == "make_up" -> "Ќе одработи друг ден"
+                    decision == "unpaid" -> "Неоправдано отсуство"
+                    else -> "Нема евиденција"
+                }
+                days.add(DayInfo(date, key, weekMondayKey(date), weekend, worked, pause, weekdayRegular, weekdayOt, covered, status))
+                cal.add(Calendar.DAY_OF_MONTH, 1)
             }
+
+            val weekendRegular = mutableMapOf<String, Long>()
+            val weekendOt = mutableMapOf<String, Long>()
+            days.groupBy { it.weekKey }.toSortedMap().forEach { (wk, weekDays) ->
+                val weekdayRegular = weekDays.sumOf { it.weekdayRegular }
+                var need = (WEEK_TARGET - weekdayRegular).coerceAtLeast(0L)
+                weekDays.filter { it.weekend }.sortedBy { it.date }.forEach { d ->
+                    val reg = minOf(d.worked, need)
+                    weekendRegular[d.key] = reg
+                    weekendOt[d.key] = (d.worked - reg).coerceAtLeast(0L)
+                    need -= reg
+                }
+                val regular = weekdayRegular + weekDays.filter { it.weekend }.sumOf { weekendRegular[it.key] ?: 0L }
+                val overtime = weekDays.sumOf { it.weekdayOt } + weekDays.filter { it.weekend }.sumOf { weekendOt[it.key] ?: 0L }
+                val missing = (WEEK_TARGET - regular).coerceAtLeast(0L)
+                val actualWorked = weekDays.sumOf { it.worked }
+                val covered = weekDays.sumOf { it.covered }
+                val monday = Calendar.getInstance().apply { time = dateAtNoon(wk) }
+                val sunday = monday.clone() as Calendar
+                sunday.add(Calendar.DAY_OF_MONTH, 6)
+                val current = !sunday.before(today)
+                val subtitle = buildString {
+                    append(if (current) "Тековна недела • " else "")
+                    append("Работено: "); append(formatDuration(actualWorked))
+                    append(" • Одмор/оправдано: "); append(formatDuration(covered))
+                    append("\nРедовен фонд: "); append(formatDuration(regular)); append(" / 40ч")
+                    append(" • Прекувремено: "); append(formatDuration(overtime))
+                    append(" • Недостига: "); append(formatDuration(missing))
+                }
+                val accent = when {
+                    missing > 0L && !current -> red
+                    overtime > 0L -> gold
+                    missing == 0L -> green
+                    else -> blue
+                }
+                holder.addView(card(name + " • " + df.format(monday.time) + "–" + df.format(sunday.time), subtitle, accent))
+                weeklyRows.add(listOf(
+                    name,
+                    df.format(monday.time) + " - " + df.format(sunday.time),
+                    formatDuration(actualWorked),
+                    formatDuration(covered),
+                    formatDuration(regular),
+                    formatDuration(overtime),
+                    formatDuration(missing)
+                ))
+            }
+
+            holder.addView(space(8))
+            holder.addView(text(name + " • дневно", 17f, Color.WHITE, true))
+            days.forEach { d ->
+                val regular = d.weekdayRegular + (weekendRegular[d.key] ?: 0L)
+                val overtime = d.weekdayOt + (weekendOt[d.key] ?: 0L)
+                val accent = when {
+                    d.status == "Нема евиденција" || d.status == "Неоправдано отсуство" -> red
+                    overtime > 0L -> gold
+                    d.covered > 0L -> blue
+                    d.worked >= DAY_TARGET && !d.weekend -> green
+                    d.worked > 0L -> gold
+                    else -> border
+                }
+                if (reportOnly || d.worked > 0L || d.status != "Викенд") {
+                    holder.addView(card(
+                        df.format(d.date) + " • " + d.status,
+                        "Работено: " + formatDuration(d.worked) +
+                            " • Пауза: " + formatDuration(d.pause) +
+                            "\nРедовен фонд: " + formatDuration(regular) +
+                            " • Прекувремено: " + formatDuration(overtime),
+                        accent
+                    ) {
+                        if (!d.weekend && d.worked == 0L && d.covered == 0L) decideAbsence(eid, name, d.key, decisions[eid + "_" + d.key]?.getString("decision") ?: "unresolved")
+                    })
+                }
+                dailyRows.add(listOf(
+                    name,
+                    df.format(d.date),
+                    formatDuration(d.worked),
+                    formatDuration(d.pause),
+                    formatDuration(regular),
+                    formatDuration(overtime),
+                    d.status
+                ))
+            }
+            holder.addView(space(14))
+        }
+
+        if (!reportOnly) {
+            holder.addView(text("Детална евиденција", 19f, Color.WHITE, true))
+            events.sortedByDescending { it.time }.forEach { ev ->
+                holder.addView(card(
+                    ev.employeeName,
+                    label(ev.type) + "\n" + dtf.format(ev.time),
+                    when (ev.type) {
+                        "work_start", "break_end" -> green
+                        "break_start" -> gold
+                        "work_end" -> red
+                        else -> border
+                    }
+                ) { editAttendance(ev) })
+            }
+            holder.addView(text("Допри на запис за корекција.", 12f, steel))
+        }
+
+        lastDailyExportRows = dailyRows
+        lastWeeklyExportRows = weeklyRows
+    }
+
+    private fun weekMondayKey(date: Date): String {
+        val c = Calendar.getInstance().apply { time = date }
+        val dow = c.get(Calendar.DAY_OF_WEEK)
+        val offset = when (dow) {
+            Calendar.SUNDAY -> -6
+            else -> Calendar.MONDAY - dow
+        }
+        c.add(Calendar.DAY_OF_MONTH, offset)
+        return dayKey(c.time)
     }
 
     private fun workedMillis(events: List<AttEvent>): Long =
