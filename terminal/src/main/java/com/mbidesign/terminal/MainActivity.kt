@@ -229,7 +229,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val w = store.worker(pendingId)
-        if (w == null || !w.active) { toast("Профилот не е активен."); home(); return }
+        if (w == null || !w.active || w.uid != data?.getStringExtra("workerUid")) {
+            toast("Профилот е сменет или не е активен. Потребна е нова проверка."); home(); return
+        }
         if (pendingEnroll) { toast("Лицето е регистрирано за ${w.name}."); settingsPage(); return }
         try {
             check(remote.enabled() && remote.autoTime()) { "Провери го пристапот и автоматското време." }

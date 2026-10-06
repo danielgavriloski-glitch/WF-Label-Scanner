@@ -48,9 +48,10 @@ class Liveness(private val turnSign: Int, private val blinkFirst: Boolean) {
     }
     fun instruction(): String = when (phase) {
         Phase.CENTER -> "Гледај право во камерата"
-        Phase.TURN -> if (turnSign > 0) "Заврти ја главата кон стрелката →" else "Заврти ја главата кон стрелката ←"
+        // Input is unmirrored, while the front-camera preview is mirrored.
+        Phase.TURN -> if (turnSign > 0) "Заврти ја главата налево ←" else "Заврти ја главата надесно →"
         Phase.RETURN -> "Врати ја главата право"
-        Phase.BLINK -> "Трепни со двете очи"
+        Phase.BLINK -> "Затвори ги очите кратко, па отвори ги"
         Phase.DONE -> "Лицето е потврдено"
     }
 }

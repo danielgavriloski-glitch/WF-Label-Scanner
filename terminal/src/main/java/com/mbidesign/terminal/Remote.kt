@@ -42,8 +42,9 @@ class Remote(private val context: Context) {
         val anchor = vault.get("clockAnchor")?.let { JSONObject(it) } ?: return wall to false
         val up = SystemClock.elapsedRealtime()
         val baseUp = anchor.getLong("up")
+        val boot = Settings.Global.getInt(context.contentResolver,Settings.Global.BOOT_COUNT,-1)
         // A reboot invalidates a monotonic anchor; local automatic time remains explicit.
-        if (up < baseUp || up - baseUp > 86400000) return wall to false
+        if (anchor.optInt("boot",-2) != boot || up < baseUp || up - baseUp > 86400000) return wall to false
         val measured = anchor.getLong("server") + (up - baseUp)
         if (abs(wall - measured) > 120000) error("Датумот или времето е сменето. Поврзи интернет за проверка.")
         return measured to true
@@ -156,7 +157,8 @@ class Remote(private val context: Context) {
                 val heartbeat = db.collection("terminalHeartbeats").document(uid)
                 Tasks.await(heartbeat.set(mapOf("terminalUid" to uid, "timestamp" to FieldValue.serverTimestamp())), 10, TimeUnit.SECONDS)
                 val beat = Tasks.await(heartbeat.get(Source.SERVER), 10, TimeUnit.SECONDS).getTimestamp("timestamp")
-                if (beat != null) vault.put("clockAnchor", JSONObject().put("server", beat.toDate().time).put("up", SystemClock.elapsedRealtime()).toString())
+                if (beat != null) vault.put("clockAnchor", JSONObject().put("server", beat.toDate().time)
+                    .put("up", SystemClock.elapsedRealtime()).put("boot",Settings.Global.getInt(context.contentResolver,Settings.Global.BOOT_COUNT,-1)).toString())
             } catch (_: Exception) { /* Automatic device time remains marked as unverified. */ }
             vault.put("lastSync", System.currentTimeMillis().toString())
             return if (store.pending(true).any { it.status == "conflict" }) "Има записи за администраторска проверка" else "Поврзано • евиденцијата е синхронизирана"

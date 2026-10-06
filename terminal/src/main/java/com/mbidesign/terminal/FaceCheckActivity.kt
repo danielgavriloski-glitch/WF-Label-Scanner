@@ -58,7 +58,7 @@ class FaceCheckActivity : AppCompatActivity() {
     private val challenge = Liveness(if (random.nextBoolean()) 1 else -1, random.nextBoolean())
     private val detector by lazy { FaceDetection.getClient(FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
         .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
         .setMinFaceSize(.2f).enableTracking().build()) }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
@@ -188,7 +188,7 @@ class FaceCheckActivity : AppCompatActivity() {
             if (!closing) {
                 status.text = if (enroll) "Лицето е регистрирано" else "Лицето е потврдено"
                 status.setTextColor(Color.rgb(99, 206, 150))
-                setResult(Activity.RESULT_OK, Intent().putExtra("worker", worker.id).putExtra("enroll", enroll))
+                setResult(Activity.RESULT_OK, Intent().putExtra("worker", worker.id).putExtra("workerUid",worker.uid).putExtra("enroll", enroll))
                 main.postDelayed({ finish() }, 600)
             }
         }
