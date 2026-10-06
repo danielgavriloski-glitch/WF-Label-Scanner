@@ -1,0 +1,52 @@
+// MERGE into the existing /databases/{database}/documents block.
+// This is an additive terminal role, NOT a replacement for existing MBI rules.
+// Inspect existing broad allow clauses: Firestore combines allow rules with OR.
+// The company document's terminalDevices map must remain administrator-writable only.
+
+function mbiTerminalEnabled() {
+  let company = get(/databases/$(database)/documents/settings/company).data;
+  return request.auth != null
+      && 'terminalDevices' in company
+      && request.auth.uid in company.terminalDevices
+      && company.terminalDevices[request.auth.uid].active == true;
+}
+function mbiTerminalAttendanceValid() {
+  let event = request.resource.data;
+  let worker = get(/databases/$(database)/documents/employees/$(event.employeeId)).data;
+  return mbiTerminalEnabled()
+      && event.keys().hasOnly(['employeeId','employeeName','uid','type','timestamp','source','terminalUid','verification','clockTrusted','receivedAt'])
+      && event.employeeId is string && event.employeeName is string
+      && event.uid == worker.uid
+      && (!('active' in worker) || worker.active == true)
+      && (!('isAdmin' in worker) || worker.isAdmin != true)
+      && (!('isAccountant' in worker) || worker.isAccountant != true)
+      && event.terminalUid == request.auth.uid
+      && event.source == 'mbi_terminal'
+      && event.verification == 'face'
+      && event.clockTrusted is bool
+      && event.type in ['work_start','work_end','break_start','break_end']
+      && event.timestamp is timestamp
+      && event.timestamp <= request.time + duration.value(2,'m')
+      && event.receivedAt == request.time;
+}
+
+match /employees/{employeeId} {
+  allow read: if mbiTerminalEnabled();
+  // Keep existing administrator/employee clauses. No terminal profile writes.
+}
+match /settings/company {
+  allow read: if mbiTerminalEnabled();
+  // Keep administrator-only writes. No terminal settings writes.
+}
+match /attendance/{eventId} {
+  allow read: if mbiTerminalEnabled();
+  allow create: if mbiTerminalAttendanceValid();
+  // No terminal edits/deletions; retain existing administrator clauses.
+}
+match /terminalHeartbeats/{uid} {
+  allow read: if mbiTerminalEnabled() && uid == request.auth.uid;
+  allow create, update: if mbiTerminalEnabled() && uid == request.auth.uid
+      && request.resource.data.keys().hasOnly(['terminalUid','timestamp'])
+      && request.resource.data.terminalUid == uid
+      && request.resource.data.timestamp == request.time;
+}

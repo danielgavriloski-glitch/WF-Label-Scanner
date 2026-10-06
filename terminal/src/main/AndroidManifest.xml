@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="true" />
+    <application android:name=".TerminalApplication" android:label="MBI Терминал"
+        android:icon="@drawable/ic_terminal" android:theme="@style/TerminalTheme"
+        android:allowBackup="false" android:fullBackupContent="false" android:usesCleartextTraffic="false"
+        android:supportsRtl="true">
+        <activity android:name=".FaceCheckActivity" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

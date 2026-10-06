@@ -1,0 +1,43 @@
+name: Build MBI Terminal
+on:
+  push:
+    branches: [mbi-terminal-face]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Download verified offline models
+        run: python3 tools/fetch_terminal_models.py
+      - name: Exercise real face matching
+        run: |
+          python3 -m pip install --quiet opencv-python-headless==4.10.0.84 numpy==1.26.4
+          python3 tools/test_face_models.py
+      - name: Build and test Android terminal
+        run: gradle :terminal:assembleRelease :terminal:testDebugUnitTest :terminal:lintRelease --stacktrace
+      - name: Package build evidence and local signing tools
+        run: |
+          mkdir -p terminal-dist/signing-tools
+          cp terminal/build/outputs/apk/release/terminal-release-unsigned.apk terminal-dist/MBI_Terminal_v1_unsigned.apk
+          cp -R terminal/build/test-results/testDebugUnitTest terminal-dist/tests
+          cp terminal/build/reports/lint-results-release.html terminal-dist/lint.html
+          tools_dir=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+          cp "$tools_dir/lib/apksigner.jar" terminal-dist/signing-tools/apksigner.jar
+          cp "$tools_dir/zipalign" terminal-dist/signing-tools/zipalign
+          "$tools_dir/aapt" dump badging terminal-dist/MBI_Terminal_v1_unsigned.apk > terminal-dist/apk-info.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: MBI-Terminal-build
+          path: |
+            terminal-dist
+            terminal/build/reports
+          if-no-files-found: warn
