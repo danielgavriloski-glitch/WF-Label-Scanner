@@ -21,13 +21,30 @@ jobs:
         run: |
           python3 -m pip install --quiet opencv-python-headless==4.10.0.84 numpy==1.26.4
           python3 tools/test_face_models.py
+          mkdir -p terminal/src/androidTest/assets
+          cp build/lena.jpg terminal/src/androidTest/assets/lena.jpg
       - name: Build and test Android terminal
         run: gradle :terminal:assembleRelease :terminal:testDebugUnitTest :terminal:lintRelease --stacktrace
+      - name: Enable emulator acceleration
+        run: |
+          sudo sh -c 'echo KERNEL==\"kvm\", GROUP=\"kvm\", MODE=\"0666\", OPTIONS+=\"static_node=kvm\" > /etc/udev/rules.d/99-kvm4all.rules'
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch and exercise Android app and native face model
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front emulated
+          script: gradle :terminal:connectedDebugAndroidTest --stacktrace
       - name: Package build evidence and local signing tools
         run: |
           mkdir -p terminal-dist/signing-tools
           cp terminal/build/outputs/apk/release/terminal-release-unsigned.apk terminal-dist/MBI_Terminal_v1_unsigned.apk
           cp -R terminal/build/test-results/testDebugUnitTest terminal-dist/tests
+          cp -R terminal/build/outputs/androidTest-results terminal-dist/android-tests
           cp terminal/build/reports/lint-results-release.html terminal-dist/lint.html
           tools_dir=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
           cp "$tools_dir/lib/apksigner.jar" terminal-dist/signing-tools/apksigner.jar

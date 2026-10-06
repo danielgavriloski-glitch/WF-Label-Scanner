@@ -8,6 +8,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
     buildTypes { getByName("release") { isMinifyEnabled = false } }
@@ -30,5 +31,10 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("com.google.guava:guava:33.3.1-android")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:rules:1.6.1")
 }

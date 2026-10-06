@@ -160,7 +160,10 @@ class Remote(private val context: Context) {
             } catch (_: Exception) { /* Automatic device time remains marked as unverified. */ }
             vault.put("lastSync", System.currentTimeMillis().toString())
             return if (store.pending(true).any { it.status == "conflict" }) "Има записи за администраторска проверка" else "Поврзано • евиденцијата е синхронизирана"
-        } catch (e: Exception) { return friendly(e) }
+        } catch (e: Exception) {
+            if (accessDenied(e)) vault.put("enabled","false")
+            return friendly(e)
+        }
         finally { syncing.set(false) }
     }
     companion object {
@@ -184,6 +187,9 @@ class Remote(private val context: Context) {
             if (cause is FirebaseFirestoreException && cause.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
                 return "Нема серверска дозвола за терминалот. Администраторот треба да го овозможи пристапот. Записите се зачувани."
             return "Поврзувањето не успеа. Записите остануваат зачувани. ${cause.localizedMessage?.take(180) ?: "Провери интернет и пристап."}"
+        }
+        fun accessDenied(ex: Exception): Boolean = generateSequence<Throwable>(ex) { it.cause }.any {
+            it is FirebaseFirestoreException && it.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
         }
         fun schedule(context: Context) {
             val constraints = androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()

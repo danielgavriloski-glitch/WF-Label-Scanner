@@ -115,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private fun base(title: String, subtitle: String = "") {
-        val scroll = ScrollView(this).apply { fillViewport = true; fitsSystemWindows = true; setBackgroundColor(bg) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; fitsSystemWindows = true; setBackgroundColor(bg) }
         workerHours = null
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(20),dp(24),dp(20),dp(24))
@@ -329,7 +329,11 @@ class MainActivity : AppCompatActivity() {
         if (roster != null || !remote.configured() || remote.auth.currentUser == null) return
         roster = remote.db.collection("employees").addSnapshotListener(MetadataChanges.INCLUDE) { snapshot,error ->
             if (closing) return@addSnapshotListener
-            if (error != null) { statusMessage = Remote.friendly(error); updateStatus(); return@addSnapshotListener }
+            if (error != null) {
+                if (Remote.accessDenied(error)) vault.put("enabled","false")
+                statusMessage = Remote.friendly(error); roster?.remove(); roster = null; updateStatus()
+                return@addSnapshotListener
+            }
             if (snapshot != null && !snapshot.metadata.isFromCache) {
                 store.setWorkers(snapshot.documents.mapNotNull(Remote::workerFrom))
                 if (screen == "home") home() else if (screen == "worker") workerPage(selectedId)
@@ -358,7 +362,11 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
         executor.execute {
             val message = remote.syncOnce()
-            main.post { if (!closing) { statusMessage = message; updateStatus(); if (screen == "home") home() } }
+            main.post { if (!closing) {
+                statusMessage = message; updateStatus()
+                if (message.startsWith("Поврзано") || message.startsWith("Има записи")) attachListeners()
+                if (screen == "home") home()
+            } }
         }
     }
     private fun fatal(message: String) { screen = "fatal"; base("Потребна е проверка"); root.addView(card(message,red)) }
