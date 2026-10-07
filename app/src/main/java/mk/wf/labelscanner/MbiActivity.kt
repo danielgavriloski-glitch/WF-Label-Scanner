@@ -11,8 +11,6 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.Paint
-import android.graphics.pdf.PdfDocument
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -74,7 +72,11 @@ class MbiActivity : AppCompatActivity() {
     private var filterEmployeeName: String = "Сите вработени"
     private var lastDailyExportRows: List<List<String>> = emptyList()
     private var lastWeeklyExportRows: List<List<String>> = emptyList()
+    private var lastSummaryExportRows: List<List<String>> = emptyList()
     private var reportHeading = "Извештај за работно време"
+    private var personnelReportYear: Int? = null
+    private data class ReportExportSnapshot(val heading: String, val period: String, val note: String, val sections: List<ReportSection>)
+    private var pendingReportExport: ReportExportSnapshot? = null
 
     data class AttEvent(
         val id: String,
@@ -1235,7 +1237,8 @@ class MbiActivity : AppCompatActivity() {
 
     private fun adminAttendance(reportOnly: Boolean) {
         reportHeading = "Извештај за работно време"
-        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList()
+        personnelReportYear = null
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList()
         if (accountant && !reportOnly) return adminAttendance(true)
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
 
@@ -1400,7 +1403,7 @@ class MbiActivity : AppCompatActivity() {
         val HOUR = 60L * 60L * 1000L
         val DAY_TARGET = 8L * HOUR
         val WEEK_TARGET = 40L * HOUR
-        val dailyRows = mutableListOf(listOf("Вработен", "Датум", "Работено", "Пауза", "Редовен фонд", "Прекувремено", "Статус"))
+        val reportDays = mutableListOf<AttendanceReportDay>()
         val weeklyRows = mutableListOf(listOf("Вработен", "Недела", "Работено", "Одмор/оправдано", "Редовен фонд", "Прекувремено", "Недостига"))
         val today = Calendar.getInstance()
         val cap = Calendar.getInstance().apply { time = filterTo.time }
@@ -1421,7 +1424,7 @@ class MbiActivity : AppCompatActivity() {
 
         if (employees.isEmpty()) {
             holder.addView(card("Нема вработени", "Нема профили за избраниот филтер."))
-            lastDailyExportRows = dailyRows
+            lastDailyExportRows = emptyList()
             lastWeeklyExportRows = weeklyRows
             return
         }
@@ -1436,7 +1439,7 @@ class MbiActivity : AppCompatActivity() {
                 time = filterFrom.time
                 set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
             }
-            while (!cal.after(cap)) {
+            while (dayKey(cal.time) <= dayKey(cap.time)) {
                 val date = cal.time
                 val key = dayKey(date)
                 val dow = cal.get(Calendar.DAY_OF_WEEK)
@@ -1540,14 +1543,9 @@ class MbiActivity : AppCompatActivity() {
                         if (!d.weekend && d.worked == 0L && d.covered == 0L) decideAbsence(eid, name, d.key, decisions[eid + "_" + d.key]?.getString("decision") ?: "unresolved")
                     })
                 }
-                dailyRows.add(listOf(
-                    name,
-                    df.format(d.date),
-                    formatDuration(d.worked),
-                    formatDuration(d.pause),
-                    formatDuration(regular),
-                    formatDuration(overtime),
-                    d.status
+                reportDays.add(AttendanceReportDay(
+                    eid, name, d.key, df.format(d.date), dayName(d.date), d.worked,
+                    d.pause, regular, overtime, d.covered, d.status
                 ))
             }
             holder.addView(space(14))
@@ -1570,8 +1568,32 @@ class MbiActivity : AppCompatActivity() {
             holder.addView(text("Допри на запис за корекција.", 12f, steel))
         }
 
-        lastDailyExportRows = dailyRows
+        val tables = AttendanceReportTables.build(employees, reportDays)
+        lastDailyExportRows = tables.daily
+        lastSummaryExportRows = tables.summary
         lastWeeklyExportRows = weeklyRows
+        renderReportSummary(holder, tables.summary)
+    }
+
+    private fun dayName(date: Date): String =
+        SimpleDateFormat("EEEE", Locale.forLanguageTag("mk-MK")).format(date)
+
+    private fun renderReportSummary(holder: LinearLayout, rows: List<List<String>>) {
+        val summary = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        summary.addView(text("Вкупно за избраниот период", 20f, Color.WHITE, true))
+        rows.drop(1).forEach { row ->
+            val total = row.first().startsWith("ВКУПНО")
+            val description = if (accountant) {
+                "Денови со работа: ${row[1]}\nРедовни часови: ${row[2]}"
+            } else {
+                "Денови со работа: ${row[1]} • Работено: ${row[2]}\n" +
+                    "Пауза: ${row[3]} • Одмор/оправдано: ${row[4]}\n" +
+                    "Редовен фонд: ${row[5]} • Прекувремено: ${row[6]}"
+            }
+            summary.addView(card(row[0], description, if (total) gold else blue))
+        }
+        summary.addView(space(14))
+        holder.addView(summary, 0)
     }
 
     private fun weekMondayKey(date: Date): String {
@@ -1646,6 +1668,25 @@ class MbiActivity : AppCompatActivity() {
             return
         }
         val stamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val sections = if (personnelReportYear != null) listOf(
+            ReportSection("Odmor", "ГОДИШЕН ОДМОР", lastDailyExportRows),
+            ReportSection("Boluvanje", "БОЛУВАЊА", lastWeeklyExportRows)
+        ) else listOf(
+            ReportSection("Vkupno", "ВКУПНО ПО ВРАБОТЕН", lastSummaryExportRows),
+            ReportSection("Dnevno", "ДНЕВНА ЕВИДЕНЦИЈА - ПО ДАТУМ", lastDailyExportRows),
+            ReportSection("Nedelno", "НЕДЕЛЕН ПРЕСЕК", lastWeeklyExportRows)
+        )
+        val note = when {
+            personnelReportYear != null -> "Годишниот одмор и болувањето се евидентираат одделно."
+            accountant -> "Редовни часови: најмногу 8ч дневно и 40ч неделно."
+            else -> "Пауза: вклучена во работеното време. Одмор/оправдано: прикажано одделно."
+        }
+        pendingReportExport = ReportExportSnapshot(
+            reportHeading,
+            personnelReportYear?.let { "$it година" } ?: (df.format(filterFrom.time) + " - " + df.format(filterTo.time)),
+            note,
+            sections.filter { it.rows.isNotEmpty() }
+        )
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             if (type == "pdf") {
@@ -1662,13 +1703,18 @@ class MbiActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Android SDK, retained for document export compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 9101 && requestCode != 9102) return
+        val snapshot = pendingReportExport ?: return
+        pendingReportExport = null
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {
             when (requestCode) {
-                9101 -> writeReportPdf(uri)
+                9101 -> contentResolver.openOutputStream(uri)?.use {
+                    AttendancePdfExporter.write(it, snapshot.heading, snapshot.period, snapshot.sections, snapshot.note)
+                } ?: throw IllegalStateException("Не може да се отвори избраниот PDF.")
                 9102 -> contentResolver.openOutputStream(uri)?.use {
-                    AttendanceXlsxExporter.write(it, lastDailyExportRows, lastWeeklyExportRows)
+                    AttendanceXlsxExporter.write(it, snapshot.sections)
                 } ?: throw IllegalStateException("Не може да се отвори избраниот фајл.")
                 else -> return
             }
@@ -1676,58 +1722,6 @@ class MbiActivity : AppCompatActivity() {
         } catch (e: Exception) {
             toast("Не може да се зачува извештајот: ${e.localizedMessage ?: "непозната грешка"}")
         }
-    }
-
-    private fun writeReportPdf(uri: Uri) {
-        val doc = PdfDocument()
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 9f }
-        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = 10f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        var pageNo = 0
-        var page: PdfDocument.Page? = null
-        var y = 0f
-
-        fun newPage(title: String) {
-            if (page != null) doc.finishPage(page!!)
-            pageNo++
-            page = doc.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNo).create())
-            val canvas = page!!.canvas
-            canvas.drawText("MBI METAL DESIGN", 34f, 38f, titlePaint)
-            canvas.drawText(title, 34f, 60f, bold)
-            canvas.drawText("Период: " + df.format(filterFrom.time) + " - " + df.format(filterTo.time), 34f, 78f, paint)
-            y = 102f
-        }
-
-        fun safeLine(text: String, header: Boolean = false) {
-            if (page == null || y > 812f) newPage(reportHeading)
-            val p = if (header) bold else paint
-            val clean = if (text.length > 115) text.take(112) + "…" else text
-            page!!.canvas.drawText(clean, 28f, y, p)
-            y += if (header) 18f else 15f
-        }
-
-        newPage(reportHeading)
-        safeLine(if(reportHeading.contains("одмор")) "БОЛУВАЊА" else "НЕДЕЛЕН ПРЕСЕК", true)
-        lastWeeklyExportRows.forEachIndexed { index, row ->
-            safeLine(row.joinToString(" | "), index == 0)
-        }
-        y += 10f
-        safeLine("ДНЕВНА ЕВИДЕНЦИЈА", true)
-        lastDailyExportRows.forEachIndexed { index, row ->
-            safeLine(row.joinToString(" | "), index == 0)
-        }
-        if (page != null) doc.finishPage(page!!)
-        contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) }
-            ?: throw IllegalStateException("Не може да се отвори избраниот PDF.")
-        doc.close()
     }
 
     private fun editAttendance(ev: AttEvent) {
@@ -1994,7 +1988,7 @@ class MbiActivity : AppCompatActivity() {
 
     private fun renderAccountantReport(holder: LinearLayout, employees: List<Pair<String,String>>, events: List<AttEvent>) {
         holder.removeAllViews()
-        val daily = mutableListOf(listOf("Вработен", "Датум", "Редовни часови"))
+        val reportDays = mutableListOf<AttendanceReportDay>()
         val weekly = mutableListOf(listOf("Вработен", "Недела", "Редовни часови"))
         val dayCap = 8L * 3600000L
                 for ((id, name) in employees) {
@@ -2007,7 +2001,7 @@ class MbiActivity : AppCompatActivity() {
                     val allowed = allocation[day] ?: 0L
                     val date = dateAtNoon(day)
                     if (date >= filterFrom.time && date <= filterTo.time) {
-                        daily.add(listOf(name, df.format(date), formatDuration(allowed)))
+                        reportDays.add(AttendanceReportDay(id, name, day, df.format(date), dayName(date), allowed, regular = allowed))
                         holder.addView(card("$name • ${df.format(date)}", "Редовни часови: ${formatDuration(allowed)}", blue))
                         displayedTotal += allowed
                     }
@@ -2016,14 +2010,17 @@ class MbiActivity : AppCompatActivity() {
                 holder.addView(card("$name • недела од ${df.format(dateAtNoon(wk))}", "Редовни часови во избраниот период: ${formatDuration(displayedTotal)} / 40ч", green))
             }
         }
-        if (daily.size == 1) holder.addView(card("Нема евиденција", "Нема записи за избраниот период."))
-        lastDailyExportRows = daily; lastWeeklyExportRows = weekly
+        if (reportDays.isEmpty()) holder.addView(card("Нема евиденција", "Нема записи за избраниот период."))
+        val tables = AttendanceReportTables.build(employees, reportDays, accountant = true)
+        lastDailyExportRows = tables.daily; lastWeeklyExportRows = weekly; lastSummaryExportRows = tables.summary
+        renderReportSummary(holder, tables.summary)
     }
 
     private fun personnelRecords(year: Int = Calendar.getInstance().get(Calendar.YEAR)) {
         if (!administrator && !accountant) return
         reportHeading = "Годишен одмор и болување • $year"
-        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList()
+        personnelReportYear = year
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList()
         adminHeader("Одмор и болување • $year", "Преглед по вработен. Болувањето не се одзема од годишниот одмор.")
         root.addView(button("◀ ${year-1}",panel2,Color.WHITE) { personnelRecords(year-1) })
         root.addView(button("${year+1} ▶",panel2,Color.WHITE) { personnelRecords(year+1) })
@@ -2263,4 +2260,3 @@ class MbiActivity : AppCompatActivity() {
     }
 
 }
-
