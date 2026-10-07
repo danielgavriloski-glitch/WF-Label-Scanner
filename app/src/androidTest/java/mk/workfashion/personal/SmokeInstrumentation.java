@@ -51,7 +51,14 @@ public class SmokeInstrumentation extends Instrumentation {
             stress.put("tripRows",stressRows);byte[] stressPdf=MainActivity.PdfReport.create(stress);check(stressPdf.length>2000,"Multi-page trip PDF failed");
             try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-trip-pages.pdf"))){out.write(stressPdf);}
             js(a,"(()=>{const n=new Date(),d=Core.parts(new Date(n.getTime()-30*60000));const result=Core.putTrip(state,{date:d.date,departure:d.hour+':'+d.minute,arrival:'',arrivalDate:d.date,note:'Охрид – Скопје'});commit(result.state,'Пример за патување');WFApp.setView('home');window.scrollTo(0,0);})()");
-            result.putString("stream","WF_SMOKE_OK: native startup, five screens, version 1 migration, departure/arrival forms, overnight travel, persistence, overlap rejection, unchanged work totals, CSV/Excel data, Cyrillic multi-page PDF\n");
+            runOnMainSync(()->a.webView.reload());
+            boolean reopened=false;for(int i=0;i<80;i++){Thread.sleep(250);if("true".equals(js(a,"typeof WFApp!=='undefined'&&!!WFApp.getState()&&WFApp.getState().trips.length===3&&document.getElementById('goOnTrip')!==null"))){reopened=true;break;}}
+            check(reopened,"Saved trips did not load after reopening");Thread.sleep(500);
+            android.graphics.Bitmap screenshot=getUiAutomation().takeScreenshot();check(screenshot!=null,"App screenshot failed");
+            int colored=0;for(int y=35;y<screenshot.getHeight()-35;y+=2)for(int x=0;x<screenshot.getWidth();x+=2){int color=screenshot.getPixel(x,y);if(android.graphics.Color.red(color)<160||android.graphics.Color.green(color)<160||android.graphics.Color.blue(color)<160)colored++;}
+            check(colored>200,"App surface remained blank after loading");
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"wf-smoke.png"))){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}screenshot.recycle();
+            result.putString("stream","WF_SMOKE_OK: native startup, five screens, version 1 migration, departure/arrival forms, overnight travel, persistence, overlap rejection, unchanged work totals, CSV/Excel data, Cyrillic multi-page PDF, restored trip screen visibly rendered\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){result.putString("stream","WF_SMOKE_FAILED: "+t.toString()+"\n");finish(Activity.RESULT_CANCELED,result);}
     }

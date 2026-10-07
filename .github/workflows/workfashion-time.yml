@@ -60,10 +60,7 @@ jobs:
             adb shell am instrument -w mk.workfashion.personal.test/mk.workfashion.personal.SmokeInstrumentation > delivery/smoke.txt
             cat delivery/smoke.txt
             grep WF_SMOKE_OK delivery/smoke.txt
-            adb shell am start -W -n mk.workfashion.personal/.MainActivity
-            sleep 3
-            adb shell screencap -p /sdcard/wf-smoke.png
-            adb pull /sdcard/wf-smoke.png delivery/wf-smoke.png
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-trip-pages.pdf delivery/smoke-trip-pages.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.xlsx delivery/smoke-report.xlsx

@@ -6,13 +6,14 @@ const PAID=['vacation','sick','holiday','paid'];
 const DAY=86400000;
 const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const pad=n=>String(n).padStart(2,'0');
+const dateFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
 function dateValid(s){ if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+'T12:00:00Z');return !isNaN(d)&&d.toISOString().slice(0,10)===s&&s>='2000-01-01'&&s<='2100-12-31'; }
 function plus(date,n){return new Date(Date.parse(date+'T12:00:00Z')+n*DAY).toISOString().slice(0,10);}
 function weekday(date){return new Date(date+'T12:00:00Z').getUTCDay();}
 function weekStart(date){return plus(date,-((weekday(date)+6)%7));}
 function dates(from,to){if(!dateValid(from)||!dateValid(to)||from>to)throw Error('Провери ги датумите.');const out=[];for(let d=from;d<=to;d=plus(d,1)){out.push(d);if(out.length>37000)throw Error('Периодот е предолг.');}return out;}
 function minutes(t){if(typeof t!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))throw Error('Внеси валидно време.');return Number(t.slice(0,2))*60+Number(t.slice(3));}
-function parts(now=new Date()){const a=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now);const p={};a.forEach(x=>p[x.type]=x.value);return {...p,date:`${p.year}-${p.month}-${p.day}`,minuteOfDay:Number(p.hour)*60+Number(p.minute)};}
+function parts(now=new Date()){const a=dateFormatter.formatToParts(now);const p={};a.forEach(x=>p[x.type]=x.value);return {...p,date:`${p.year}-${p.month}-${p.day}`,minuteOfDay:Number(p.hour)*60+Number(p.minute)};}
 function today(now){return parts(now).date;}
 function timestamp(date,time){const [y,m,d]=date.split('-').map(Number), min=minutes(time);const wanted=Date.UTC(y,m-1,d,Math.floor(min/60),min%60);let t=wanted;for(let i=0;i<3;i++){const p=parts(new Date(t));const shown=Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute));const correction=wanted-shown;if(!correction)break;t+=correction;}return t;}
 function monthBounds(month){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw Error('Невалиден месец.');const from=month+'-01';return [from,new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0,12)).toISOString().slice(0,10)];}
