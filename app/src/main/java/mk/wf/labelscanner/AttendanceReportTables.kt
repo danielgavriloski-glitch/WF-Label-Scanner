@@ -30,7 +30,12 @@ data class AttendanceReportTables(val daily: List<List<String>>, val summary: Li
         ): AttendanceReportTables {
             // Employee IDs keep two people with the same name separate in the totals.
             val selectedIds = employees.map { it.first }.toSet()
-            val selected = days.filter { it.employeeId in selectedIds }
+            val selected = days.filter { it.employeeId in selectedIds }.map { day ->
+                if (accountant) {
+                    val allowed = day.regular.coerceIn(0L, 8L * 3600000L)
+                    day.copy(worked = allowed, regular = allowed, pause = 0L, overtime = 0L, covered = 0L, status = "")
+                } else day
+            }
             val sorted = selected.sortedWith(compareBy({ it.dateKey }, { it.employeeName }, { it.employeeId }))
             val daily = mutableListOf(
                 if (accountant) listOf("Датум", "Ден", "Вработен", "Редовни часови")

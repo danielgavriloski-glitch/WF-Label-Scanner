@@ -23,20 +23,51 @@ jobs:
       - name: Stage public signing tool for local private-key signing
         run: |
           python3 - <<'PY'
-          import os, pathlib, shutil
+          import hashlib, json, os, pathlib, shutil
           sdk = pathlib.Path(os.environ['ANDROID_HOME'])
           jars = sorted((sdk/'build-tools').glob('*/lib/apksigner.jar'))
           if not jars: raise RuntimeError('apksigner.jar was not found')
           target = pathlib.Path('build/report-tools'); target.mkdir(parents=True, exist_ok=True)
           shutil.copy2(jars[-1], target/'apksigner.jar')
+          apk = pathlib.Path('app/build/outputs/apk/release/app-release-unsigned.apk')
+          destination = pathlib.Path('build/report-release'); destination.mkdir(parents=True, exist_ok=True)
+          parts = []
+          with apk.open('rb') as source:
+              index = 0
+              while data := source.read(20 * 1024 * 1024):
+                  name = f'app-release-unsigned.apk.part{index:02d}'
+                  (destination/name).write_bytes(data)
+                  parts.append({'name': name, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+                  index += 1
+          (destination/'manifest.json').write_text(json.dumps({'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(), 'parts': parts}))
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: MBI-v4.1-release-and-tests
           path: |
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            build/report-release/manifest.json
             build/report-tools/apksigner.jar
             app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MBI-release-part00
+          path: build/report-release/app-release-unsigned.apk.part00
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MBI-release-part01
+          path: build/report-release/app-release-unsigned.apk.part01
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MBI-release-part02
+          path: build/report-release/app-release-unsigned.apk.part02
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MBI-release-part03
+          path: build/report-release/app-release-unsigned.apk.part03
           if-no-files-found: error
       - name: Enable emulator acceleration
         run: |

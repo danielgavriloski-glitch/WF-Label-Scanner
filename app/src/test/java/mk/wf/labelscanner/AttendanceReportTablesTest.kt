@@ -46,6 +46,12 @@ class AttendanceReportTablesTest {
         assertFalse(result.daily.flatten().any { it == "12ч 0м" || it == "4ч 0м" })
     }
 
+    @Test fun accountantExportBoundaryAlwaysCapsADayAtEightHours() {
+        val result = AttendanceReportTables.build(listOf("a" to "Ана"), listOf(day("a", "Ана", "20261005", 15)), accountant = true)
+        assertEquals("8ч 0м", result.daily[1].last())
+        assertEquals("8ч 0м", result.summary.last().last())
+    }
+
     @Test fun totalAddsDurationsBeforeRoundingToMinutes() {
         val result = AttendanceReportTables.build(listOf("a" to "Ана"), listOf(
             day("a", "Ана", "20261005", 0).copy(worked = 90000L, regular = 90000L),
