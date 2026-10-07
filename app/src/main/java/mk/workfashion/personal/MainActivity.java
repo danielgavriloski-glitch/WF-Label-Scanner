@@ -139,12 +139,22 @@ public class MainActivity extends Activity {
         static void rect(Canvas c,float x,float y,float w,float h,int color){paint.setColor(color);c.drawRect(x,y,x+w,y+h,paint);}
         static String fit(String s,int size,int max){paint.setTextSize(size);paint.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));if(paint.measureText(s)<=max)return s;while(s.length()>0&&paint.measureText(s+"…")>max)s=s.substring(0,s.length()-1);return s+"…";}
         static java.util.List<String> wrap(String s,int size,int width){java.util.List<String> lines=new java.util.ArrayList<>();paint.setTextSize(size);paint.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));for(String paragraph:s.replace("\r","").split("\n",-1)){String line="";for(String word:paragraph.split(" ")){String next=line.isEmpty()?word:line+" "+word;if(paint.measureText(next)>width&&!line.isEmpty()){lines.add(line);line=word;}else line=next;while(paint.measureText(line)>width&&line.length()>1){int i=line.length();while(i>1&&paint.measureText(line.substring(0,i))>width)i--;lines.add(line.substring(0,i));line=line.substring(i);}}lines.add(line);}return lines;}
+        static final int[] TRIP_WIDTHS={85,42,106,57,237};
+        static java.util.List<java.util.List<String>> tripCells(JSONArray row){
+            java.util.List<java.util.List<String>> cells=new java.util.ArrayList<>();
+            for(int i=0;i<TRIP_WIDTHS.length;i++)cells.add(wrap(row.optString(i,""),8,TRIP_WIDTHS[i]-8));
+            return cells;
+        }
+        static int tripHeight(java.util.List<java.util.List<String>> cells){int lines=1;for(java.util.List<String> cell:cells)lines=Math.max(lines,cell.size());return lines*12+8;}
         static byte[] create(JSONObject report)throws Exception {
             PdfDocument doc=new PdfDocument();ByteArrayOutputStream out=new ByteArrayOutputStream();
             try{
                 JSONArray rows=report.getJSONArray("rows"),headers=report.getJSONArray("headers"),summary=report.getJSONArray("summary"),details=report.getJSONArray("details"),notes=report.getJSONArray("notes");
-                if(rows.length()>10000)throw new Exception("Периодот е предолг.");
-                int row=0,pageNo=0,noteIndex=0,lineIndex=0;java.util.List<String> noteLines=new java.util.ArrayList<>();
+                JSONArray trips=report.optJSONArray("tripRows"),tripHeaders=report.optJSONArray("tripHeaders");
+                if(trips==null)trips=new JSONArray();
+                if(tripHeaders==null)tripHeaders=new JSONArray("[\"Датум на поаѓање\",\"Час\",\"Пристигнување\",\"На пат\",\"Белешка\"]");
+                if(rows.length()+trips.length()>10000)throw new Exception("Периодот е предолг.");
+                int row=0,tripRow=0,pageNo=0,lineIndex=0;java.util.List<String> noteLines=new java.util.ArrayList<>();
                 for(int i=0;i<notes.length();i++)noteLines.addAll(wrap(notes.getString(i),8,527));
                 boolean first=true;
                 do{
@@ -158,14 +168,26 @@ public class MainActivity extends Activity {
                         for(int i=0;i<Math.min(summary.length(),4);i++){JSONArray a=summary.getJSONArray(i);int x=34+i*134;rect(c,x,y,124,48,Color.rgb(235,246,243));text(c,a.getString(0),x+10,y+15,8,GRAY,false);text(c,a.getString(1),x+10,y+37,17,TEAL,true);}y+=65;
                         for(int i=0;i<details.length();i++){for(String line:wrap(details.getString(i),8,527)){text(c,line,34,y,8,GRAY,false);y+=13;}}y+=14;
                     }
-                    int[] widths={43,124,80,56,56,56,48,64};int x=34;
-                    rect(c,34,y,527,23,TEAL);for(int i=0;i<8;i++){text(c,headers.getString(i),x+4,y+15,8,Color.WHITE,true);x+=widths[i];}y+=23;
-                    while(row<rows.length()&&y+19<775){JSONArray a=rows.getJSONArray(row);if(row%2==0)rect(c,34,y,527,17,Color.rgb(245,248,249));x=34;for(int i=0;i<8;i++){text(c,fit(a.optString(i,""),8,widths[i]-8),x+4,y+12,8,INK,false);x+=widths[i];}row++;y+=17;}
-                    if(rows.length()==0&&first){text(c,"Нема записи во овој период.",34,y+20,10,GRAY,false);y+=32;}
-                    if(row==rows.length()&&lineIndex<noteLines.size()&&y+40<775){y+=20;text(c,"Белешки",34,y,9,TEAL,true);y+=16;while(lineIndex<noteLines.size()&&y+12<775){text(c,noteLines.get(lineIndex++),34,y,8,GRAY,false);y+=12;}}
+                    if(row<rows.length()||first){
+                        int[] widths={43,124,80,56,56,56,48,64};int x=34;
+                        rect(c,34,y,527,23,TEAL);for(int i=0;i<8;i++){text(c,headers.getString(i),x+4,y+15,8,Color.WHITE,true);x+=widths[i];}y+=23;
+                        while(row<rows.length()&&y+19<775){JSONArray a=rows.getJSONArray(row);if(row%2==0)rect(c,34,y,527,17,Color.rgb(245,248,249));x=34;for(int i=0;i<8;i++){text(c,fit(a.optString(i,""),8,widths[i]-8),x+4,y+12,8,INK,false);x+=widths[i];}row++;y+=17;}
+                        if(rows.length()==0&&first){text(c,"Нема записи во овој период.",34,y+20,10,GRAY,false);y+=32;}
+                    }
+                    if(row==rows.length()&&tripRow<trips.length()&&y+47+tripHeight(tripCells(trips.getJSONArray(tripRow)))<775){
+                        y+=20;text(c,tripRow==0?"Патувања":"Патувања · продолжение",34,y,10,TEAL,true);y+=10;
+                        rect(c,34,y,527,23,TEAL);int x=34;for(int i=0;i<TRIP_WIDTHS.length;i++){text(c,fit(tripHeaders.optString(i,""),8,TRIP_WIDTHS[i]-8),x+4,y+15,8,Color.WHITE,true);x+=TRIP_WIDTHS[i];}y+=23;
+                        while(tripRow<trips.length()){
+                            java.util.List<java.util.List<String>> cells=tripCells(trips.getJSONArray(tripRow));int height=tripHeight(cells);if(y+height>=775)break;
+                            if(tripRow%2==0)rect(c,34,y,527,height,Color.rgb(235,246,243));x=34;
+                            for(int i=0;i<cells.size();i++){int lineY=y+13;for(String line:cells.get(i)){text(c,line,x+4,lineY,8,INK,false);lineY+=12;}x+=TRIP_WIDTHS[i];}
+                            tripRow++;y+=height;
+                        }
+                    }
+                    if(row==rows.length()&&tripRow==trips.length()&&lineIndex<noteLines.size()&&y+40<775){y+=20;text(c,"Белешки",34,y,9,TEAL,true);y+=16;while(lineIndex<noteLines.size()&&y+12<775){text(c,noteLines.get(lineIndex++),34,y,8,GRAY,false);y+=12;}}
                     rect(c,34,793,527,1,Color.rgb(218,228,231));text(c,"Извезено: "+report.optString("generated"),34,812,8,GRAY,false);text(c,"Workfashion · Мои часови  |  "+pageNo,390,812,8,GRAY,false);
                     doc.finishPage(page);first=false;
-                }while(row<rows.length()||lineIndex<noteLines.size());
+                }while(row<rows.length()||tripRow<trips.length()||lineIndex<noteLines.size());
                 doc.writeTo(out);return out.toByteArray();
             }finally{doc.close();out.close();}
         }

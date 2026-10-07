@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time]
+    branches: [workfashion-personal-time, workfashion-travel-time]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,7 +19,9 @@ jobs:
         with:
           gradle-version: '8.7'
       - name: Check attendance calculations
-        run: node tests/core.test.js
+        run: |
+          node tests/core.test.js
+          node tests/trips.test.js
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
@@ -28,11 +30,10 @@ jobs:
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
           mkdir -p delivery/toolchain
-          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Workfashion_Time_v1_unsigned.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Workfashion_Time_v1_1_unsigned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" delivery/toolchain/
-          cp "$ANDROID_HOME/platforms/android-35/android.jar" delivery/toolchain/
       - uses: actions/upload-artifact@v4
         with:
           name: Workfashion-Time-build
@@ -61,6 +62,8 @@ jobs:
             adb shell screencap -p /sdcard/wf-smoke.png
             adb pull /sdcard/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-trip-pages.pdf delivery/smoke-trip-pages.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.xlsx delivery/smoke-report.xlsx
             adb logcat -d > delivery/runtime.log
             if grep -q 'FATAL EXCEPTION' delivery/runtime.log; then exit 1; fi
       - uses: actions/upload-artifact@v4
@@ -71,6 +74,8 @@ jobs:
             delivery/smoke.txt
             delivery/wf-smoke.png
             delivery/smoke-report.pdf
+            delivery/smoke-trip-pages.pdf
+            delivery/smoke-report.xlsx
             delivery/runtime.log
             app/build/reports/lint-results-release.html
           retention-days: 7
