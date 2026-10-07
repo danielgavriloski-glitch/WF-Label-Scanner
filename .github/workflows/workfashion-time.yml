@@ -20,6 +20,7 @@ jobs:
           gradle-version: '8.7'
       - name: Check attendance calculations
         run: node tests/core.test.js
+      - uses: android-actions/setup-android@v3
       - name: Android build
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'

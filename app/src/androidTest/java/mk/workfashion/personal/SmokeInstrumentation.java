@@ -31,6 +31,7 @@ public class SmokeInstrumentation extends Instrumentation {
             check("true".equals(js(a,"(()=>{let s=WFApp.getState();s.settings.trackStart='2026-10-01';s.settings.name='Тест Вработен';s.budgets['2026']={annual:20,carry:2,previous:1};s.records['2026-10-05']={type:'vacation',pause:0,note:'Тест на годишен одмор'};commit(s,'Проверка на зачувување');return true;})()")),"Persistence failed");
             for(String v:new String[]{"history","leave","reports","settings","home"})check("true".equals(js(a,"WFApp.setView('"+v+"');document.getElementById('app').textContent.length>100")),"Missing screen: "+v);
             check("true".equals(js(a,"JSON.parse(Android.loadState()).settings.name==='Тест Вработен'")),"Native state not retained");
+            check("true".equals(js(a,"(()=>{editDay('2026-10-06','sick',true);document.getElementById('editTo').value='2026-10-07';document.getElementById('dayForm').dispatchEvent(new Event('submit',{cancelable:true}));return WFApp.getState().records['2026-10-07'].type==='sick';})()")),"Absence range form failed");
             String encoded=js(a,"JSON.stringify(reportJson(Core.period(WFApp.getState(),'2026-10-01','2026-10-31',new Date('2026-11-01T12:00:00Z'))))");
             JSONObject report=new JSONObject(new JSONArray("["+encoded+"]").getString(0));
             byte[] pdf=MainActivity.PdfReport.create(report);check(pdf.length>2000,"PDF is empty");
