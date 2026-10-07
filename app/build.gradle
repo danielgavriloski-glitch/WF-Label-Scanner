@@ -1,0 +1,15 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'mk.workfashion.personal'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'mk.workfashion.personal'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
+    }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}

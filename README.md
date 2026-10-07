@@ -1,45 +1,25 @@
-# WF Label Scanner Android v0.2 AUTO
+# Workfashion · Мои часови
 
-Native Android app for automatic continuous scanning of one package label at a time and exporting structured results to Excel.
+Локална Android апликација за лично работно време. Автоматски понеделник–петок, 08:00–16:00, од избраниот почеток. Рачни исклучоци за смени, викенди, паузи, годишен одмор, боледување, празници, платено/неплатено отсуство и слободни денови.
 
-## Workflow
-1. Open the app; the camera and continuous scanner start immediately.
-2. Put ONE package label in frame and hold it still briefly.
-3. The app reads OCR text and barcode locally, saves the package automatically, and beeps.
-4. Remove the label. The app rearms and waits for the next label, preventing duplicate saves.
-5. Continue package by package; the active Nalog stays selected.
-6. Use the manual save button only when OCR needs a correction.
-7. Use Review / Control to inspect or delete saved rows.
-8. Export the final `.xlsx` Excel file.
+- Месечни PDF извештаи и извештаи за избран период, вистински XLSX и CSV.
+- Годишна состојба на одморот, пренесени денови и претходно искористени денови.
+- JSON бекап и враќање, локално атомско зачувување и историја на измени.
+- Нема мрежни дозволи, сметки, сервер или надворешни ресурси.
 
-## Stored data
-- Nalog / Auftrag / Order
-- Package / Box / Karton / Kolli number
-- Article / Artikel
-- Size / Größe
-- Quantity / Menge
-- Customer / Kunde
-- Barcode / EAN
-- Full OCR text from the label
-- Photo path and date/time
+## Пресметка
 
-The full OCR text is always kept so information is not lost if v0.1 does not automatically understand a field.
+Работени часови и платени отсуства се одделни. Над 8 часа во работен ден се прекувремени. Викендот прво дополнува до неделниот фонд од 40 редовни часа; остатокот е прекувремен. Платените отсуства го дополнуваат фондот. Првата нецелосна недела ги вклучува само познатите работни денови. Идните денови се план. Часовите денес се ограничени до тековниот момент, со временска зона Europe/Skopje. Ноќните смени се прикажуваат на денот на почеток и го земаат предвид летното сметање на времето.
 
-## Excel output
-- `Paketi`: one row for every scanned package.
-- `Rezime`: totals grouped by Nalog + Size, including quantity and number of packages.
+Годишниот одмор се одбива само за работни денови. Боледувањето се брои посебно; викенд во боледување нема платени работни часови. Паузите се платени по почетна поставка, со избор по запис. Празниците се внесуваат рачно.
 
-## Offline recognition
-OCR and barcode recognition use bundled ML Kit models and run on-device.
+## Изработка
 
-## Build on Windows
-1. Install current Android Studio.
-2. Extract this ZIP.
-3. Double-click `SETUP_WINDOWS.bat` once if the Gradle wrapper JAR is missing.
-4. Open this project folder in Android Studio.
-5. If asked, install Android SDK 36.
-6. Wait for Gradle Sync to finish.
-7. To make a shareable APK: **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
-8. When Android Studio says the APK was generated, click **Locate**. The file is usually `app-debug.apk`.
+JDK 17, Gradle 8.7, Android SDK platform 35 / build-tools 35.0.0.
 
-Minimum Android: API 23.
+```
+node tests/core.test.js
+gradle :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest
+```
+
+Release APK се потпишува со одделно зачуван сопствен клуч. Клучеви и лични записи не се чуваат во репозиториумот. За ажурирање задржи го истото applicationId и истиот клуч, зголеми го versionCode и инсталирај врз претходната верзија.

@@ -1,0 +1,10 @@
+/.gradle/
+**/build/
+/local.properties
+/signing/
+/dist/
+*.jks
+*.keystore
+*.apk
+*.pdf
+node_modules/
