@@ -22,6 +22,9 @@ jobs:
         run: |
           node tests/core.test.js
           node tests/trips.test.js
+          node tests/v12.test.js
+          node --check app/src/main/assets/v12-core.js
+          node --check app/src/main/assets/v12-ui.js
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
@@ -30,14 +33,15 @@ jobs:
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
           mkdir -p delivery/toolchain
-          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Workfashion_Time_v1_1_unsigned.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Workfashion_Time_v1_2_unsigned.apk
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/Workfashion_Time_v1_2_debug.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" delivery/toolchain/
       - uses: actions/upload-artifact@v4
         with:
-          name: Workfashion-Time-build
+          name: Workfashion-Time-v1-2-build
           path: delivery/
           retention-days: 7
       - name: Enable KVM
@@ -62,20 +66,18 @@ jobs:
             grep WF_SMOKE_OK delivery/smoke.txt
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
-            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-trip-pages.pdf delivery/smoke-trip-pages.pdf
-            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.xlsx delivery/smoke-report.xlsx
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-travel-report.pdf delivery/smoke-travel-report.pdf
             adb logcat -d > delivery/runtime.log
             if grep -q 'FATAL EXCEPTION' delivery/runtime.log; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Workfashion-Time-validation
+          name: Workfashion-Time-v1-2-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
             delivery/smoke-report.pdf
-            delivery/smoke-trip-pages.pdf
-            delivery/smoke-report.xlsx
+            delivery/smoke-travel-report.pdf
             delivery/runtime.log
             app/build/reports/lint-results-release.html
           retention-days: 7

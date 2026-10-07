@@ -1,0 +1,5 @@
+.logo{background:#FFD400;color:#000;font-size:15px;letter-spacing:.4px;font-weight:950}
+.trip-choice{margin:7px 0}
+#customWorkStartWrap{margin-top:8px}
+#exportTravelPdf{background:#102d35;color:#fff}
+@media(max-width:350px){.logo{font-size:13px}}
