@@ -65,6 +65,7 @@ class MbiActivity : AppCompatActivity() {
         set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }
     private var filterTo: Calendar = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
         set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
     }
     private var filterEmployeeId: String? = null
@@ -73,6 +74,8 @@ class MbiActivity : AppCompatActivity() {
     private var lastDailyExportRows: List<List<String>> = emptyList()
     private var lastWeeklyExportRows: List<List<String>> = emptyList()
     private var lastSummaryExportRows: List<List<String>> = emptyList()
+    private var lastCalendarMonths: List<AttendanceCalendarMonth> = emptyList()
+    private var attendanceLoadVersion = 0
     private var reportHeading = "Извештај за работно време"
     private var personnelReportYear: Int? = null
     private data class ReportExportSnapshot(val heading: String, val period: String, val note: String, val sections: List<ReportSection>)
@@ -1238,9 +1241,24 @@ class MbiActivity : AppCompatActivity() {
     private fun adminAttendance(reportOnly: Boolean) {
         reportHeading = "Извештај за работно време"
         personnelReportYear = null
-        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList()
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList(); lastCalendarMonths = emptyList()
         if (accountant && !reportOnly) return adminAttendance(true)
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
+
+        if (reportOnly) {
+            val months = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val previous = button("‹", panel2, Color.WHITE) { attendanceMonth(-1) }
+            val next = button("›", panel2, Color.WHITE) { attendanceMonth(1) }
+            val selectedMonth = button(SimpleDateFormat("MMMM yyyy", Locale.forLanguageTag("mk-MK")).format(filterFrom.time), panel2, gold) {
+                val selected = filterFrom.clone() as Calendar
+                pickDate(selected) { attendanceMonth(0, selected) }
+            }
+            previous.layoutParams = LinearLayout.LayoutParams(dp(50), dp(52))
+            selectedMonth.layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(4), 0, dp(4), 0) }
+            next.layoutParams = LinearLayout.LayoutParams(dp(50), dp(52))
+            months.addView(previous); months.addView(selectedMonth); months.addView(next)
+            root.addView(months)
+        }
 
         val employeeBtn = button("Вработен: $filterEmployeeName", panel2, Color.WHITE) {
             chooseEmployee { adminAttendance(reportOnly) }
@@ -1276,6 +1294,18 @@ class MbiActivity : AppCompatActivity() {
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(holder)
         loadAttendance(holder, reportOnly)
+    }
+
+    private fun attendanceMonth(delta: Int, selected: Calendar = filterFrom) {
+        filterFrom = (selected.clone() as Calendar).apply {
+            set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, delta)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        filterTo = (filterFrom.clone() as Calendar).apply {
+            set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+            set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
+        }
+        adminAttendance(true)
     }
 
     private fun chooseEmployee(done: () -> Unit) {
@@ -1322,11 +1352,17 @@ class MbiActivity : AppCompatActivity() {
 
     private fun loadAttendance(holder: LinearLayout, reportOnly: Boolean) {
         holder.removeAllViews()
+        if (dayKey(filterFrom.time) > dayKey(filterTo.time)) {
+            holder.addView(card("Провери ги датумите", "Почетниот датум треба да биде пред крајниот.", red))
+            return
+        }
         holder.addView(card("Вчитувам…", "Момент, податоците се синхронизираат.", border))
+        val generation = ++attendanceLoadVersion
         db.collection("employees").get().addOnSuccessListener { eq ->
+            if (generation != attendanceLoadVersion) return@addOnSuccessListener
             db.collection("attendance")
-                .whereGreaterThanOrEqualTo("timestamp", Timestamp(if (accountant) startOfFilterWeek() else filterFrom.time))
-                .whereLessThanOrEqualTo("timestamp", Timestamp(if (accountant) endOfFilterWeek() else filterTo.time))
+                .whereGreaterThanOrEqualTo("timestamp", Timestamp(filterFrom.time))
+                .whereLessThanOrEqualTo("timestamp", Timestamp(filterTo.time))
                 .get().addOnSuccessListener { aq ->
                     db.collection("leaveRequests").get().addOnSuccessListener { lq ->
                         db.collection("absenceDecisions").get().addOnSuccessListener { dq ->
@@ -1373,7 +1409,7 @@ class MbiActivity : AppCompatActivity() {
                                 .filter { it.getString("employeeId") in selectedIds }
                                 .associateBy { it.id }
 
-                            renderAttendanceReport(holder, employees.map { it.id to (it.getString("name") ?: it.id) }, events, approvedAnnualLeaveKeys, approvedFreeDayKeys, decisions, reportOnly)
+                            if (generation == attendanceLoadVersion) renderAttendanceReport(holder, employees.map { it.id to (it.getString("name") ?: it.id) }, events, approvedAnnualLeaveKeys, approvedFreeDayKeys, decisions, reportOnly)
                         }
                     }
                 }.addOnFailureListener { e ->
@@ -1396,7 +1432,7 @@ class MbiActivity : AppCompatActivity() {
         reportOnly: Boolean
     ) {
         if (accountant) {
-            renderAccountantReport(holder, employees, events)
+            renderAccountantReport(holder, employees, events, approvedAnnualLeaveKeys, approvedFreeDayKeys, decisions)
             return
         }
         holder.removeAllViews()
@@ -1545,7 +1581,7 @@ class MbiActivity : AppCompatActivity() {
                 }
                 reportDays.add(AttendanceReportDay(
                     eid, name, d.key, df.format(d.date), dayName(d.date), d.worked,
-                    d.pause, regular, overtime, d.covered, d.status
+                    d.pause, regular, overtime, d.covered, d.status, present = byDay[d.key].orEmpty().any { it.type == "work_start" }
                 ))
             }
             holder.addView(space(14))
@@ -1573,6 +1609,63 @@ class MbiActivity : AppCompatActivity() {
         lastSummaryExportRows = tables.summary
         lastWeeklyExportRows = weeklyRows
         renderReportSummary(holder, tables.summary)
+        renderCalendarReports(holder, employees, reportDays)
+    }
+
+    private fun renderCalendarReports(holder: LinearLayout, employees: List<Pair<String, String>>, days: List<AttendanceReportDay>) {
+        lastCalendarMonths = AttendanceCalendarTables.build(employees, days, dayKey(filterFrom.time), dayKey(filterTo.time), accountant, dayKey(Date()))
+        val calendarHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        calendarHolder.addView(text("Месечна табела • присуство и часови", 19f, Color.WHITE, true))
+        calendarHolder.addView(text(if (accountant) "До 8ч дневно; помалку работени часови се бројат реално." else "Реално работени часови по ден и вкупно во месецот.", 12f, steel))
+        calendarHolder.addView(text(AttendanceCalendarTables.LEGEND, 11f, steel))
+        lastCalendarMonths.forEach { month ->
+            calendarHolder.addView(space(10))
+            calendarHolder.addView(text(month.title, 17f, gold, true))
+            val frame = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; background = shape(panel, 12, 1) }
+            val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            month.rows.forEachIndexed { rowIndex, row ->
+                val header = rowIndex == 0
+                val total = row.first().startsWith("ВКУПНО")
+                val nameView = text(row.first(), if (header) 12f else 13f, if (total) gold else Color.WHITE, header || total)
+                val wrapped = ReportTableLayout.wrap(row.first(), dp(120).toFloat(), nameView.paint::measureText).size
+                val height = maxOf(dp(58), (wrapped * nameView.textSize * 1.3f).toInt() + dp(16))
+                nameView.apply {
+                    gravity = Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(6), dp(8), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(dp(136), height)
+                    setBackgroundColor(if (header || total) panel2 else if (rowIndex % 2 == 0) panel else bg)
+                }
+                names.addView(nameView)
+                val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                row.drop(1).forEachIndexed { offset, value ->
+                    val column = offset + 1
+                    val width = when (column) { row.lastIndex -> 116; row.lastIndex - 1 -> 86; else -> 72 }
+                    val color = when {
+                        header || total -> gold
+                        value == "НП" -> red
+                        value in listOf("О", "СД", "ОП") -> blue
+                        value == "В" || value == "·" -> steel
+                        else -> green
+                    }
+                    val cell = text(value, if (header) 11f else 14f, color, header || total, Gravity.CENTER).apply {
+                        setPadding(dp(4), dp(6), dp(4), dp(6)); layoutParams = LinearLayout.LayoutParams(dp(width), height)
+                        setBackgroundColor(if (header || total) panel2 else if (rowIndex % 2 == 0) panel else bg)
+                    }
+                    if (!header && !total && column <= month.dates.size) cell.setOnClickListener {
+                        val date = month.dates[column - 1].format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                        val detail = when (value) { "НП" -> "Нема пријава за работа"; "В" -> "Викенд без пријава"; "О" -> "Годишен одмор"; "СД" -> "Слободен ден"; "ОП" -> "Оправдано отсуство"; "·" -> "Иден ден"; else -> "Часови: $value" }
+                        AlertDialog.Builder(this).setTitle(row.first()).setMessage("$date\n$detail").setPositiveButton("Во ред", null).show()
+                    }
+                    line.addView(cell)
+                }
+                grid.addView(line)
+            }
+            val horizontal = HorizontalScrollView(this).apply { isFillViewport = false; addView(grid) }
+            frame.addView(names); frame.addView(horizontal, LinearLayout.LayoutParams(0, -2, 1f))
+            calendarHolder.addView(frame)
+        }
+        calendarHolder.addView(space(18))
+        holder.addView(calendarHolder, 0)
     }
 
     private fun dayName(date: Date): String =
@@ -1671,14 +1764,14 @@ class MbiActivity : AppCompatActivity() {
         val sections = if (personnelReportYear != null) listOf(
             ReportSection("Odmor", "ГОДИШЕН ОДМОР", lastDailyExportRows),
             ReportSection("Boluvanje", "БОЛУВАЊА", lastWeeklyExportRows)
-        ) else listOf(
+        ) else lastCalendarMonths.flatMap { month -> if (type == "pdf") month.pdfSections() else listOf(month.excelSection()) } + listOf(
             ReportSection("Vkupno", "ВКУПНО ПО ВРАБОТЕН", lastSummaryExportRows),
             ReportSection("Dnevno", "ДНЕВНА ЕВИДЕНЦИЈА - ПО ДАТУМ", lastDailyExportRows),
             ReportSection("Nedelno", "НЕДЕЛЕН ПРЕСЕК", lastWeeklyExportRows)
         )
         val note = when {
             personnelReportYear != null -> "Годишниот одмор и болувањето се евидентираат одделно."
-            accountant -> "Редовни часови: најмногу 8ч дневно и 40ч неделно."
+            accountant -> "Часови за сметководство: најмногу 8ч дневно; помалку од 8ч се бројат реално."
             else -> "Пауза: вклучена во работеното време. Одмор/оправдано: прикажано одделно."
         }
         pendingReportExport = ReportExportSnapshot(
@@ -1973,7 +2066,7 @@ class MbiActivity : AppCompatActivity() {
             .joinToString("") { "%02x".format(it) }
     private fun accountantHome() {
         adminHeader("Сметководство", "Преглед на редовно работно време, одмор и болување.")
-        root.addView(button("Извештаи • 8ч дневно / 40ч неделно") { adminAttendance(true) })
+        root.addView(button("Месечни извештаи • најмногу 8ч дневно") { adminAttendance(true) })
         root.addView(button("Одмор и болување", blue, Color.WHITE) { personnelRecords() })
     }
 
@@ -1986,38 +2079,52 @@ class MbiActivity : AppCompatActivity() {
         set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999)
     }.time
 
-    private fun renderAccountantReport(holder: LinearLayout, employees: List<Pair<String,String>>, events: List<AttEvent>) {
+    private fun renderAccountantReport(holder: LinearLayout, employees: List<Pair<String,String>>, events: List<AttEvent>,
+        annual: Set<String>, free: Set<String>, decisions: Map<String, com.google.firebase.firestore.DocumentSnapshot>) {
         holder.removeAllViews()
         val reportDays = mutableListOf<AttendanceReportDay>()
         val weekly = mutableListOf(listOf("Вработен", "Недела", "Редовни часови"))
         val dayCap = 8L * 3600000L
-                for ((id, name) in employees) {
+        val toKey = minOf(dayKey(filterTo.time), dayKey(Date()))
+        for ((id, name) in employees) {
             val perDay = events.filter { it.employeeId == id }.groupBy { dayKey(it.time) }
-                .mapValues { minOf(dayCap, dailyWorkedMillis(it.value)) }.toSortedMap()
-            perDay.entries.groupBy { weekMondayKey(dateAtNoon(it.key)) }.toSortedMap().forEach { (wk, entries) ->
-                val allocation = RegularHours.allocateWeek(entries.associate { it.key to it.value })
-                var displayedTotal = 0L
-                entries.sortedBy { it.key }.forEach { (day, hours) ->
-                    val allowed = allocation[day] ?: 0L
-                    val date = dateAtNoon(day)
-                    if (date >= filterFrom.time && date <= filterTo.time) {
-                        reportDays.add(AttendanceReportDay(id, name, day, df.format(date), dayName(date), allowed, regular = allowed))
-                        holder.addView(card("$name • ${df.format(date)}", "Редовни часови: ${formatDuration(allowed)}", blue))
-                        displayedTotal += allowed
-                    }
+            val cal = filterFrom.clone() as Calendar
+            cal.set(Calendar.HOUR_OF_DAY, 12)
+            val employeeDays = mutableListOf<AttendanceReportDay>()
+            while (dayKey(cal.time) <= toKey) {
+                val date = cal.time; val key = dayKey(date); val compound = id + "_" + key
+                val dayEvents = perDay[key].orEmpty()
+                val worked = dailyWorkedMillis(dayEvents)
+                val allowed = worked.coerceIn(0L, dayCap)
+                val present = dayEvents.any { it.type == "work_start" }
+                val status = when {
+                    present -> "Присутен"
+                    compound in annual || decisions[compound]?.getString("decision") == "annual_leave" -> "Одобрен годишен одмор"
+                    compound in free -> "Одобрен слободен ден"
+                    decisions[compound]?.getString("decision") == "justified" -> "Оправдано отсуство"
+                    cal.get(Calendar.DAY_OF_WEEK) in listOf(Calendar.SATURDAY, Calendar.SUNDAY) -> "Викенд"
+                    else -> "Нема евиденција"
                 }
-                weekly.add(listOf(name, df.format(dateAtNoon(wk)), formatDuration(displayedTotal)))
-                holder.addView(card("$name • недела од ${df.format(dateAtNoon(wk))}", "Редовни часови во избраниот период: ${formatDuration(displayedTotal)} / 40ч", green))
+                employeeDays.add(AttendanceReportDay(id, name, key, df.format(date), dayName(date), worked, regular = allowed, status = status, present = present))
+                holder.addView(card("$name • ${df.format(date)}", "Редовни часови: ${formatDuration(allowed)}", if (present) blue else border))
+                cal.add(Calendar.DAY_OF_MONTH, 1)
+            }
+            reportDays.addAll(employeeDays)
+            employeeDays.groupBy { weekMondayKey(dateAtNoon(it.dateKey)) }.toSortedMap().forEach { (wk, entries) ->
+                val total = entries.sumOf { it.worked.coerceIn(0L, dayCap) }
+                weekly.add(listOf(name, df.format(dateAtNoon(wk)), formatDuration(total)))
             }
         }
         if (reportDays.isEmpty()) holder.addView(card("Нема евиденција", "Нема записи за избраниот период."))
         val tables = AttendanceReportTables.build(employees, reportDays, accountant = true)
         lastDailyExportRows = tables.daily; lastWeeklyExportRows = weekly; lastSummaryExportRows = tables.summary
         renderReportSummary(holder, tables.summary)
+        renderCalendarReports(holder, employees, reportDays)
     }
 
     private fun personnelRecords(year: Int = Calendar.getInstance().get(Calendar.YEAR)) {
         if (!administrator && !accountant) return
+        attendanceLoadVersion++
         reportHeading = "Годишен одмор и болување • $year"
         personnelReportYear = year
         lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList()

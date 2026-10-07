@@ -53,7 +53,8 @@ object AttendancePdfExporter {
             body.color = ink
             canvas.drawText("Период: $period", left, 105f, bold)
             canvas.drawText(note, left, 121f, muted)
-            y = 145f
+            if (sections.any { it.calendar }) canvas.drawText(AttendanceCalendarTables.LEGEND, left, 135f, muted)
+            y = if (sections.any { it.calendar }) 159f else 145f
         }
 
         fun columnWeight(label: String): Float = when (label) {
@@ -63,6 +64,7 @@ object AttendancePdfExporter {
             "Датум", "Од", "До" -> 1.15f
             "Ден" -> 1.2f
             "Денови со работа", "Одмор/оправдано", "Редовен фонд", "Редовни часови", "Прекувремено" -> 1.4f
+            "Вкупно месец" -> 1.6f
             else -> 1f
         }
 
@@ -122,11 +124,22 @@ object AttendancePdfExporter {
                         page!!.canvas.drawRect(left, y, right, y + height, fill)
                         var x = left
                         cellLines.forEachIndexed { i, lines ->
+                            if (section.calendar && !isTotal && i > 0 && i < headers.size - 2) {
+                                val value = row.getOrElse(i) { "" }
+                                fill.color = when (value) {
+                                    "НП" -> Color.rgb(255, 235, 235)
+                                    "О", "СД", "ОП" -> Color.rgb(232, 241, 253)
+                                    "В", "·" -> Color.rgb(237, 240, 243)
+                                    else -> Color.rgb(230, 246, 235)
+                                }
+                                page!!.canvas.drawRect(x, y, x + widths[i], y + height, fill)
+                            }
                             for (j in 0 until count) {
                                 lines.getOrNull(offset + j)?.let { text ->
                                     page!!.canvas.drawText(text, x + 7f, y + 12f + j * lineHeight, textPaint)
                                 }
                             }
+                            if (section.calendar) page!!.canvas.drawLine(x, y, x, y + height, border)
                             x += widths[i]
                         }
                         page!!.canvas.drawLine(left, y + height, right, y + height, border)

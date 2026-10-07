@@ -1,6 +1,7 @@
 package mk.wf.labelscanner
 
-data class ReportSection(val sheetName: String, val title: String, val rows: List<List<String>>)
+data class ReportSection(val sheetName: String, val title: String, val rows: List<List<String>>, val calendar: Boolean = false,
+    val calendarDurations: List<List<Long?>> = emptyList())
 
 data class AttendanceReportDay(
     val employeeId: String,
@@ -13,7 +14,8 @@ data class AttendanceReportDay(
     val regular: Long = worked,
     val overtime: Long = 0L,
     val covered: Long = 0L,
-    val status: String = ""
+    val status: String = "",
+    val present: Boolean = worked > 0L
 )
 
 data class AttendanceReportTables(val daily: List<List<String>>, val summary: List<List<String>>) {
@@ -23,19 +25,31 @@ data class AttendanceReportTables(val daily: List<List<String>>, val summary: Li
             return "${minutes / 60}ч ${minutes % 60}м"
         }
 
+        /** Combine all sessions first, then apply the accounting limit once per employee/day. */
+        fun visibleDays(employees: List<Pair<String, String>>, days: List<AttendanceReportDay>, accountant: Boolean): List<AttendanceReportDay> {
+            val names = employees.toMap()
+            return days.filter { it.employeeId in names }.groupBy { it.employeeId to it.dateKey }.values.map { sessions ->
+                val first = sessions.first()
+                val worked = sessions.sumOf { it.worked.coerceAtLeast(0L) }
+                val combined = first.copy(employeeName = names.getValue(first.employeeId), worked = worked,
+                    pause = sessions.sumOf { it.pause }, regular = sessions.sumOf { it.regular },
+                    overtime = sessions.sumOf { it.overtime }, covered = sessions.sumOf { it.covered },
+                    present = sessions.any { it.present || it.worked > 0L })
+                if (accountant) {
+                    val allowed = worked.coerceIn(0L, 8L * 3600000L)
+                    combined.copy(worked = allowed, regular = allowed, pause = 0L, overtime = 0L, covered = 0L,
+                        status = if (combined.present) "Присутен" else combined.status)
+                } else combined
+            }
+        }
+
         fun build(
             employees: List<Pair<String, String>>,
             days: List<AttendanceReportDay>,
             accountant: Boolean = false
         ): AttendanceReportTables {
             // Employee IDs keep two people with the same name separate in the totals.
-            val selectedIds = employees.map { it.first }.toSet()
-            val selected = days.filter { it.employeeId in selectedIds }.map { day ->
-                if (accountant) {
-                    val allowed = day.regular.coerceIn(0L, 8L * 3600000L)
-                    day.copy(worked = allowed, regular = allowed, pause = 0L, overtime = 0L, covered = 0L, status = "")
-                } else day
-            }
+            val selected = visibleDays(employees, days, accountant)
             val sorted = selected.sortedWith(compareBy({ it.dateKey }, { it.employeeName }, { it.employeeId }))
             val daily = mutableListOf(
                 if (accountant) listOf("Датум", "Ден", "Вработен", "Редовни часови")

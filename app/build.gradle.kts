@@ -7,7 +7,7 @@ android {
  namespace = "mk.wf.labelscanner"
  compileSdk = 35
  defaultConfig {
-  applicationId = "com.mbidesign.app.next"; minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "4.1"
+  applicationId = "com.mbidesign.app.next"; minSdk = 26; targetSdk = 35; versionCode = 6; versionName = "4.2"
   testInstrumentationRunner = "mk.wf.labelscanner.ReportPreviewInstrumentation"
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

@@ -41,6 +41,23 @@ class ReportPreviewInstrumentation : Instrumentation() {
                     "Пауза: вклучена во работеното време. Одмор/оправдано: прикажано одделно.")
             }
             File(directory, "MBI_Izvestaj_Primer.xlsx").outputStream().use { AttendanceXlsxExporter.write(it, sections) }
+            for (accounting in listOf(false, true)) {
+                val calendarPeople = people + ("boris" to "Борис Петров")
+                val calendar = AttendanceCalendarTables.build(calendarPeople, days, "20261001", "20261031", accounting, "20261007").single()
+                check(calendar.rows[1].last() == if (accounting) "24:00" else "25:30")
+                check(calendar.rows[2].last() == "15:30")
+                check(calendar.rows[3].last() == "0:00")
+                val suffix = if (accounting) "Smetkovodstvo" else "Admin"
+                val summary = AttendanceReportTables.build(calendarPeople, days, accounting)
+                val pdfSections = calendar.pdfSections() + ReportSection("Vkupno", "ВКУПНО ПО ВРАБОТЕН", summary.summary)
+                val note = if (accounting) "До 8ч дневно. Ако се работени помалку часови, се бројат реалните часови." else "Реално работени часови. Одморот се евидентира одделно."
+                File(directory, "MBI_Mesecna_Tabela_${suffix}.pdf").outputStream().use {
+                    AttendancePdfExporter.write(it, "ПРИМЕР - измислени податоци | Месечна табела", "01.10.2026 - 31.10.2026", pdfSections, note)
+                }
+                File(directory, "MBI_Mesecna_Tabela_${suffix}.xlsx").outputStream().use {
+                    AttendanceXlsxExporter.write(it, listOf(calendar.excelSection(), ReportSection("Vkupno", "ВКУПНО ПО ВРАБОТЕН", summary.summary)))
+                }
+            }
             val longRows = mutableListOf(listOf("Вработен", "Од", "До", "Причина"))
             longRows.add(listOf("Вработен со многу долго име Стојановски Трајковски Петровски", "01.10.2026", "31.10.2026",
                 "Тест на повеќе страници со долг текст. ".repeat(250) + "КРАЈ_НА_ДОЛГИОТ_ТЕКСТ"))

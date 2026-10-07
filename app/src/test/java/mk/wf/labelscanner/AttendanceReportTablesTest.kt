@@ -59,4 +59,21 @@ class AttendanceReportTablesTest {
         ))
         assertEquals("0ч 3м", result.summary.last()[2])
     }
+
+    @Test fun accountantCountsActualShortHoursAndDoesNotPayLeaveAsWorkedHours() {
+        val result = AttendanceReportTables.build(listOf("a" to "Ана"), listOf(
+            day("a", "Ана", "20261005", 6).copy(worked = 6 * hour + hour / 2, regular = 8 * hour),
+            day("a", "Ана", "20261006", 0).copy(regular = 8 * hour, covered = 8 * hour, status = "Годишен одмор")
+        ), accountant = true)
+        assertEquals("6ч 30м", result.summary[1].last())
+        assertEquals("0ч 0м", result.daily.last().last())
+    }
+
+    @Test fun accountantCapsCombinedSameDaySessionsOnce() {
+        val result = AttendanceReportTables.build(listOf("a" to "Ана"), listOf(
+            day("a", "Ана", "20261005", 5), day("a", "Ана", "20261005", 5)
+        ), accountant = true)
+        assertEquals(2, result.daily.size)
+        assertEquals("8ч 0м", result.summary[1].last())
+    }
 }

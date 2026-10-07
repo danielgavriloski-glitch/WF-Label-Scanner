@@ -1,7 +1,7 @@
-name: Build and verify MBI daily reports
+name: Build and verify MBI monthly attendance tables
 on:
   push:
-    branches: [mbi-v4-daily-reports]
+    branches: [mbi-v4-monthly-matrix]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: MBI-v4.1-release-and-tests
+          name: MBI-v4.2-release-and-tests
           path: |
             build/report-release/manifest.json
             build/report-tools/apksigner.jar
