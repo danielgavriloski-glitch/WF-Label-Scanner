@@ -179,6 +179,49 @@ function travelReportJson(p){
   };
 }
 
+
+function overtimeReportJson(p){
+  const b=Core.overtimeBreakdown(state,p.from,p.to);
+  const fullDays=['Недела','Понеделник','Вторник','Среда','Четврток','Петок','Сабота'];
+  const rows=b.earned.map(function(r){
+    const when=Core.displayDate(r.date)+' · '+fullDays[Core.weekday(r.date)];
+    const time=r.start?r.start+'–'+r.end+(r.overnight?' +1':''):'—';
+    const note=r.note?' · Белешка: '+r.note:'';
+    return [when,time,Core.hh(r.worked),Core.hh(r.overtime),r.reason+note];
+  });
+  b.deductions.forEach(function(d){
+    rows.push([Core.displayDate(d.date)+' · '+fullDays[Core.weekday(d.date)],'Слободен ден','—','−'+Core.hh(d.applied),d.reason+(d.note?' · '+d.note:'')]);
+  });
+  if(!rows.length)rows.push(['—','—','—','0ч','Нема прекувремени часови во избраниот период.']);
+  return {
+    company:state.settings.company,
+    name:state.settings.name,
+    title:'Само прекувремени · '+periodLabel(p),
+    from:p.from,to:p.to,generated:Core.displayDate(Core.today()),
+    summary:[
+      ['Нето прекувремено',Core.hh(b.net)],
+      ['Создадено прекувремено',Core.hh(b.gross)],
+      ['Искористено за слободни',b.compApplied?'−'+Core.hh(b.compApplied):'0ч'],
+      ['Денови со прекувремено',String(b.earned.length)]
+    ],
+    details:[
+      'Нето прекувремено = создадено прекувремено − часови искористени за слободни денови.',
+      'Секој ред покажува на кој датум и ден се направени часовите и како се добиени во пресметката.',
+      'За работен ден: над дневниот фонд од 8 часа оди во прекувремено. За викенд: прво се дополнува неделниот фонд до 40 часа, а остатокот е прекувремен.'
+    ],
+    headers:['Датум / ден','Работно време','Работено','Прекувр.','Како е пресметано'],
+    rows:rows,
+    notes:[]
+  };
+}
+
+function exportOvertimePdf(p){
+  const data=overtimeReportJson(p);
+  const name='Workfashion_Prekuvremeni_'+p.from+'_'+p.to+'.pdf';
+  if(typeof Android!=='undefined')Android.exportPdf(name,JSON.stringify(data));
+  else{window.lastOvertimePdfReport=data;toast('PDF само за прекувремени е подготвен.');}
+}
+
 reportJson=workReportJson;
 exportPdf=function(p){exportWorkPdf(p);};
 function exportWorkPdf(p){
@@ -201,20 +244,21 @@ exportRows=function(p){
 
 renderReports=function(){
   let p;try{p=reportPeriod();}catch(e){reportFrom=Core.monthBounds(month)[0];reportTo=Core.monthBounds(month)[1];p=reportPeriod();}
-  $('app').innerHTML=header('Извештаи','Два одделни PDF извештаи: работно време и работа/службен пат.')+
+  $('app').innerHTML=header('Извештаи','Три одделни PDF извештаи: работно време, работа/службен пат и само прекувремени.')+
     '<div class="switch-tabs"><button id="monthlyTab" class="'+(reportMode==='month'?'selected':'')+'">Месечен</button><button id="rangeTab" class="'+(reportMode==='range'?'selected':'')+'">Избран период</button></div>'+
     (reportMode==='month'?monthSwitch():'<div class="grid"><label class="field"><span>Од</span><input type="date" id="reportFrom" value="'+reportFrom+'" min="2000-01-01" max="2100-12-31"></label><label class="field"><span>До</span><input type="date" id="reportTo" value="'+reportTo+'" min="2000-01-01" max="2100-12-31"></label></div><button id="applyPeriod" class="btn secondary full">Прикажи го периодот</button>')+
     '<div class="grid stats">'+stat('Работни денови',String(p.workDays),'со реално работени часови','accent')+stat('Работени часови',Core.hh(p.worked),'без одмор и празник')+stat('Прекувремено',Core.hh(p.overtime),'по слободни денови','warn')+stat('На пат / возење',Core.hh(p.travel),p.tripRows.length+' патувања')+'</div>'+
     '<section class="card"><h2>Одмор, празник и прекувремено</h2>'+
       [['Прекувремено пред слободни',Core.hh(p.grossOvertime)],['Искористен слободен ден',p.compDays+' дена · −'+Core.hh(p.compTime)],['Годишен одмор',p.counts.vacation+' дена'],['Неработен ден – празник',p.counts.holiday+' дена'],['Боледување',p.counts.sick+' дена'],['Работа на празник',Core.hh(p.holidayWork)]].map(x=>'<div class="mini-row"><span class="muted">'+x[0]+'</span><strong>'+x[1]+'</strong></div>').join('')+
     '</section>'+tripReportMarkup(p)+
-    '<section class="card"><h2>PDF документи</h2><p class="small muted">Се зачувуваат како два посебни документи.</p><button class="btn full" id="exportWorkPdf">'+icon('report')+'PDF 1 · Работно време</button><button class="btn secondary full" id="exportTravelPdf" style="margin-top:10px">'+icon('report')+'PDF 2 · Работа / пат</button><div class="actions"><button class="btn light" id="exportExcel">'+icon('download')+'Excel</button><button class="btn light" id="exportCsv">CSV</button></div></section>'+
+    '<section class="card"><h2>PDF документи</h2><p class="small muted">Се зачувуваат како три посебни документи.</p><button class="btn full" id="exportWorkPdf">'+icon('report')+'PDF 1 · Работно време</button><button class="btn secondary full" id="exportTravelPdf" style="margin-top:10px">'+icon('report')+'PDF 2 · Работа / пат</button><button class="btn secondary full" id="exportOvertimePdf" style="margin-top:10px">'+icon('report')+'PDF 3 · Само прекувремени</button><div class="actions"><button class="btn light" id="exportExcel">'+icon('download')+'Excel</button><button class="btn light" id="exportCsv">CSV</button></div></section>'+
     '<section class="card"><h2>Преглед по ден</h2><div class="table-wrap"><table class="table"><thead><tr><th>Датум</th><th>Вид</th><th>Работено</th><th>На пат</th></tr></thead><tbody>'+p.rows.filter(r=>r.covered).map(r=>'<tr><td>'+r.date.slice(8)+'.'+r.date.slice(5,7)+'</td><td>'+Core.TYPES[r.type]+(r.future?' · план':'')+'</td><td>'+Core.hh(r.worked)+'</td><td>'+Core.hh(r.travel)+'</td></tr>').join('')+'</tbody></table></div></section>';
   $('monthlyTab').onclick=function(){reportMode='month';const b=Core.monthBounds(month);reportFrom=b[0];reportTo=b[1];render();};
   $('rangeTab').onclick=function(){reportMode='range';render();};
   if(reportMode==='month')bindMonth();else $('applyPeriod').onclick=function(){try{const f=$('reportFrom').value,t=$('reportTo').value;Core.dates(f,t);reportFrom=f;reportTo=t;render();}catch(e){toast(e.message);}};
   $('exportWorkPdf').onclick=function(){safeExport(()=>exportWorkPdf(reportPeriod()));};
   $('exportTravelPdf').onclick=function(){safeExport(()=>exportTravelPdf(reportPeriod()));};
+  $('exportOvertimePdf').onclick=function(){safeExport(()=>exportOvertimePdf(reportPeriod()));};
   $('exportExcel').onclick=function(){safeExport(()=>exportExcel(reportPeriod()));};
   $('exportCsv').onclick=function(){safeExport(()=>exportCsv(reportPeriod()));};
 };
@@ -222,8 +266,25 @@ renderReports=function(){
 const renderSettingsPrevious=renderSettings;
 renderSettings=function(){
   renderSettingsPrevious();
+  const tracking=$('trackingStart');
+  if(tracking&&!$('startThisMonth')){
+    const quick=document.createElement('button');
+    quick.type='button';
+    quick.id='startThisMonth';
+    quick.className='btn light full';
+    quick.style.margin='8px 0 12px';
+    quick.textContent='Почни од 1-ви овој месец';
+    tracking.closest('label').insertAdjacentElement('afterend',quick);
+    quick.onclick=function(){
+      const first=Core.today().slice(0,7)+'-01';
+      const next=JSON.parse(JSON.stringify(state));
+      next.settings.trackStart=first;
+      commit(next,'Почеток на евиденцијата од '+Core.displayDate(first));
+      toast('Евиденцијата е поставена од '+Core.displayDate(first)+'. Поминатите денови од месецот се вклучени.');
+    };
+  }
   const ps=document.querySelectorAll('#app p');
-  for(const p of ps)if(p.textContent.indexOf('Workfashion · Мои часови · v1.1')>=0)p.textContent='Workfashion · Мои часови · v1.2 · WFAG';
+  for(const p of ps)if(p.textContent.indexOf('Workfashion · Мои часови · v1.1')>=0)p.textContent='Workfashion · Мои часови · v1.3 · WFAG';
 };
 
 if(window.WFApp){
@@ -233,6 +294,8 @@ if(window.WFApp){
   window.WFApp.exportRows=exportRows;
   window.WFApp.exportWorkPdf=exportWorkPdf;
   window.WFApp.exportTravelPdf=exportTravelPdf;
+  window.WFApp.overtimeReportJson=overtimeReportJson;
+  window.WFApp.exportOvertimePdf=exportOvertimePdf;
 }
 if(state)render();
 })();

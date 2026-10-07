@@ -54,4 +54,21 @@ function trip(s,date,workStart,departure,arrival){
   assert.throws(()=>Core.putTrip(s,{date:'2026-10-07',workStart:'11:00',departure:'10:00',arrivalDate:'2026-10-07',arrival:'19:00',note:''}),/Почетокот на работа/);
 }
 
-console.log('WFAG v1.2 calculations OK');
+
+{
+  let s=fresh();
+  s=trip(s,'2026-10-07','08:00','10:00','19:00');
+  s.records['2026-10-09']={type:'off',pause:0,note:'слободен ден од прекувремени'};
+  Core.validate(s);
+  const b=Core.overtimeBreakdown(s,'2026-10-05','2026-10-11',new Date('2026-10-12T12:00:00Z'));
+  assert.strictEqual(b.gross,180,'overtime-only report must show 3 earned overtime hours');
+  assert.strictEqual(b.compApplied,180,'only available overtime may be deducted by a free day');
+  assert.strictEqual(b.net,0,'net overtime must be zero after the compensatory day');
+  assert.strictEqual(b.earned.length,1,'overtime-only report must identify the exact overtime day');
+  assert.strictEqual(b.earned[0].date,'2026-10-07');
+  assert.match(b.earned[0].reason,/службен пат/,'report must explain how overtime was created');
+  assert.strictEqual(b.deductions.length,1,'report must identify the compensatory free day');
+  assert.strictEqual(b.deductions[0].date,'2026-10-09');
+}
+
+console.log('WFAG v1.3 calculations OK');

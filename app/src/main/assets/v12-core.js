@@ -198,5 +198,62 @@ Core.period=function(state,from,to,now=new Date()){
   };
 };
 
+
+function overtimeReason(r){
+  if(r.type==='holidayWork'){
+    return 'Работа на празник: '+Core.hh(r.worked)+' работено, од кои '+Core.hh(r.overtime)+' се пресметани како прекувремени.';
+  }
+  if(!r.scheduled){
+    if(r.regular>0){
+      return 'Викенд / неработен ден: '+Core.hh(r.regular)+' го дополнуваат неделниот фонд, а остатокот '+Core.hh(r.overtime)+' е прекувремено.';
+    }
+    return 'Работа во викенд / неработен ден: '+Core.hh(r.overtime)+' се прекувремени.';
+  }
+  if(r.trips&&r.trips.length){
+    return 'Продолжен работен ден со службен пат: '+Core.hh(r.worked)+' работено − '+Core.hh(r.regular)+' редовно = '+Core.hh(r.overtime)+' прекувремено.';
+  }
+  return 'Продолжен работен ден: '+Core.hh(r.worked)+' работено − '+Core.hh(r.regular)+' редовно = '+Core.hh(r.overtime)+' прекувремено.';
+}
+
+Core.overtimeBreakdown=function(state,from,to,now=new Date()){
+  const p=Core.period(state,from,to,now);
+  const earned=p.rows.filter(r=>r.covered&&!r.future&&r.overtime>0).map(r=>({
+    date:r.date,
+    type:r.type,
+    scheduled:r.scheduled,
+    start:r.start||'',
+    end:r.end||'',
+    overnight:!!r.overnight,
+    worked:r.worked,
+    regular:r.regular,
+    overtime:r.overtime,
+    travel:r.travel||0,
+    note:r.note||'',
+    reason:overtimeReason(r)
+  }));
+  let remaining=p.compApplied;
+  const deductions=[];
+  for(const r of p.rows){
+    if(remaining<=0)break;
+    if(!(r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off'))continue;
+    const applied=Math.min(state.settings.dayMinutes,remaining);
+    deductions.push({
+      date:r.date,
+      applied:applied,
+      note:r.note||'',
+      reason:'Искористен слободен ден од прекувремени: −'+Core.hh(applied)+'.'
+    });
+    remaining-=applied;
+  }
+  return {
+    period:p,
+    earned:earned,
+    deductions:deductions,
+    gross:p.grossOvertime,
+    compApplied:p.compApplied,
+    net:p.overtime
+  };
+};
+
 return Core;
 });
