@@ -34,6 +34,7 @@ jobs:
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" delivery/toolchain/
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" delivery/toolchain/
       - uses: actions/upload-artifact@v4
         with:
           name: Workfashion-Time-build
@@ -59,6 +60,10 @@ jobs:
             adb shell am instrument -w mk.workfashion.personal.test/mk.workfashion.personal.SmokeInstrumentation > delivery/smoke.txt
             cat delivery/smoke.txt
             grep WF_SMOKE_OK delivery/smoke.txt
+            adb shell am start -W -n mk.workfashion.personal/.MainActivity
+            adb shell uiautomator dump --compressed /sdcard/wf-ui.xml
+            adb pull /sdcard/wf-ui.xml delivery/wf-ui.xml
+            grep -q 'Одам на пат' delivery/wf-ui.xml
             adb shell screencap -p /sdcard/wf-smoke.png
             adb pull /sdcard/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
@@ -73,6 +78,7 @@ jobs:
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
+            delivery/wf-ui.xml
             delivery/smoke-report.pdf
             delivery/smoke-trip-pages.pdf
             delivery/smoke-report.xlsx
