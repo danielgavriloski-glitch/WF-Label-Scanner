@@ -12,7 +12,7 @@ function weekday(date){return new Date(date+'T12:00:00Z').getUTCDay();}
 function weekStart(date){return plus(date,-((weekday(date)+6)%7));}
 function dates(from,to){if(!dateValid(from)||!dateValid(to)||from>to)throw Error('Провери ги датумите.');const out=[];for(let d=from;d<=to;d=plus(d,1)){out.push(d);if(out.length>37000)throw Error('Периодот е предолг.');}return out;}
 function minutes(t){if(typeof t!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t))throw Error('Внеси валидно време.');return Number(t.slice(0,2))*60+Number(t.slice(3));}
-function parts(now=new Date()){const a=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now);const p={};a.forEach(x=>p[x.type]=x.value);return {date:`${p.year}-${p.month}-${p.day}`,minute:Number(p.hour)*60+Number(p.minute),...p};}
+function parts(now=new Date()){const a=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now);const p={};a.forEach(x=>p[x.type]=x.value);return {...p,date:`${p.year}-${p.month}-${p.day}`,minuteOfDay:Number(p.hour)*60+Number(p.minute)};}
 function today(now){return parts(now).date;}
 function timestamp(date,time){const [y,m,d]=date.split('-').map(Number), min=minutes(time);const wanted=Date.UTC(y,m-1,d,Math.floor(min/60),min%60);let t=wanted;for(let i=0;i<3;i++){const p=parts(new Date(t));const shown=Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute));const correction=wanted-shown;if(!correction)break;t+=correction;}return t;}
 function monthBounds(month){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw Error('Невалиден месец.');const from=month+'-01';return [from,new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0,12)).toISOString().slice(0,10)];}
@@ -53,7 +53,7 @@ function day(state,date,now=new Date()){
  const worked=isWork?Math.max(0,Math.floor(elapsed)-(pausePaid?0:pause)):0;
  const expected=covered&&scheduled?s.dayMinutes:0;
  const scheduleSpan=Math.max(1,minutes(s.end)-minutes(s.start));
- const ratio=date<p.date?1:date>p.date?0:Math.min(1,Math.max(0,(p.minute-minutes(s.start))/scheduleSpan));
+ const ratio=date<p.date?1:date>p.date?0:Math.min(1,Math.max(0,(p.minuteOfDay-minutes(s.start))/scheduleSpan));
  const expectedElapsed=Math.floor(expected*ratio);
  const credit=PAID.includes(type)&&covered&&scheduled?Math.floor(s.dayMinutes*ratio):0;
  const planWork=isWork?Math.max(0,Math.floor(span)-(pausePaid?0:(r?r.pause:0))):0;
