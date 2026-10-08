@@ -1,3 +1,4 @@
+def mapsApiKey = (project.findProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY") ?: "").toString()
 plugins { id 'com.android.application' }
 android {
     namespace 'mk.workfashion.personal'
@@ -9,7 +10,11 @@ android {
         versionCode 5
         versionName '1.4'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
     }
     buildTypes { release { minifyEnabled false } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}
+dependencies {
+    implementation 'com.google.android.gms:play-services-maps:20.0.0'
 }
