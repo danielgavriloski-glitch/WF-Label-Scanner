@@ -3,3 +3,14 @@
 #customWorkStartWrap{margin-top:8px}
 #exportTravelPdf{background:#102d35;color:#fff}
 @media(max-width:350px){.logo{font-size:13px}}
+
+/* WFAG v1.4 · GPS route history */
+.route-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.route-box h3{margin:0 0 2px}.route-live{font-size:10px;font-weight:900;letter-spacing:.7px;border-radius:20px;padding:5px 8px;background:#eef2f3;color:#74868b}.route-live.on{background:#d9f5e9;color:#16774e}
+.route-tabs{margin:12px 0}.route-session{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}.route-session:first-child{border-top:0;margin-top:0}
+.route-stop{display:flex;gap:11px;padding:12px 0;border-top:1px solid #edf1f2}.route-stop-main{flex:1;min-width:0}.route-pin{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:var(--teal);color:#fff;font-size:11px;font-weight:900;flex-shrink:0;margin-top:2px}
+.route-coords{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#60757b;margin-top:4px}.route-map-open{padding-left:0}
+.route-map-svg{width:100%;height:auto;display:block;background:linear-gradient(180deg,#edf7f4,#f8fbfb);border:1px solid #d8e7e5;border-radius:14px}
+.route-map-svg polyline{fill:none;stroke:var(--teal);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.route-map-svg circle{fill:#102d35;stroke:#fff;stroke-width:2}.route-map-svg text{fill:#fff;font-size:8px;text-anchor:middle;font-weight:800}
+.route-map-empty{padding:28px 15px;text-align:center;border:1px dashed #bfd3d0;border-radius:14px;color:var(--muted);font-size:12px}.route-map-note{margin:8px 0 12px}.route-privacy{margin:9px 0 0}
+.route-prompt-place{background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin:0 0 14px}.route-prompt-place strong,.route-prompt-place span{display:block}.route-prompt-place span{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);margin-top:4px}

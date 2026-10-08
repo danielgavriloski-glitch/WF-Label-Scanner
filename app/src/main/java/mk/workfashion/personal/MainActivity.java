@@ -1,6 +1,8 @@
 package mk.workfashion.personal;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -31,12 +33,13 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
-    private static final int CREATE_FILE=71, OPEN_BACKUP=72, MAX_BYTES=16*1024*1024;
+    private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, MAX_BYTES=16*1024*1024;
     WebView webView;
     private AtomicFile stateFile;
     private byte[] pendingBytes;
     private String pendingName;
     private boolean ready=false;
+    private String pendingRouteTripId="";
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
@@ -88,6 +91,29 @@ public class MainActivity extends Activity {
             out=stateFile.startWrite();out.write(text.getBytes(StandardCharsets.UTF_8));stateFile.finishWrite(out);return true;
         }catch(Exception e){if(out!=null)stateFile.failWrite(out);return false;}
     }
+
+    private void startRouteService(String tripId){
+        Intent i=new Intent(this,RouteTrackingService.class);
+        i.setAction(RouteTrackingService.ACTION_START);
+        i.putExtra("tripId",tripId==null?"":tripId);
+        if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
+    }
+    private void requestRouteStart(String tripId){
+        runOnUiThread(()->{
+            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&
+               checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
+                pendingRouteTripId=tripId==null?"":tripId;
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},ROUTE_PERMISSION);
+            }else startRouteService(tripId);
+        });
+    }
+    private void stopRouteService(){
+        runOnUiThread(()->{
+            RouteTrackingService.finishSession(this);
+            stopService(new Intent(this,RouteTrackingService.class));
+            if(ready&&webView!=null)webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);
+        });
+    }
     public class LocalBridge {
         @JavascriptInterface public String loadState(){return readState();}
         @JavascriptInterface public boolean saveState(String text){return writeState(text);}
@@ -96,6 +122,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void exportPdf(String name,String json){try{requestSave(name,PdfReport.create(new JSONObject(json)),"application/pdf");}catch(Exception e){error("PDF извештајот не се подготви: "+e.getMessage());}}
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream"});i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_BACKUP);}catch(Exception e){error("Не се отвори изборот за бекап.");}});}
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
+        @JavascriptInterface public String getRouteLog(){return RouteTrackingService.stateJson(MainActivity.this);}
+        @JavascriptInterface public void startRouteTracking(String tripId){requestRouteStart(tripId);}
+        @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
+        @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
+        @JavascriptInterface public void openRouteMap(double lat,double lon){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("geo:"+lat+","+lon+"?q="+lat+","+lon));startActivity(i);}catch(Exception e){error("Нема достапна апликација за мапа.");}});}
     }
     private void requestSave(String name,byte[] bytes,String mime){runOnUiThread(()->{
         if(pendingBytes!=null){error("Прво заврши го претходното зачувување.");return;}
@@ -125,11 +156,20 @@ public class MainActivity extends Activity {
             },"wf-import").start();
         }
     }
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==ROUTE_PERMISSION){
+            boolean granted=false;
+            for(int g:grantResults)if(g==PackageManager.PERMISSION_GRANTED){granted=true;break;}
+            if(granted){String trip=pendingRouteTripId;pendingRouteTripId="";startRouteService(trip);}
+            else{pendingRouteTripId="";error("За автоматско следење на рутата дозволи Location / Локација.");}
+        }
+    }
     @Override public void onBackPressed(){
         if(!ready){super.onBackPressed();return;}
         webView.evaluateJavascript("window.onNativeBack?onNativeBack():false",value->{if(!"true".equals(value))super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render()",null);}
+    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render();window.onRouteNativeChanged&&onRouteNativeChanged()",null);}
     @Override protected void onDestroy(){if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();}super.onDestroy();}
 
     static class PdfReport {

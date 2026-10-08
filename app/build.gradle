@@ -6,8 +6,8 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '1.3'
+        versionCode 5
+        versionName '1.4'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
     }
     buildTypes { release { minifyEnabled false } }
