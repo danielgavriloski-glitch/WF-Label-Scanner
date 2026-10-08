@@ -29,6 +29,8 @@ jobs:
         with:
           packages: 'platform-tools'
       - name: Android build
+        env:
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
