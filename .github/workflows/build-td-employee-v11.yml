@@ -1,0 +1,36 @@
+name: Build TD Employee v1.1
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-td-employee-v11.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: danielgavriloski-glitch/td-album
+          ref: main
+          path: tdalbum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Copy TD Employee web app into APK
+        run: |
+          mkdir -p tdalbum/android-td-employee/employee/src/main/assets
+          cp tdalbum/employee/index.html tdalbum/android-td-employee/employee/src/main/assets/index.html
+      - name: Build release APK
+        working-directory: tdalbum/android-td-employee
+        run: gradle :employee:assembleRelease --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TD-Employee-v1.1-notifications-unsigned
+          path: tdalbum/android-td-employee/employee/build/outputs/apk/release/*.apk
