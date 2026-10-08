@@ -1,5 +1,5 @@
-def mapsApiKey = (project.findProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY") ?: "").toString()
 plugins { id 'com.android.application' }
+def mapsApiKey = (project.findProperty("MAPS_API_KEY") ?: System.getenv("MAPS_API_KEY") ?: "").toString()
 android {
     namespace 'mk.workfashion.personal'
     compileSdk 35
