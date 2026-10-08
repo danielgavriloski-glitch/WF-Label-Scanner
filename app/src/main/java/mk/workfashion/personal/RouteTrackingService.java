@@ -23,7 +23,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     public static final String ACTION_START="mk.workfashion.personal.ROUTE_START";
     private static final String CHANNEL_ID="wfag_route_tracking";
     private static final int NOTIFICATION_ID=1401;
-    private static final long STOP_MS=10*60*1000L;
+    private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
     private static final Object LOCK=new Object();
@@ -128,7 +128,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     private void notifyStop(JSONObject stop){
         if(android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED){
             NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-            nm.notify(NOTIFICATION_ID,notification("Застанување над 10 минути","Допри за да внесеш име или остави „Локација“."));
+            nm.notify(NOTIFICATION_ID,notification("Застанување над 5 минути","Допри за да внесеш име или остави „Локација“."));
         }
     }
 
