@@ -26,6 +26,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
+    private static final long HISTORY_RETENTION_MS=365L*24L*60L*60L*1000L;
     private static final Object LOCK=new Object();
     private LocationManager locationManager;
 
@@ -180,6 +181,18 @@ public class RouteTrackingService extends Service implements LocationListener {
         for(int i=0;i<a.length();i++){JSONObject p=a.optJSONObject(i);if(p==null)continue;float d=distance(lat,lon,p.optDouble("lat"),p.optDouble("lon"));if(d<=PLACE_RADIUS_M&&d<bestD){best=p;bestD=d;}}
         return best;
     }
+    private static void pruneOldSessions(JSONArray sessions,long now){
+        if(sessions==null)return;
+        long cutoff=now-HISTORY_RETENTION_MS;
+        for(int i=sessions.length()-1;i>=0;i--){
+            JSONObject session=sessions.optJSONObject(i);
+            if(session==null)continue;
+            boolean pinned=session.optBoolean("pinned",false);
+            long started=session.optLong("startedAt",0L);
+            if(!pinned&&started>0&&started<cutoff)sessions.remove(i);
+        }
+    }
+
     private static void beginSession(Context c,String tripId){
         synchronized(LOCK){
             try{
@@ -188,7 +201,7 @@ public class RouteTrackingService extends Service implements LocationListener {
                 long now=System.currentTimeMillis();JSONObject session=new JSONObject();String id="route_"+Long.toString(now,36);
                 session.put("id",id);session.put("tripId",tripId==null?"":tripId);session.put("startedAt",now);session.put("endedAt",0L);session.put("points",new JSONArray());session.put("stops",new JSONArray());
                 JSONArray sessions=s.optJSONArray("sessions");if(sessions==null){sessions=new JSONArray();s.put("sessions",sessions);}sessions.put(session);
-                while(sessions.length()>180)sessions.remove(0);
+                pruneOldSessions(sessions,now);
                 s.put("tracking",true);s.put("activeSessionId",id);writeStateUnlocked(c,s);
             }catch(Exception ignored){}
         }
