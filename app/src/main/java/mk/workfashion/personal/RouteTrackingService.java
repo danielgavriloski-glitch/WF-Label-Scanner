@@ -81,13 +81,20 @@ public class RouteTrackingService extends Service implements LocationListener {
                 JSONArray points=session.optJSONArray("points");if(points==null){points=new JSONArray();session.put("points",points);}
                 JSONObject last=points.length()>0?points.optJSONObject(points.length()-1):null;
                 boolean add=last==null;
+                float stepDistance=0f;
+                long stepElapsed=0L;
                 if(last!=null){
-                    float d=distance(last.optDouble("lat"),last.optDouble("lon"),loc.getLatitude(),loc.getLongitude());
-                    add=d>=20f||now-last.optLong("at")>=60000L;
+                    stepDistance=distance(last.optDouble("lat"),last.optDouble("lon"),loc.getLatitude(),loc.getLongitude());
+                    stepElapsed=Math.max(1000L,now-last.optLong("at"));
+                    add=stepDistance>=20f||stepElapsed>=60000L;
                 }
                 if(add){
                     JSONObject p=new JSONObject();p.put("lat",loc.getLatitude());p.put("lon",loc.getLongitude());p.put("at",now);p.put("accuracy",Math.round(loc.getAccuracy()));
                     points.put(p);
+                    if(last!=null){
+                        float plausibleMax=Math.max(500f,(stepElapsed/1000f)*80f);
+                        if(stepDistance<=plausibleMax)session.put("distanceM",session.optDouble("distanceM",0d)+stepDistance);
+                    }
                     while(points.length()>8000)points.remove(0);
                 }
                 double aLat=session.optDouble("anchorLat",Double.NaN),aLon=session.optDouble("anchorLon",Double.NaN);
@@ -199,7 +206,7 @@ public class RouteTrackingService extends Service implements LocationListener {
                 JSONObject s=readStateUnlocked(c);
                 if(s.optBoolean("tracking",false)&&findSession(s,s.optString("activeSessionId"))!=null)return;
                 long now=System.currentTimeMillis();JSONObject session=new JSONObject();String id="route_"+Long.toString(now,36);
-                session.put("id",id);session.put("tripId",tripId==null?"":tripId);session.put("startedAt",now);session.put("endedAt",0L);session.put("points",new JSONArray());session.put("stops",new JSONArray());
+                session.put("id",id);session.put("tripId",tripId==null?"":tripId);session.put("startedAt",now);session.put("endedAt",0L);session.put("distanceM",0d);session.put("points",new JSONArray());session.put("stops",new JSONArray());
                 JSONArray sessions=s.optJSONArray("sessions");if(sessions==null){sessions=new JSONArray();s.put("sessions",sessions);}sessions.put(session);
                 pruneOldSessions(sessions,now);
                 s.put("tracking",true);s.put("activeSessionId",id);writeStateUnlocked(c,s);
