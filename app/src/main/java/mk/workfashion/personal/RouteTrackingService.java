@@ -26,7 +26,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
-    private static final long HISTORY_RETENTION_MS=365L*24L*60L*60L*1000L;
+    private static final long HISTORY_RETENTION_MS=5L*365L*24L*60L*60L*1000L;
     private static final Object LOCK=new Object();
     private LocationManager locationManager;
 
