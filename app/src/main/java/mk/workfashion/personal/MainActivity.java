@@ -129,7 +129,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void startRouteTracking(String tripId){requestRouteStart(tripId);}
         @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
         @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
-        @JavascriptInterface public void openRouteMap(double lat,double lon){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("geo:"+lat+","+lon+"?q="+lat+","+lon));startActivity(i);}catch(Exception e){error("Нема достапна апликација за мапа.");}});}\n        @JavascriptInterface public void openRouteHistoryMap(String from,String to){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_FROM,from==null?"":from);i.putExtra(RouteMapActivity.EXTRA_TO,to==null?"":to);startActivity(i);}catch(Exception e){error("Google Maps екранот не се отвори.");}});}
+        @JavascriptInterface public void openRouteMap(double lat,double lon){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("geo:"+lat+","+lon+"?q="+lat+","+lon));startActivity(i);}catch(Exception e){error("Нема достапна апликација за мапа.");}});}
+        @JavascriptInterface public void openRouteHistoryMap(String from,String to){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_FROM,from==null?"":from);i.putExtra(RouteMapActivity.EXTRA_TO,to==null?"":to);startActivity(i);}catch(Exception e){error("Google Maps екранот не се отвори.");}});}
     }
     private void requestSave(String name,byte[] bytes,String mime){runOnUiThread(()->{
         if(pendingBytes!=null){error("Прво заврши го претходното зачувување.");return;}
