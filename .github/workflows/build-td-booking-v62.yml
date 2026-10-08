@@ -12,10 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: danielgavriloski-glitch/td-album
-          ref: main
-          path: td
+      - name: Restore TD Booking v6.1 source
+        shell: bash
+        run: |
+          cat td-booking-v61-source.b64.part1 td-booking-v61-source.b64.part2 td-booking-v61-source.b64.part3 td-booking-v61-source.b64.part4 td-booking-v61-source.b64.part5 | base64 -d > /tmp/td-source.zip
+          rm -rf td
+          mkdir -p td
+          unzip -q /tmp/td-source.zip -d td
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
