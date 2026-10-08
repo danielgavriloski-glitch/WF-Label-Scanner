@@ -126,8 +126,10 @@ public class RouteTrackingService extends Service implements LocationListener {
     }
 
     private void notifyStop(JSONObject stop){
-        NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-        nm.notify(NOTIFICATION_ID,notification("Застанување над 10 минути","Допри за да внесеш име или остави „Локација“."));
+        if(android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED){
+            NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+            nm.notify(NOTIFICATION_ID,notification("Застанување над 10 минути","Допри за да внесеш име или остави „Локација“."));
+        }
     }
 
     private Notification notification(String title,String text){

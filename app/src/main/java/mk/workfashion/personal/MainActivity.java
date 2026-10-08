@@ -100,10 +100,13 @@ public class MainActivity extends Activity {
     }
     private void requestRouteStart(String tripId){
         runOnUiThread(()->{
-            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&
-               checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
+            boolean noLocation=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&
+               checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED;
+            boolean noNotifications=android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED;
+            if(noLocation||noNotifications){
                 pendingRouteTripId=tripId==null?"":tripId;
-                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},ROUTE_PERMISSION);
+                if(android.os.Build.VERSION.SDK_INT>=33)requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.POST_NOTIFICATIONS},ROUTE_PERMISSION);
+                else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},ROUTE_PERMISSION);
             }else startRouteService(tripId);
         });
     }
@@ -159,9 +162,9 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
         if(requestCode==ROUTE_PERMISSION){
-            boolean granted=false;
-            for(int g:grantResults)if(g==PackageManager.PERMISSION_GRANTED){granted=true;break;}
-            if(granted){String trip=pendingRouteTripId;pendingRouteTripId="";startRouteService(trip);}
+            boolean locationGranted=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||
+                checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
+            if(locationGranted){String trip=pendingRouteTripId;pendingRouteTripId="";startRouteService(trip);}
             else{pendingRouteTripId="";error("За автоматско следење на рутата дозволи Location / Локација.");}
         }
     }
