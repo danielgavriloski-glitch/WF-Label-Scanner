@@ -257,7 +257,7 @@ public class RouteMapActivity extends Activity {
             if (routeBounds.count > 1) {
                 List<List<LatLong>> cachedRoad = loadCompleteFreeRoadCache(routeState);
                 if (!cachedRoad.isEmpty()) {
-                    safeSwapToRoadRoutes(cachedRoad, "По пат ✓ · зачувано");
+                    safeSwapToRoadRoutes(cachedRoad, "По пат ✓ · OSRM / OSM · зачувано");
                 } else {
                     startFreeRoadSnap(routeState);
                 }
@@ -419,7 +419,7 @@ public class RouteMapActivity extends Activity {
                 if (mapView == null || isFinishing()) return;
 
                 if (expected > 0 && shownRoutes.size() == expected) {
-                    safeSwapToRoadRoutes(shownRoutes, "По пат ✓ · бесплатно");
+                    safeSwapToRoadRoutes(shownRoutes, "По пат ✓ · OSRM / OSM · бесплатно");
                 } else {
                     if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · безбедна резерва");
                     if (!shownError.isEmpty()) {
