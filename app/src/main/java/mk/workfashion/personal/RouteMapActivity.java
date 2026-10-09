@@ -121,7 +121,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/1.8 Android");
+                con.setRequestProperty("User-Agent", "WFAG/1.9 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -315,22 +315,28 @@ public class RouteMapActivity extends Activity {
     }
 
     private void startOfflineRoadSnap(JSONObject state) {
-        final MapFile map = offlineMap;
-        if (map == null) return;
+        if (offlineMap == null) return;
 
         new Thread(() -> {
             List<List<LatLong>> snapped = new ArrayList<>();
+            MapFile routeMap = null;
             try {
+                routeMap = new MapFile(mapFile());
                 JSONArray sessions = state.optJSONArray("sessions");
                 if (sessions != null) {
                     for (int i = 0; i < sessions.length(); i++) {
                         JSONObject session = sessions.optJSONObject(i);
                         if (session == null || !sessionInRange(session)) continue;
-                        OfflineRoadSnapper.Result result = OfflineRoadSnapper.snap(RouteMapActivity.this, map, session);
+                        OfflineRoadSnapper.Result result = OfflineRoadSnapper.snap(RouteMapActivity.this, routeMap, session);
                         if (result != null && result.segments != null) snapped.addAll(result.segments);
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            } finally {
+                if (routeMap != null) {
+                    try { routeMap.close(); } catch (Exception ignored) {}
+                }
+            }
 
             runOnUiThread(() -> {
                 if (mapView == null || isFinishing()) return;
