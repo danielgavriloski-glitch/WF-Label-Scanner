@@ -2,6 +2,7 @@ package mk.workfashion.personal;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.location.Location;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -116,7 +117,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/1.5 Android");
+                con.setRequestProperty("User-Agent", "WFAG/1.7 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -243,20 +244,24 @@ public class RouteMapActivity extends Activity {
 
                 JSONArray points = session.optJSONArray("points");
                 List<LatLong> route = new ArrayList<>();
+                JSONObject previousPoint = null;
                 if (points != null) {
                     for (int j = 0; j < points.length(); j++) {
                         JSONObject p = points.optJSONObject(j);
                         if (p == null) continue;
                         LatLong q = new LatLong(p.optDouble("lat"), p.optDouble("lon"));
+
+                        if (previousPoint != null && shouldBreakRoute(previousPoint, p)) {
+                            addRouteSegment(route);
+                            route = new ArrayList<>();
+                        }
+
                         route.add(q);
                         bounds.include(q);
+                        previousPoint = p;
                     }
                 }
-                if (route.size() >= 2) {
-                    Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
-                    line.setPoints(route);
-                    mapView.getLayerManager().getLayers().add(line);
-                }
+                addRouteSegment(route);
 
                 JSONArray stops = session.optJSONArray("stops");
                 if (stops == null) continue;
@@ -287,6 +292,26 @@ public class RouteMapActivity extends Activity {
             }
         } catch (Exception ignored) {}
         return bounds;
+    }
+
+    private void addRouteSegment(List<LatLong> route) {
+        if (route == null || route.size() < 2) return;
+        Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
+        line.setPoints(route);
+        mapView.getLayerManager().getLayers().add(line);
+    }
+
+    private static boolean shouldBreakRoute(JSONObject a, JSONObject b) {
+        long at = a.optLong("at", 0L);
+        long bt = b.optLong("at", 0L);
+        long dt = Math.max(1000L, bt - at);
+        float[] r = new float[1];
+        Location.distanceBetween(a.optDouble("lat"), a.optDouble("lon"), b.optDouble("lat"), b.optDouble("lon"), r);
+        float d = r[0];
+        float aAcc = (float) a.optDouble("accuracy", 30d);
+        float bAcc = (float) b.optDouble("accuracy", 30d);
+        float plausible = Math.max(180f, (dt / 1000f) * 70f + aAcc + bAcc);
+        return d > plausible || (dt > 45000L && d > 250f);
     }
 
     private static byte zoomForSpan(double span) {
