@@ -39,14 +39,14 @@ import java.util.Set;
 final class OfflineRoadSnapper {
     private static final byte GRAPH_ZOOM = 15;
     private static final int TILE_SIZE = 256;
-    private static final double TILE_MARGIN_DEG = 0.018; // wider road corridor around GPS
-    private static final float TILE_SAMPLE_M = 500f;
-    private static final float ROUTE_WAYPOINT_M = 160f;
-    private static final float MAX_SNAP_M = 320f;
-    private static final int MAX_TILES = 3600;
-    private static final int MAX_ASTAR_VISITS = 50000;
-    private static final int MAX_SNAP_CANDIDATES = 8;
-    private static final int CACHE_VERSION = 2;
+    private static final double TILE_MARGIN_DEG = 0.050; // ~5 km corridor so bends/interchanges stay connected
+    private static final float TILE_SAMPLE_M = 800f;
+    private static final float ROUTE_WAYPOINT_M = 800f;
+    private static final float MAX_SNAP_M = 500f;
+    private static final int MAX_TILES = 7000;
+    private static final int MAX_ASTAR_VISITS = 90000;
+    private static final int MAX_SNAP_CANDIDATES = 16;
+    private static final int CACHE_VERSION = 3;
     private static final double GRID_DEG = 0.0025; // ~200-275 m in Macedonia
 
     static final class Result {
@@ -162,7 +162,15 @@ final class OfflineRoadSnapper {
 
             List<TracePoint> waypoints = routeWaypoints(trace);
             List<List<LatLong>> segments = route(graph, waypoints);
-            if (!segments.isEmpty()) writeCache(context, session.optString("id", "route"), signature, segments);
+
+            // Never replace the visible GPS line with a tiny partial match.
+            // A road-snapped result is accepted only when it reaches both ends
+            // of the recorded trip and contains a meaningful amount of road.
+            if (!isFullTripMatch(trace, segments)) {
+                return new Result(Collections.emptyList(), false);
+            }
+
+            writeCache(context, session.optString("id", "route"), signature, segments);
             return new Result(segments, false);
         } catch (Exception ignored) {
             return new Result(Collections.emptyList(), false);
@@ -271,7 +279,7 @@ final class OfflineRoadSnapper {
             TracePoint p = trace.get(i);
             double d = dist(anchor.lat, anchor.lon, p.lat, p.lon);
             long dt = p.at > 0 && anchor.at > 0 ? p.at - anchor.at : 0L;
-            if (d >= ROUTE_WAYPOINT_M || dt >= 25000L) {
+            if (d >= ROUTE_WAYPOINT_M || dt >= 120000L) {
                 out.add(p);
                 anchor = p;
             }
@@ -319,7 +327,7 @@ final class OfflineRoadSnapper {
                 double snapMeters = dist(tp.lat, tp.lon, candidate.p.latitude, candidate.p.longitude);
                 double direct = dist(previous.p.latitude, previous.p.longitude, candidate.p.latitude, candidate.p.longitude);
                 double detour = Math.max(0d, pathMeters - direct);
-                double score = snapMeters * 2.0d + detour * 0.12d;
+                double score = snapMeters * 2.2d + detour * 0.08d;
 
                 if (score < bestScore) {
                     bestScore = score;
@@ -368,7 +376,7 @@ final class OfflineRoadSnapper {
         Set<Node> closed = new HashSet<>();
 
         double direct = dist(start.p.latitude, start.p.longitude, goal.p.latitude, goal.p.longitude);
-        double maxRoute = Math.max(3500d, direct * 8.0d + 2500d);
+        double maxRoute = Math.max(7000d, direct * 10.0d + 5000d);
 
         gScore.put(start, 0d);
         open.add(new QueueState(start, direct));
@@ -406,6 +414,38 @@ final class OfflineRoadSnapper {
             }
         }
         return null;
+    }
+
+    private static boolean isFullTripMatch(List<TracePoint> trace, List<List<LatLong>> segments) {
+        if (trace == null || trace.size() < 2 || segments == null || segments.isEmpty()) return false;
+
+        List<LatLong> firstSegment = segments.get(0);
+        List<LatLong> lastSegment = segments.get(segments.size() - 1);
+        if (firstSegment == null || firstSegment.isEmpty() || lastSegment == null || lastSegment.isEmpty()) return false;
+
+        TracePoint firstTrace = trace.get(0);
+        TracePoint lastTrace = trace.get(trace.size() - 1);
+        LatLong firstRoad = firstSegment.get(0);
+        LatLong lastRoad = lastSegment.get(lastSegment.size() - 1);
+
+        double startGap = dist(firstTrace.lat, firstTrace.lon, firstRoad.latitude, firstRoad.longitude);
+        double endGap = dist(lastTrace.lat, lastTrace.lon, lastRoad.latitude, lastRoad.longitude);
+        if (startGap > MAX_SNAP_M * 1.6d || endGap > MAX_SNAP_M * 1.6d) return false;
+
+        double snappedMeters = 0d;
+        int roadPoints = 0;
+        for (List<LatLong> line : segments) {
+            if (line == null) continue;
+            roadPoints += line.size();
+            for (int i = 1; i < line.size(); i++) {
+                LatLong a = line.get(i - 1), b = line.get(i);
+                snappedMeters += dist(a.latitude, a.longitude, b.latitude, b.longitude);
+            }
+        }
+
+        double endpointDistance = dist(firstTrace.lat, firstTrace.lon, lastTrace.lat, lastTrace.lon);
+        double minimumUseful = Math.max(500d, endpointDistance * 0.75d);
+        return roadPoints >= 4 && snappedMeters >= minimumUseful;
     }
 
     private static String signature(JSONObject session, List<TracePoint> trace) {
