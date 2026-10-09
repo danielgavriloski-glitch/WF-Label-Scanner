@@ -121,7 +121,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/1.9 Android");
+                con.setRequestProperty("User-Agent", "WFAG/2.0 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -341,7 +341,7 @@ public class RouteMapActivity extends Activity {
             runOnUiThread(() -> {
                 if (mapView == null || isFinishing()) return;
                 if (snapped.isEmpty()) {
-                    if (title != null) title.setText(titleBaseText + "\nGPS линија · нема доволно патни точки");
+                    if (title != null) title.setText(titleBaseText + "\nGPS линија · целата рута не може безбедно да се залепи");
                     return;
                 }
 
