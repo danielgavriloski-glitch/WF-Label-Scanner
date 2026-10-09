@@ -33,15 +33,15 @@ jobs:
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
           mkdir -p delivery/toolchain
-          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v1_5_unsigned.apk
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/WFAG_Workfashion_Time_v1_5.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_4_unsigned.apk
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/WFAG_Workfashion_Time_v2_4.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" delivery/toolchain/
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-Workfashion-Time-v1-5-build
+          name: WFAG-Workfashion-Time-v2-4-build
           path: delivery/
           retention-days: 7
       - name: Enable KVM
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-Workfashion-Time-v1-5-validation
+          name: WFAG-Workfashion-Time-v2-4-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
