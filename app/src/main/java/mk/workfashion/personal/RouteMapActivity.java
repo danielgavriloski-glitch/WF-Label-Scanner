@@ -121,7 +121,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/2.0 Android");
+                con.setRequestProperty("User-Agent", "WFAG/2.1 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -346,21 +346,39 @@ public class RouteMapActivity extends Activity {
                 }
 
                 try {
+                    // SAFE SWAP: first build and add the complete snapped route.
+                    // The raw GPS line is removed only after we know that a
+                    // meaningful road route is actually visible.
+                    List<Polyline> newLayers = new ArrayList<>();
+                    int snappedPoints = 0;
+
+                    for (List<LatLong> route : snapped) {
+                        if (route == null || route.size() < 2) continue;
+                        snappedPoints += route.size();
+                        Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
+                        line.setPoints(route);
+                        mapView.getLayerManager().getLayers().add(line);
+                        newLayers.add(line);
+                    }
+
+                    if (newLayers.isEmpty() || snappedPoints < 8) {
+                        for (Polyline line : newLayers) {
+                            mapView.getLayerManager().getLayers().remove(line);
+                        }
+                        if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · безбедна резерва");
+                        return;
+                    }
+
                     for (Polyline line : new ArrayList<>(rawRouteLayers)) {
                         mapView.getLayerManager().getLayers().remove(line);
                     }
                     rawRouteLayers.clear();
 
-                    for (List<LatLong> route : snapped) {
-                        if (route == null || route.size() < 2) continue;
-                        Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
-                        line.setPoints(route);
-                        mapView.getLayerManager().getLayers().add(line);
-                    }
-
                     if (title != null) title.setText(titleBaseText + "\nПо пат ✓ · офлајн");
                 } catch (Exception ignored) {
-                    if (title != null) title.setText(titleBaseText);
+                    // If anything fails while replacing layers, keep the raw
+                    // GPS route instead of leaving the map with a dot/fragment.
+                    if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · безбедна резерва");
                 }
             });
         }, "wfag-offline-road-snap").start();
