@@ -46,7 +46,7 @@ final class OfflineRoadSnapper {
     private static final int MAX_TILES = 7000;
     private static final int MAX_ASTAR_VISITS = 90000;
     private static final int MAX_SNAP_CANDIDATES = 16;
-    private static final int CACHE_VERSION = 3;
+    private static final int CACHE_VERSION = 4;
     private static final double GRID_DEG = 0.0025; // ~200-275 m in Macedonia
 
     static final class Result {
@@ -419,33 +419,64 @@ final class OfflineRoadSnapper {
     private static boolean isFullTripMatch(List<TracePoint> trace, List<List<LatLong>> segments) {
         if (trace == null || trace.size() < 2 || segments == null || segments.isEmpty()) return false;
 
-        List<LatLong> firstSegment = segments.get(0);
-        List<LatLong> lastSegment = segments.get(segments.size() - 1);
-        if (firstSegment == null || firstSegment.isEmpty() || lastSegment == null || lastSegment.isEmpty()) return false;
+        List<LatLong> road = new ArrayList<>();
+        double snappedMeters = 0d;
+        for (List<LatLong> line : segments) {
+            if (line == null || line.size() < 2) continue;
+            for (int i = 0; i < line.size(); i++) {
+                LatLong p = line.get(i);
+                if (p == null) continue;
+                if (road.isEmpty() || dist(
+                        road.get(road.size()-1).latitude,
+                        road.get(road.size()-1).longitude,
+                        p.latitude, p.longitude) > 0.5d) {
+                    road.add(p);
+                }
+                if (i > 0) {
+                    LatLong a = line.get(i - 1);
+                    snappedMeters += dist(a.latitude, a.longitude, p.latitude, p.longitude);
+                }
+            }
+        }
+        if (road.size() < 8 || snappedMeters < 500d) return false;
+
+        double rawMeters = 0d;
+        for (int i = 1; i < trace.size(); i++) {
+            TracePoint a = trace.get(i - 1), b = trace.get(i);
+            rawMeters += dist(a.lat, a.lon, b.lat, b.lon);
+        }
+        if (rawMeters < 500d) return false;
 
         TracePoint firstTrace = trace.get(0);
         TracePoint lastTrace = trace.get(trace.size() - 1);
-        LatLong firstRoad = firstSegment.get(0);
-        LatLong lastRoad = lastSegment.get(lastSegment.size() - 1);
+        LatLong firstRoad = road.get(0);
+        LatLong lastRoad = road.get(road.size() - 1);
 
         double startGap = dist(firstTrace.lat, firstTrace.lon, firstRoad.latitude, firstRoad.longitude);
         double endGap = dist(lastTrace.lat, lastTrace.lon, lastRoad.latitude, lastRoad.longitude);
         if (startGap > MAX_SNAP_M * 1.6d || endGap > MAX_SNAP_M * 1.6d) return false;
 
-        double snappedMeters = 0d;
-        int roadPoints = 0;
-        for (List<LatLong> line : segments) {
-            if (line == null) continue;
-            roadPoints += line.size();
-            for (int i = 1; i < line.size(); i++) {
-                LatLong a = line.get(i - 1), b = line.get(i);
-                snappedMeters += dist(a.latitude, a.longitude, b.latitude, b.longitude);
-            }
-        }
+        // The matched road must represent the whole recorded trip, not a tiny
+        // successful fragment. This is the main protection against the
+        // "full line for one second, then only one dot" failure.
+        if (snappedMeters < rawMeters * 0.65d) return false;
+        if (snappedMeters > rawMeters * 3.0d + 3000d) return false;
 
-        double endpointDistance = dist(firstTrace.lat, firstTrace.lon, lastTrace.lat, lastTrace.lon);
-        double minimumUseful = Math.max(500d, endpointDistance * 0.75d);
-        return roadPoints >= 4 && snappedMeters >= minimumUseful;
+        // Check coverage across the entire trip, not only the start and end.
+        int samples = Math.min(20, trace.size());
+        int covered = 0;
+        for (int s = 0; s < samples; s++) {
+            int idx = samples == 1 ? 0 : (int)Math.round((trace.size() - 1) * (s / (double)(samples - 1)));
+            TracePoint tp = trace.get(idx);
+            double best = Double.POSITIVE_INFINITY;
+            for (LatLong rp : road) {
+                double d = dist(tp.lat, tp.lon, rp.latitude, rp.longitude);
+                if (d < best) best = d;
+                if (best <= 700d) break;
+            }
+            if (best <= 700d) covered++;
+        }
+        return covered >= Math.max(3, (int)Math.ceil(samples * 0.75d));
     }
 
     private static String signature(JSONObject session, List<TracePoint> trace) {
