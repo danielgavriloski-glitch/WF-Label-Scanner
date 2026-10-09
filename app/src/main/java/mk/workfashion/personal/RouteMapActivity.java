@@ -163,9 +163,16 @@ public class RouteMapActivity extends Activity {
         }, "wfag-map-download").start();
     }
 
-    private Paint routePaint() {
+    private Paint routePaint() { return routePaint(0); }
+
+    private Paint routePaint(int colorIndex) {
+        final int[][] colors = new int[][]{
+                {37,99,235}, {22,163,74}, {234,88,12},
+                {147,51,234}, {8,145,178}, {190,24,93}
+        };
+        int[] rgb = colors[Math.floorMod(colorIndex, colors.length)];
         Paint p = AndroidGraphicFactory.INSTANCE.createPaint();
-        p.setColor(AndroidGraphicFactory.INSTANCE.createColor(org.mapsforge.core.graphics.Color.BLUE));
+        p.setColor(AndroidGraphicFactory.INSTANCE.createColor(255, rgb[0], rgb[1], rgb[2]));
         p.setStrokeWidth(8f * getResources().getDisplayMetrics().density);
         p.setStyle(Style.STROKE);
         return p;
@@ -226,7 +233,7 @@ public class RouteMapActivity extends Activity {
             title = new TextView(this);
             String period = (!from.isEmpty() || !to.isEmpty()) ? "\n" + from + " – " + to : "";
             titleBaseText = "WFAG · GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања";
-            title.setText(titleBaseText + (routeBounds.count > 1 ? "\nGPS линија ✓ · безбедна резерва" : ""));
+            title.setText(titleBaseText + (routeBounds.count > 1 ? "\nЧасовни линии ✓ · offline OSM · без плаќање" : ""));
             title.setTextSize(14f);
             title.setTextColor(Color.rgb(21, 46, 53));
             title.setBackgroundColor(Color.argb(235, 255, 255, 255));
@@ -237,7 +244,7 @@ public class RouteMapActivity extends Activity {
             root.addView(title, tp);
 
             roadButton = new Button(this);
-            roadButton.setText("Среди по пат");
+            roadButton.setText("Освежи часовни линии");
             roadButton.setTextSize(13f);
             FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -246,21 +253,13 @@ public class RouteMapActivity extends Activity {
             gp.setMargins(20, 170, 20, 20);
             root.addView(roadButton, gp);
             roadButton.setOnClickListener(v -> {
-                try {
-                    JSONObject latestState = new JSONObject(RouteTrackingService.stateJson(this));
-                    startFreeRoadSnap(latestState);
-                } catch (Exception e) {
-                    Toast.makeText(this, "Не можам да ја прочитам GPS рутата.", Toast.LENGTH_LONG).show();
-                }
+                RouteTrackingService.retryPendingCompactions(this);
+                Toast.makeText(this, "Се проверуваат часовните линии офлајн.", Toast.LENGTH_SHORT).show();
+                roadButton.postDelayed(this::showMap, 1800L);
             });
 
             if (routeBounds.count > 1) {
-                List<List<LatLong>> cachedRoad = loadCompleteFreeRoadCache(routeState);
-                if (!cachedRoad.isEmpty()) {
-                    safeSwapToRoadRoutes(cachedRoad, "По пат ✓ · OSRM / OSM · зачувано");
-                } else {
-                    startFreeRoadSnap(routeState);
-                }
+                RouteTrackingService.retryPendingCompactions(this);
             }
         } catch (Exception e) {
             showDownloadScreen("Офлајн мапата не може да се отвори. Симни ја повторно.");
@@ -280,6 +279,54 @@ public class RouteMapActivity extends Activity {
                 if (!from.isEmpty() && date.compareTo(from) < 0) continue;
                 if (!to.isEmpty() && date.compareTo(to) > 0) continue;
 
+                int currentColor = 0;
+                JSONArray hourly = session.optJSONArray("hourSegments");
+                if (hourly != null) {
+                    for (int h = 0; h < hourly.length(); h++) {
+                        JSONObject segment = hourly.optJSONObject(h);
+                        if (segment == null) continue;
+                        int colorIndex = segment.optInt("colorIndex", h % 6);
+                        currentColor = (colorIndex + 1) % 6;
+
+                        JSONArray lineSegments = segment.optJSONArray("lineSegments");
+                        if (lineSegments != null && lineSegments.length() > 0) {
+                            for (int s = 0; s < lineSegments.length(); s++) {
+                                JSONArray arr = lineSegments.optJSONArray(s);
+                                List<LatLong> line = new ArrayList<>();
+                                if (arr != null) {
+                                    for (int k = 0; k < arr.length(); k++) {
+                                        JSONArray p = arr.optJSONArray(k);
+                                        if (p == null || p.length() < 2) continue;
+                                        LatLong q = new LatLong(p.optDouble(0), p.optDouble(1));
+                                        line.add(q);
+                                        bounds.include(q);
+                                    }
+                                }
+                                addRouteSegment(line, colorIndex);
+                            }
+                        } else {
+                            JSONArray raw = segment.optJSONArray("rawPoints");
+                            List<LatLong> line = new ArrayList<>();
+                            JSONObject previous = null;
+                            if (raw != null) {
+                                for (int k = 0; k < raw.length(); k++) {
+                                    JSONObject p = raw.optJSONObject(k);
+                                    if (p == null) continue;
+                                    if (previous != null && shouldBreakRoute(previous, p)) {
+                                        addRouteSegment(line, colorIndex);
+                                        line = new ArrayList<>();
+                                    }
+                                    LatLong q = new LatLong(p.optDouble("lat"), p.optDouble("lon"));
+                                    line.add(q);
+                                    bounds.include(q);
+                                    previous = p;
+                                }
+                            }
+                            addRouteSegment(line, colorIndex);
+                        }
+                    }
+                }
+
                 JSONArray points = session.optJSONArray("points");
                 List<LatLong> route = new ArrayList<>();
                 JSONObject previousPoint = null;
@@ -290,7 +337,7 @@ public class RouteMapActivity extends Activity {
                         LatLong q = new LatLong(p.optDouble("lat"), p.optDouble("lon"));
 
                         if (previousPoint != null && shouldBreakRoute(previousPoint, p)) {
-                            addRouteSegment(route);
+                            addRouteSegment(route, currentColor);
                             route = new ArrayList<>();
                         }
 
@@ -299,7 +346,7 @@ public class RouteMapActivity extends Activity {
                         previousPoint = p;
                     }
                 }
-                addRouteSegment(route);
+                addRouteSegment(route, currentColor);
 
                 JSONArray stops = session.optJSONArray("stops");
                 if (stops == null) continue;
@@ -332,9 +379,11 @@ public class RouteMapActivity extends Activity {
         return bounds;
     }
 
-    private void addRouteSegment(List<LatLong> route) {
+    private void addRouteSegment(List<LatLong> route) { addRouteSegment(route, 0); }
+
+    private void addRouteSegment(List<LatLong> route, int colorIndex) {
         if (route == null || route.size() < 2) return;
-        Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
+        Polyline line = new Polyline(routePaint(colorIndex), AndroidGraphicFactory.INSTANCE);
         line.setPoints(route);
         mapView.getLayerManager().getLayers().add(line);
         rawRouteLayers.add(line);
