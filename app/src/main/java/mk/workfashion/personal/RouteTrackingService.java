@@ -23,12 +23,22 @@ public class RouteTrackingService extends Service implements LocationListener {
     public static final String ACTION_START="mk.workfashion.personal.ROUTE_START";
     private static final String CHANNEL_ID="wfag_route_tracking";
     private static final int NOTIFICATION_ID=1401;
+    private static final long GPS_MIN_TIME_MS=3000L;
+    private static final float GPS_MIN_DISTANCE_M=5f;
+    private static final long NETWORK_MIN_TIME_MS=10000L;
+    private static final float NETWORK_MIN_DISTANCE_M=10f;
+    private static final float MAX_ACCEPTABLE_ACCURACY_M=80f;
+    private static final long GPS_PREFERENCE_WINDOW_MS=20000L;
+    private static final float MIN_POINT_DISTANCE_M=8f;
+    private static final long MAX_POINT_INTERVAL_MS=15000L;
+    private static final float MAX_REASONABLE_SPEED_MPS=65f;
     private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
     private static final long HISTORY_RETENTION_MS=5L*365L*24L*60L*60L*1000L;
     private static final Object LOCK=new Object();
     private LocationManager locationManager;
+    private long lastGpsFixAt=0L;
 
     @Override public void onCreate(){
         super.onCreate();
@@ -51,10 +61,11 @@ public class RouteTrackingService extends Service implements LocationListener {
     private void startUpdates(){
         locationManager=(LocationManager)getSystemService(LOCATION_SERVICE);
         try{
+            try{locationManager.removeUpdates(this);}catch(Exception ignored){}
             if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,30000L,20f,this);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,GPS_MIN_TIME_MS,GPS_MIN_DISTANCE_M,this);
             if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,45000L,30f,this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,NETWORK_MIN_TIME_MS,NETWORK_MIN_DISTANCE_M,this);
         }catch(SecurityException e){
             finishSession(this);stopSelf();
         }
@@ -70,33 +81,46 @@ public class RouteTrackingService extends Service implements LocationListener {
     @Override public void onStatusChanged(String provider,int status,Bundle extras){}
 
     @Override public void onLocationChanged(Location loc){
-        if(loc==null||loc.getAccuracy()>150f)return;
+        if(loc==null||!loc.hasAccuracy()||loc.getAccuracy()>MAX_ACCEPTABLE_ACCURACY_M)return;
+        final long now=System.currentTimeMillis();
+        final boolean gps=LocationManager.GPS_PROVIDER.equals(loc.getProvider());
+        if(gps)lastGpsFixAt=now;
+        else if(lastGpsFixAt>0L&&now-lastGpsFixAt<GPS_PREFERENCE_WINDOW_MS)return;
+
         synchronized(LOCK){
             try{
                 JSONObject state=readStateUnlocked(this);
                 if(!state.optBoolean("tracking",false))return;
                 JSONObject session=findSession(state,state.optString("activeSessionId"));
                 if(session==null)return;
-                long now=System.currentTimeMillis();
                 JSONArray points=session.optJSONArray("points");if(points==null){points=new JSONArray();session.put("points",points);}
                 JSONObject last=points.length()>0?points.optJSONObject(points.length()-1):null;
                 boolean add=last==null;
                 float stepDistance=0f;
                 long stepElapsed=0L;
+
                 if(last!=null){
                     stepDistance=distance(last.optDouble("lat"),last.optDouble("lon"),loc.getLatitude(),loc.getLongitude());
                     stepElapsed=Math.max(1000L,now-last.optLong("at"));
-                    add=stepDistance>=20f||stepElapsed>=60000L;
+                    float lastAccuracy=(float)last.optDouble("accuracy",30d);
+                    float plausibleMax=Math.max(120f,(stepElapsed/1000f)*MAX_REASONABLE_SPEED_MPS+lastAccuracy+loc.getAccuracy());
+                    if(stepDistance>plausibleMax)return;
+                    add=stepDistance>=MIN_POINT_DISTANCE_M||stepElapsed>=MAX_POINT_INTERVAL_MS;
                 }
+
                 if(add){
-                    JSONObject p=new JSONObject();p.put("lat",loc.getLatitude());p.put("lon",loc.getLongitude());p.put("at",now);p.put("accuracy",Math.round(loc.getAccuracy()));
+                    JSONObject p=new JSONObject();
+                    p.put("lat",loc.getLatitude());
+                    p.put("lon",loc.getLongitude());
+                    p.put("at",now);
+                    p.put("accuracy",Math.round(loc.getAccuracy()));
+                    p.put("provider",loc.getProvider()==null?"":loc.getProvider());
+                    if(loc.hasSpeed())p.put("speedMps",Math.round(loc.getSpeed()*10f)/10f);
                     points.put(p);
-                    if(last!=null){
-                        float plausibleMax=Math.max(500f,(stepElapsed/1000f)*80f);
-                        if(stepDistance<=plausibleMax)session.put("distanceM",session.optDouble("distanceM",0d)+stepDistance);
-                    }
+                    if(last!=null)session.put("distanceM",session.optDouble("distanceM",0d)+stepDistance);
                     while(points.length()>8000)points.remove(0);
                 }
+
                 double aLat=session.optDouble("anchorLat",Double.NaN),aLon=session.optDouble("anchorLon",Double.NaN);
                 long aSince=session.optLong("anchorSince",0L);
                 if(Double.isNaN(aLat)||Double.isNaN(aLon)||aSince==0L){
