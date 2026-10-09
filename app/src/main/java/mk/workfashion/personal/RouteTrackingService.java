@@ -26,7 +26,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
-    private static final float MAX_ACCEPTED_ACCURACY_M=80f;
+    private static final float MAX_ACCEPTED_ACCURACY_M=60f;
     private static final float MAX_REASONABLE_SPEED_MPS=55f;
     private static final long HISTORY_RETENTION_MS=5L*365L*24L*60L*60L*1000L;
     private static final Object LOCK=new Object();
@@ -54,9 +54,9 @@ public class RouteTrackingService extends Service implements LocationListener {
         locationManager=(LocationManager)getSystemService(LOCATION_SERVICE);
         try{
             if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,30000L,20f,this);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,5000L,8f,this);
             if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,45000L,30f,this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,10000L,15f,this);
         }catch(SecurityException e){
             finishSession(this);stopSelf();
         }
