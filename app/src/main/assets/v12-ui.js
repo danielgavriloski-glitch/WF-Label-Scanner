@@ -36,15 +36,35 @@ function routeSessions(from,to){
   return routeNativeState().sessions.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
 }
 function routeSvg(sessions){
-  const points=[];sessions.forEach(s=>(s.points||[]).forEach(p=>points.push(p)));
-  if(points.length<2)return '<div class="route-map-empty">Рутата ќе се појави штом GPS сними движење.</div>';
-  const lats=points.map(p=>Number(p.lat)),lons=points.map(p=>Number(p.lon));
+  const colors=['#2563eb','#16a34a','#ea580c','#9333ea','#0891b2','#be185d'];
+  const lines=[],allPoints=[];
+  sessions.forEach(s=>{
+    let nextColor=0;
+    (s.hourSegments||[]).forEach((seg,idx)=>{
+      const ci=Number.isFinite(Number(seg.colorIndex))?Number(seg.colorIndex)%colors.length:idx%colors.length;
+      nextColor=(ci+1)%colors.length;
+      const road=seg.lineSegments||[];
+      if(road.length){
+        road.forEach(arr=>{
+          const pts=(arr||[]).map(p=>({lat:Number(p[0]),lon:Number(p[1])})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
+          if(pts.length>1){lines.push({pts,color:colors[ci]});pts.forEach(p=>allPoints.push(p));}
+        });
+      }else{
+        const pts=(seg.rawPoints||[]).map(p=>({lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
+        if(pts.length>1){lines.push({pts,color:colors[ci]});pts.forEach(p=>allPoints.push(p));}
+      }
+    });
+    const current=(s.points||[]).map(p=>({lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
+    if(current.length>1){lines.push({pts:current,color:colors[nextColor]});current.forEach(p=>allPoints.push(p));}
+  });
+  if(allPoints.length<2)return '<div class="route-map-empty">Рутата ќе се појави штом GPS сними движење.</div>';
+  const lats=allPoints.map(p=>p.lat),lons=allPoints.map(p=>p.lon);
   let minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats),minLon=Math.min.apply(null,lons),maxLon=Math.max.apply(null,lons);
   if(maxLat-minLat<0.0001){maxLat+=0.00005;minLat-=0.00005}if(maxLon-minLon<0.0001){maxLon+=0.00005;minLon-=0.00005}
   const xy=p=>{const x=10+(Number(p.lon)-minLon)/(maxLon-minLon)*280,y=150-(Number(p.lat)-minLat)/(maxLat-minLat)*140;return [x,y];};
-  const line=points.map(p=>xy(p).join(',')).join(' ');
+  const paths=lines.map(l=>'<polyline style="stroke:'+l.color+'" points="'+l.pts.map(p=>xy(p).join(',')).join(' ')+'"></polyline>').join('');
   let pins='',n=0;sessions.forEach(s=>(s.stops||[]).forEach(st=>{n++;const q=xy(st);pins+='<g><circle cx="'+q[0].toFixed(1)+'" cy="'+q[1].toFixed(1)+'" r="8"></circle><text x="'+q[0].toFixed(1)+'" y="'+(q[1]+3).toFixed(1)+'">'+n+'</text></g>'; }));
-  return '<svg class="route-map-svg" viewBox="0 0 300 160" role="img" aria-label="Снимена рута"><polyline points="'+line+'"></polyline>'+pins+'</svg><p class="small muted route-map-note">Приказ на снимената GPS трага. За улици и точна позиција отвори ја офлајн мапата.</p>';
+  return '<svg class="route-map-svg" viewBox="0 0 300 160" role="img" aria-label="Снимена рута">'+paths+pins+'</svg><p class="small muted route-map-note">Секој час е посебна боја; линиите се поврзани. Завршените часови се чуваат како компактна линија.</p>';
 }
 function routeStopMarkup(stop,index){
   const name=(stop.name||'').trim()||'Локација',lat=Number(stop.lat),lon=Number(stop.lon),end=Number(stop.endAt)||Date.now();
@@ -60,7 +80,8 @@ function routePanelMarkup(from,to){
   else{
     body=sessions.slice().reverse().map(s=>{
       const stops=(s.stops||[]);
-      return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+((s.points||[]).length)+' GPS</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 5 минути.</p>')+'</div>';
+      const hours=(s.hourSegments||[]).length,currentGps=(s.points||[]).length;
+      return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+hours+' часови · '+currentGps+' тековни GPS</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 5 минути.</p>')+'</div>';
     }).join('');
   }
   return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
