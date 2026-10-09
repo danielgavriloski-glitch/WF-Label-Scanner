@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time]
+    branches: [workfashion-personal-time, workfashion-travel-time, workfashion-travel-snap-road]
   workflow_dispatch:
 permissions:
   contents: read
