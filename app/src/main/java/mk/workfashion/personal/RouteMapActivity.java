@@ -1,16 +1,12 @@
 package mk.workfashion.personal;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.graphics.Color;
-import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -50,15 +46,13 @@ public class RouteMapActivity extends Activity {
     public static final String EXTRA_LAT = "routeLat";
     public static final String EXTRA_LON = "routeLon";
     private static final String MAP_URL = "https://download.mapsforge.org/maps/v5/europe/macedonia.map";
-    private static final String GOOGLE_PREFS = "wfag_google_roads";
-    private static final String GOOGLE_KEY = "api_key";
 
     private FrameLayout root;
     private MapView mapView;
     private TextView status;
     private TextView title;
     private Button downloadButton;
-    private Button googleButton;
+    private Button roadButton;
     private MapFile offlineMap;
     private final List<Polyline> rawRouteLayers = new ArrayList<>();
     private String titleBaseText = "";
@@ -128,7 +122,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/2.2 Android");
+                con.setRequestProperty("User-Agent", "WFAG/2.3 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -242,23 +236,30 @@ public class RouteMapActivity extends Activity {
             tp.setMargins(20, 20, 20, 20);
             root.addView(title, tp);
 
-            googleButton = new Button(this);
-            googleButton.setText("Google пат");
-            googleButton.setTextSize(13f);
+            roadButton = new Button(this);
+            roadButton.setText("Среди по пат");
+            roadButton.setTextSize(13f);
             FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
             gp.gravity = Gravity.TOP | Gravity.END;
             gp.setMargins(20, 170, 20, 20);
-            root.addView(googleButton, gp);
-            googleButton.setOnClickListener(v -> showGoogleKeyDialog());
+            root.addView(roadButton, gp);
+            roadButton.setOnClickListener(v -> {
+                try {
+                    JSONObject latestState = new JSONObject(RouteTrackingService.stateJson(this));
+                    startFreeRoadSnap(latestState);
+                } catch (Exception e) {
+                    Toast.makeText(this, "Не можам да ја прочитам GPS рутата.", Toast.LENGTH_LONG).show();
+                }
+            });
 
             if (routeBounds.count > 1) {
-                List<List<LatLong>> cachedGoogle = loadCompleteGoogleCache(routeState);
-                if (!cachedGoogle.isEmpty()) {
-                    safeSwapToRoadRoutes(cachedGoogle, "Google пат ✓ · зачуван");
-                } else if (!googleRoadKey().isEmpty()) {
-                    startGoogleRoadSnap(routeState);
+                List<List<LatLong>> cachedRoad = loadCompleteFreeRoadCache(routeState);
+                if (!cachedRoad.isEmpty()) {
+                    safeSwapToRoadRoutes(cachedRoad, "По пат ✓ · зачувано");
+                } else {
+                    startFreeRoadSnap(routeState);
                 }
             }
         } catch (Exception e) {
@@ -339,49 +340,6 @@ public class RouteMapActivity extends Activity {
         rawRouteLayers.add(line);
     }
 
-    private String googleRoadKey() {
-        SharedPreferences prefs = getSharedPreferences(GOOGLE_PREFS, MODE_PRIVATE);
-        return prefs.getString(GOOGLE_KEY, "").trim();
-    }
-
-    private void showGoogleKeyDialog() {
-        final EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setHint("Google Roads API key");
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        String current = googleRoadKey();
-        if (!current.isEmpty()) input.setText(current);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Google пат")
-                .setMessage("Внеси Google Roads API key. Клучот се чува само на овој телефон. Roads API мора да е активиран во Google Cloud.")
-                .setView(input)
-                .setPositiveButton("Зачувај и среди", null)
-                .setNeutralButton("Избриши", (d, which) -> {
-                    getSharedPreferences(GOOGLE_PREFS, MODE_PRIVATE).edit().remove(GOOGLE_KEY).apply();
-                    Toast.makeText(this, "Google key е избришан.", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Откажи", null)
-                .create();
-
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String key = input.getText() == null ? "" : input.getText().toString().trim();
-            if (key.length() < 20) {
-                input.setError("Внеси валиден Google API key.");
-                return;
-            }
-            getSharedPreferences(GOOGLE_PREFS, MODE_PRIVATE).edit().putString(GOOGLE_KEY, key).apply();
-            dialog.dismiss();
-            try {
-                JSONObject state = new JSONObject(RouteTrackingService.stateJson(this));
-                startGoogleRoadSnap(state);
-            } catch (Exception e) {
-                Toast.makeText(this, "Не можам да ја прочитам GPS рутата.", Toast.LENGTH_LONG).show();
-            }
-        }));
-        dialog.show();
-    }
-
     private int selectedRouteSessionCount(JSONObject state) {
         int count = 0;
         JSONArray sessions = state.optJSONArray("sessions");
@@ -395,7 +353,7 @@ public class RouteMapActivity extends Activity {
         return count;
     }
 
-    private List<List<LatLong>> loadCompleteGoogleCache(JSONObject state) {
+    private List<List<LatLong>> loadCompleteFreeRoadCache(JSONObject state) {
         List<List<LatLong>> routes = new ArrayList<>();
         int expected = selectedRouteSessionCount(state);
         if (expected <= 0) return routes;
@@ -409,7 +367,7 @@ public class RouteMapActivity extends Activity {
             JSONArray points = session.optJSONArray("points");
             if (points == null || points.length() < 2) continue;
 
-            GoogleRoadSnapper.Result result = GoogleRoadSnapper.loadCached(this, session);
+            FreeRoadSnapper.Result result = FreeRoadSnapper.loadCached(this, session);
             if (result == null || !result.ok()) return new ArrayList<>();
             routes.add(result.route);
         }
@@ -417,15 +375,9 @@ public class RouteMapActivity extends Activity {
         return routes.size() == expected ? routes : new ArrayList<>();
     }
 
-    private void startGoogleRoadSnap(JSONObject state) {
-        final String key = googleRoadKey();
-        if (key.isEmpty()) {
-            if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · внеси Google key");
-            return;
-        }
-
-        if (title != null) title.setText(titleBaseText + "\nGoogle ја мести рутата по пат…");
-        if (googleButton != null) googleButton.setEnabled(false);
+    private void startFreeRoadSnap(JSONObject state) {
+        if (title != null) title.setText(titleBaseText + "\nСе мести рутата по пат…");
+        if (roadButton != null) roadButton.setEnabled(false);
 
         new Thread(() -> {
             List<List<LatLong>> routes = new ArrayList<>();
@@ -441,10 +393,12 @@ public class RouteMapActivity extends Activity {
                         JSONArray points = session.optJSONArray("points");
                         if (points == null || points.length() < 2) continue;
 
-                        GoogleRoadSnapper.Result result = GoogleRoadSnapper.snap(
-                                RouteMapActivity.this, session, key);
+                        FreeRoadSnapper.Result result = FreeRoadSnapper.snap(
+                                RouteMapActivity.this, session);
                         if (result == null || !result.ok()) {
-                            error = result == null ? "Google Roads не врати рута." : result.error;
+                            error = result == null
+                                    ? "Бесплатниот патен сервис не врати рута."
+                                    : result.error;
                             routes.clear();
                             break;
                         }
@@ -452,26 +406,28 @@ public class RouteMapActivity extends Activity {
                     }
                 }
             } catch (Exception e) {
-                error = e.getMessage() == null ? "Google Roads грешка." : e.getMessage();
+                error = e.getMessage() == null
+                        ? "Бесплатниот патен сервис моментално не е достапен."
+                        : e.getMessage();
                 routes.clear();
             }
 
             final String shownError = error;
             final List<List<LatLong>> shownRoutes = routes;
             runOnUiThread(() -> {
-                if (googleButton != null) googleButton.setEnabled(true);
+                if (roadButton != null) roadButton.setEnabled(true);
                 if (mapView == null || isFinishing()) return;
 
                 if (expected > 0 && shownRoutes.size() == expected) {
-                    safeSwapToRoadRoutes(shownRoutes, "Google пат ✓ · цела рута");
+                    safeSwapToRoadRoutes(shownRoutes, "По пат ✓ · бесплатно");
                 } else {
-                    if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · Google не ја замени");
+                    if (title != null) title.setText(titleBaseText + "\nGPS линија ✓ · безбедна резерва");
                     if (!shownError.isEmpty()) {
                         Toast.makeText(RouteMapActivity.this, shownError, Toast.LENGTH_LONG).show();
                     }
                 }
             });
-        }, "wfag-google-road-snap").start();
+        }, "wfag-free-road-snap").start();
     }
 
     private void safeSwapToRoadRoutes(List<List<LatLong>> routes, String statusText) {
