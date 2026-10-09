@@ -470,13 +470,29 @@ public class RouteTrackingService extends Service implements LocationListener {
     public static void finishSession(Context c){
         synchronized(LOCK){
             try{
-                JSONObject s=readStateUnlocked(c);JSONObject session=findSession(s,s.optString("activeSessionId"));long now=System.currentTimeMillis();
+                JSONObject s=readStateUnlocked(c);
+                JSONObject session=findSession(s,s.optString("activeSessionId"));
+                long now=System.currentTimeMillis();
+                String compactId="";
+                String sessionId="";
                 if(session!=null){
-                    session.put("endedAt",now);String sid=session.optString("activeStopId","");JSONObject stop=findStop(session.optJSONArray("stops"),sid);
+                    sessionId=session.optString("id","");
+                    JSONArray points=session.optJSONArray("points");
+                    if(points!=null&&points.length()>=2){
+                        long hourStart=session.optLong("hourStartAt",session.optLong("startedAt",now));
+                        compactId=closeHourSegment(session,points,hourStart,now);
+                        session.put("points",new JSONArray());
+                    }
+                    session.put("endedAt",now);
+                    String sid=session.optString("activeStopId","");
+                    JSONObject stop=findStop(session.optJSONArray("stops"),sid);
                     if(stop!=null){stop.put("active",false);stop.put("endAt",now);}
                     session.put("activeStopId","");
                 }
-                s.put("tracking",false);s.put("activeSessionId","");writeStateUnlocked(c,s);
+                s.put("tracking",false);
+                s.put("activeSessionId","");
+                writeStateUnlocked(c,s);
+                if(!compactId.isEmpty())queueCompaction(c,sessionId,compactId);
             }catch(Exception ignored){}
         }
     }
