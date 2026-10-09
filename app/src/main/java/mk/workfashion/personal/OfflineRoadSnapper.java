@@ -39,12 +39,14 @@ import java.util.Set;
 final class OfflineRoadSnapper {
     private static final byte GRAPH_ZOOM = 15;
     private static final int TILE_SIZE = 256;
-    private static final double TILE_MARGIN_DEG = 0.010; // ~1 km
-    private static final float TILE_SAMPLE_M = 650f;
-    private static final float ROUTE_WAYPOINT_M = 120f;
-    private static final float MAX_SNAP_M = 220f;
-    private static final int MAX_TILES = 2600;
-    private static final int MAX_ASTAR_VISITS = 18000;
+    private static final double TILE_MARGIN_DEG = 0.018; // wider road corridor around GPS
+    private static final float TILE_SAMPLE_M = 500f;
+    private static final float ROUTE_WAYPOINT_M = 160f;
+    private static final float MAX_SNAP_M = 320f;
+    private static final int MAX_TILES = 3600;
+    private static final int MAX_ASTAR_VISITS = 50000;
+    private static final int MAX_SNAP_CANDIDATES = 8;
+    private static final int CACHE_VERSION = 2;
     private static final double GRID_DEG = 0.0025; // ~200-275 m in Macedonia
 
     static final class Result {
@@ -115,21 +117,29 @@ final class OfflineRoadSnapper {
         }
 
         Node nearest(TracePoint p) {
+            List<Node> candidates = nearestCandidates(p, 1);
+            return candidates.isEmpty() ? null : candidates.get(0);
+        }
+
+        List<Node> nearestCandidates(TracePoint p, int limit) {
             int cy = cell(p.lat), cx = cell(p.lon);
-            Node best = null;
-            double bestD = MAX_SNAP_M + 1d;
-            int radius = 2;
+            List<Node> found = new ArrayList<>();
+            int radius = 3;
             for (int dy = -radius; dy <= radius; dy++) {
                 for (int dx = -radius; dx <= radius; dx++) {
                     List<Node> list = grid.get((cy + dy) + ":" + (cx + dx));
                     if (list == null) continue;
                     for (Node n : list) {
                         double d = dist(p.lat, p.lon, n.p.latitude, n.p.longitude);
-                        if (d < bestD) { bestD = d; best = n; }
+                        if (d <= MAX_SNAP_M) found.add(n);
                     }
                 }
             }
-            return bestD <= MAX_SNAP_M ? best : null;
+            Collections.sort(found, (a, b) -> Double.compare(
+                    dist(p.lat, p.lon, a.p.latitude, a.p.longitude),
+                    dist(p.lat, p.lon, b.p.latitude, b.p.longitude)));
+            if (found.size() > limit) return new ArrayList<>(found.subList(0, limit));
+            return found;
         }
     }
 
@@ -277,39 +287,78 @@ final class OfflineRoadSnapper {
         Node previous = null;
 
         for (TracePoint tp : waypoints) {
-            Node n = graph.nearest(tp);
-            if (n == null) {
-                if (current.size() >= 2) result.add(current);
-                current = new ArrayList<>();
-                previous = null;
+            List<Node> candidates = graph.nearestCandidates(tp, MAX_SNAP_CANDIDATES);
+            if (candidates.isEmpty()) {
+                // Do not cut the route. Keep the previous road anchor and bridge
+                // from it to the next GPS waypoint that can be snapped.
                 continue;
             }
+
             if (previous == null) {
-                current.add(n.p);
-                previous = n;
-                continue;
-            }
-            if (previous == n) continue;
-
-            List<Node> path = aStar(previous, n);
-            if (path == null || path.size() < 2) {
-                if (current.size() >= 2) result.add(current);
-                current = new ArrayList<>();
-                current.add(n.p);
-                previous = n;
+                previous = candidates.get(0);
+                current.add(previous.p);
                 continue;
             }
 
-            for (int i = 1; i < path.size(); i++) {
-                LatLong p = path.get(i).p;
-                if (current.isEmpty() || dist(current.get(current.size()-1).latitude, current.get(current.size()-1).longitude, p.latitude, p.longitude) > 0.5)
+            List<Node> bestPath = null;
+            Node chosen = null;
+            double bestScore = Double.POSITIVE_INFINITY;
+
+            for (Node candidate : candidates) {
+                if (candidate == previous) {
+                    chosen = candidate;
+                    bestPath = Collections.singletonList(candidate);
+                    bestScore = 0d;
+                    break;
+                }
+
+                List<Node> path = aStar(previous, candidate);
+                if (path == null || path.size() < 2) continue;
+
+                double pathMeters = pathLength(path);
+                double snapMeters = dist(tp.lat, tp.lon, candidate.p.latitude, candidate.p.longitude);
+                double direct = dist(previous.p.latitude, previous.p.longitude, candidate.p.latitude, candidate.p.longitude);
+                double detour = Math.max(0d, pathMeters - direct);
+                double score = snapMeters * 2.0d + detour * 0.12d;
+
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestPath = path;
+                    chosen = candidate;
+                }
+            }
+
+            if (chosen == null || bestPath == null) {
+                // A GPS point may sit closer to the opposite carriageway or to
+                // an isolated service road. Ignore that single bad match rather
+                // than starting a new blue segment.
+                continue;
+            }
+
+            for (int i = 1; i < bestPath.size(); i++) {
+                LatLong p = bestPath.get(i).p;
+                if (current.isEmpty() || dist(
+                        current.get(current.size()-1).latitude,
+                        current.get(current.size()-1).longitude,
+                        p.latitude, p.longitude) > 0.5) {
                     current.add(p);
+                }
             }
-            previous = n;
+            previous = chosen;
         }
 
         if (current.size() >= 2) result.add(current);
         return result;
+    }
+
+    private static double pathLength(List<Node> path) {
+        double total = 0d;
+        for (int i = 1; i < path.size(); i++) {
+            LatLong a = path.get(i - 1).p;
+            LatLong b = path.get(i).p;
+            total += dist(a.latitude, a.longitude, b.latitude, b.longitude);
+        }
+        return total;
     }
 
     private static List<Node> aStar(Node start, Node goal) {
@@ -319,7 +368,7 @@ final class OfflineRoadSnapper {
         Set<Node> closed = new HashSet<>();
 
         double direct = dist(start.p.latitude, start.p.longitude, goal.p.latitude, goal.p.longitude);
-        double maxRoute = Math.max(1800d, direct * 4.5d + 1000d);
+        double maxRoute = Math.max(3500d, direct * 8.0d + 2500d);
 
         gScore.put(start, 0d);
         open.add(new QueueState(start, direct));
@@ -361,7 +410,7 @@ final class OfflineRoadSnapper {
 
     private static String signature(JSONObject session, List<TracePoint> trace) {
         TracePoint last = trace.get(trace.size() - 1);
-        return trace.size() + "-" + last.at + "-" + session.optLong("endedAt", 0L);
+        return CACHE_VERSION + "-" + trace.size() + "-" + last.at + "-" + session.optLong("endedAt", 0L);
     }
 
     private static File cacheFile(Context context, String sessionId) {
