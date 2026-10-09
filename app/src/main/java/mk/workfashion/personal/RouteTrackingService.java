@@ -26,6 +26,8 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final long STOP_MS=5*60*1000L;
     private static final float STOP_RADIUS_M=80f;
     private static final float PLACE_RADIUS_M=120f;
+    private static final float MAX_ACCEPTED_ACCURACY_M=80f;
+    private static final float MAX_REASONABLE_SPEED_MPS=55f;
     private static final long HISTORY_RETENTION_MS=5L*365L*24L*60L*60L*1000L;
     private static final Object LOCK=new Object();
     private LocationManager locationManager;
@@ -70,7 +72,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     @Override public void onStatusChanged(String provider,int status,Bundle extras){}
 
     @Override public void onLocationChanged(Location loc){
-        if(loc==null||loc.getAccuracy()>150f)return;
+        if(loc==null||loc.getAccuracy()>MAX_ACCEPTED_ACCURACY_M)return;
         synchronized(LOCK){
             try{
                 JSONObject state=readStateUnlocked(this);
@@ -79,6 +81,7 @@ public class RouteTrackingService extends Service implements LocationListener {
                 if(session==null)return;
                 long now=System.currentTimeMillis();
                 JSONArray points=session.optJSONArray("points");if(points==null){points=new JSONArray();session.put("points",points);}
+                JSONArray filteredPoints=session.optJSONArray("filteredPoints");if(filteredPoints==null){filteredPoints=new JSONArray();session.put("filteredPoints",filteredPoints);}
                 JSONObject last=points.length()>0?points.optJSONObject(points.length()-1):null;
                 boolean add=last==null;
                 float stepDistance=0f;
@@ -91,11 +94,24 @@ public class RouteTrackingService extends Service implements LocationListener {
                 if(add){
                     JSONObject p=new JSONObject();p.put("lat",loc.getLatitude());p.put("lon",loc.getLongitude());p.put("at",now);p.put("accuracy",Math.round(loc.getAccuracy()));
                     points.put(p);
+                    boolean plausible=true;
                     if(last!=null){
-                        float plausibleMax=Math.max(500f,(stepElapsed/1000f)*80f);
-                        if(stepDistance<=plausibleMax)session.put("distanceM",session.optDouble("distanceM",0d)+stepDistance);
+                        float seconds=Math.max(1f,stepElapsed/1000f);
+                        float speed=stepDistance/seconds;
+                        float plausibleMax=Math.max(250f,seconds*MAX_REASONABLE_SPEED_MPS);
+                        plausible=stepDistance<=plausibleMax&&speed<=MAX_REASONABLE_SPEED_MPS;
+                    }
+                    if(plausible){
+                        JSONObject fp=new JSONObject();fp.put("lat",loc.getLatitude());fp.put("lon",loc.getLongitude());fp.put("at",now);fp.put("accuracy",Math.round(loc.getAccuracy()));
+                        filteredPoints.put(fp);
+                        JSONObject filteredLast=filteredPoints.length()>1?filteredPoints.optJSONObject(filteredPoints.length()-2):null;
+                        if(filteredLast!=null){
+                            float filteredDistance=distance(filteredLast.optDouble("lat"),filteredLast.optDouble("lon"),loc.getLatitude(),loc.getLongitude());
+                            session.put("filteredDistanceM",session.optDouble("filteredDistanceM",0d)+filteredDistance);
+                        }
                     }
                     while(points.length()>8000)points.remove(0);
+                    while(filteredPoints.length()>8000)filteredPoints.remove(0);
                 }
                 double aLat=session.optDouble("anchorLat",Double.NaN),aLon=session.optDouble("anchorLon",Double.NaN);
                 long aSince=session.optLong("anchorSince",0L);
@@ -206,7 +222,7 @@ public class RouteTrackingService extends Service implements LocationListener {
                 JSONObject s=readStateUnlocked(c);
                 if(s.optBoolean("tracking",false)&&findSession(s,s.optString("activeSessionId"))!=null)return;
                 long now=System.currentTimeMillis();JSONObject session=new JSONObject();String id="route_"+Long.toString(now,36);
-                session.put("id",id);session.put("tripId",tripId==null?"":tripId);session.put("startedAt",now);session.put("endedAt",0L);session.put("distanceM",0d);session.put("points",new JSONArray());session.put("stops",new JSONArray());
+                session.put("id",id);session.put("tripId",tripId==null?"":tripId);session.put("startedAt",now);session.put("endedAt",0L);session.put("distanceM",0d);session.put("filteredDistanceM",0d);session.put("points",new JSONArray());session.put("filteredPoints",new JSONArray());session.put("stops",new JSONArray());
                 JSONArray sessions=s.optJSONArray("sessions");if(sessions==null){sessions=new JSONArray();s.put("sessions",sessions);}sessions.put(session);
                 pruneOldSessions(sessions,now);
                 s.put("tracking",true);s.put("activeSessionId",id);writeStateUnlocked(c,s);
