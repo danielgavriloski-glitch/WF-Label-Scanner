@@ -50,7 +50,11 @@ public class RouteMapActivity extends Activity {
     private FrameLayout root;
     private MapView mapView;
     private TextView status;
+    private TextView title;
     private Button downloadButton;
+    private MapFile offlineMap;
+    private final List<Polyline> rawRouteLayers = new ArrayList<>();
+    private String titleBaseText = "";
     private String from = "";
     private String to = "";
     private double focusLat = Double.NaN;
@@ -117,7 +121,7 @@ public class RouteMapActivity extends Activity {
                 con = (HttpURLConnection) new URL(MAP_URL).openConnection();
                 con.setConnectTimeout(20000);
                 con.setReadTimeout(30000);
-                con.setRequestProperty("User-Agent", "WFAG/1.7 Android");
+                con.setRequestProperty("User-Agent", "WFAG/1.8 Android");
                 con.connect();
                 if (con.getResponseCode() / 100 != 2) throw new Exception("HTTP " + con.getResponseCode());
 
@@ -190,7 +194,11 @@ public class RouteMapActivity extends Activity {
                     1f,
                     mapView.getModel().frameBufferModel.getOverdrawFactor());
 
-            MapDataStore dataStore = new MapFile(mapFile());
+            if (offlineMap != null) {
+                try { offlineMap.close(); } catch (Exception ignored) {}
+            }
+            offlineMap = new MapFile(mapFile());
+            MapDataStore dataStore = offlineMap;
             TileRendererLayer base = new TileRendererLayer(
                     cache,
                     dataStore,
@@ -199,7 +207,9 @@ public class RouteMapActivity extends Activity {
             base.setXmlRenderTheme(MapsforgeThemes.DEFAULT);
             mapView.getLayerManager().getLayers().add(base);
 
-            RouteBounds routeBounds = addRouteLayers();
+            JSONObject routeState = new JSONObject(RouteTrackingService.stateJson(this));
+            rawRouteLayers.clear();
+            RouteBounds routeBounds = addRouteLayers(routeState);
 
             if (!Double.isNaN(focusLat) && !Double.isNaN(focusLon)) {
                 mapView.setCenter(new LatLong(focusLat, focusLon));
@@ -212,9 +222,10 @@ public class RouteMapActivity extends Activity {
                 mapView.setZoomLevel((byte) 8);
             }
 
-            TextView title = new TextView(this);
+            title = new TextView(this);
             String period = (!from.isEmpty() || !to.isEmpty()) ? "\n" + from + " – " + to : "";
-            title.setText("WFAG · Офлајн GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања");
+            titleBaseText = "WFAG · Офлајн GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања";
+            title.setText(titleBaseText + (routeBounds.count > 1 ? "\nСе мести линијата по пат…" : ""));
             title.setTextSize(14f);
             title.setTextColor(Color.rgb(21, 46, 53));
             title.setBackgroundColor(Color.argb(235, 255, 255, 255));
@@ -223,15 +234,16 @@ public class RouteMapActivity extends Activity {
             tp.gravity = Gravity.TOP | Gravity.START;
             tp.setMargins(20, 20, 20, 20);
             root.addView(title, tp);
+
+            if (routeBounds.count > 1) startOfflineRoadSnap(routeState);
         } catch (Exception e) {
             showDownloadScreen("Офлајн мапата не може да се отвори. Симни ја повторно.");
         }
     }
 
-    private RouteBounds addRouteLayers() {
+    private RouteBounds addRouteLayers(JSONObject state) {
         RouteBounds bounds = new RouteBounds();
         try {
-            JSONObject state = new JSONObject(RouteTrackingService.stateJson(this));
             JSONArray sessions = state.optJSONArray("sessions");
             if (sessions == null) return bounds;
 
@@ -299,6 +311,60 @@ public class RouteMapActivity extends Activity {
         Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
         line.setPoints(route);
         mapView.getLayerManager().getLayers().add(line);
+        rawRouteLayers.add(line);
+    }
+
+    private void startOfflineRoadSnap(JSONObject state) {
+        final MapFile map = offlineMap;
+        if (map == null) return;
+
+        new Thread(() -> {
+            List<List<LatLong>> snapped = new ArrayList<>();
+            try {
+                JSONArray sessions = state.optJSONArray("sessions");
+                if (sessions != null) {
+                    for (int i = 0; i < sessions.length(); i++) {
+                        JSONObject session = sessions.optJSONObject(i);
+                        if (session == null || !sessionInRange(session)) continue;
+                        OfflineRoadSnapper.Result result = OfflineRoadSnapper.snap(RouteMapActivity.this, map, session);
+                        if (result != null && result.segments != null) snapped.addAll(result.segments);
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            runOnUiThread(() -> {
+                if (mapView == null || isFinishing()) return;
+                if (snapped.isEmpty()) {
+                    if (title != null) title.setText(titleBaseText + "\nGPS линија · нема доволно патни точки");
+                    return;
+                }
+
+                try {
+                    for (Polyline line : new ArrayList<>(rawRouteLayers)) {
+                        mapView.getLayerManager().getLayers().remove(line);
+                    }
+                    rawRouteLayers.clear();
+
+                    for (List<LatLong> route : snapped) {
+                        if (route == null || route.size() < 2) continue;
+                        Polyline line = new Polyline(routePaint(), AndroidGraphicFactory.INSTANCE);
+                        line.setPoints(route);
+                        mapView.getLayerManager().getLayers().add(line);
+                    }
+
+                    if (title != null) title.setText(titleBaseText + "\nПо пат ✓ · офлајн");
+                } catch (Exception ignored) {
+                    if (title != null) title.setText(titleBaseText);
+                }
+            });
+        }, "wfag-offline-road-snap").start();
+    }
+
+    private boolean sessionInRange(JSONObject session) {
+        String date = dateOf(session.optLong("startedAt"));
+        if (!from.isEmpty() && date.compareTo(from) < 0) return false;
+        if (!to.isEmpty() && date.compareTo(to) > 0) return false;
+        return true;
     }
 
     private static boolean shouldBreakRoute(JSONObject a, JSONObject b) {
@@ -344,6 +410,10 @@ public class RouteMapActivity extends Activity {
         if (mapView != null) {
             mapView.destroyAll();
             mapView = null;
+        }
+        if (offlineMap != null) {
+            try { offlineMap.close(); } catch (Exception ignored) {}
+            offlineMap = null;
         }
         AndroidGraphicFactory.clearResourceMemoryCache();
         super.onDestroy();
