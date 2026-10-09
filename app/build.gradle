@@ -1,4 +1,11 @@
 plugins { id 'com.android.application' }
+
+def signingPropsFile = rootProject.file("signing/signing.properties")
+def signingProps = new Properties()
+if (signingPropsFile.exists()) {
+    signingPropsFile.withInputStream { signingProps.load(it) }
+}
+
 android {
     namespace 'mk.workfashion.personal'
     compileSdk 35
@@ -6,13 +13,37 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 15
-        versionName '2.4'
+        versionCode 16
+        versionName '2.5'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
     }
-    buildTypes { release { minifyEnabled false } }
-    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+
+    signingConfigs {
+        if (signingPropsFile.exists()) {
+            wfagRelease {
+                storeFile rootProject.file("signing/" + signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (signingPropsFile.exists()) {
+                signingConfig signingConfigs.wfagRelease
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
+
 dependencies {
     implementation 'org.mapsforge:mapsforge-map-android:0.25.0'
     implementation 'org.mapsforge:mapsforge-themes:0.25.0'
