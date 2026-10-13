@@ -63,6 +63,24 @@ public class SmokeInstrumentation extends Instrumentation {
                 "(()=>{let s=WFApp.getState();s.records['2026-10-12']={type:'holiday',pause:0,note:'Празник'};Core.validate(s);const p=Core.period(s,'2026-10-12','2026-10-12',new Date('2026-10-13T12:00:00Z'));return p.counts.holiday===1&&p.worked===0&&Core.TYPES.holiday.indexOf('празник')>=0;})()"
             )),"Holiday reporting changed worked hours");
 
+            check("true".equals(js(a,
+                "(()=>{let s=WFApp.getState();s.records['2026-10-12']={type:'holidayWork',start:'08:00',end:'16:00',pause:0,pausePaid:true,overnight:false,note:'Работа на празник'};commit(s,'Holiday upgrade regression');const saved=Android.loadState();if(!load())return false;const p=Core.period(state,'2026-10-12','2026-10-12',new Date('2026-10-13T12:00:00Z'));const b=WFApp.overtimeReportJson(p),rows=WFApp.exportRows(p);editDay('2026-10-12');const hint=!document.getElementById('holidayWorkHint').hidden;closeModal();render();return p.worked===480&&p.regular===0&&p.overtime===480&&p.holidayWork===480&&b.rows[0][4].includes('Работа на празник')&&rows[1][6]===8&&hint&&Android.loadState()===saved&&JSON.stringify(state)===saved&&state.trips.length===2&&state.budgets['2026'].annual===20&&state.settings.name==='Тест Вработен';})()"
+            )),"Holiday overtime, report labels or existing saved data failed");
+
+            String holidayEncoded=js(a,
+                "JSON.stringify(WFApp.reportJson(Core.period(state,'2026-10-12','2026-10-12',new Date('2026-10-13T12:00:00Z'))))"
+            );
+            String overtimeEncoded=js(a,
+                "JSON.stringify(WFApp.overtimeReportJson(Core.period(state,'2026-10-12','2026-10-12',new Date('2026-10-13T12:00:00Z'))))"
+            );
+            JSONObject holidayReport=new JSONObject(new JSONArray("["+holidayEncoded+"]").getString(0));
+            JSONObject overtimeReport=new JSONObject(new JSONArray("["+overtimeEncoded+"]").getString(0));
+            byte[] holidayPdf=MainActivity.PdfReport.create(holidayReport);
+            byte[] overtimePdf=MainActivity.PdfReport.create(overtimeReport);
+            check(holidayPdf.length>2000&&overtimePdf.length>2000,"Holiday PDF generation failed");
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-holiday-report.pdf"))){out.write(holidayPdf);}
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-overtime-report.pdf"))){out.write(overtimePdf);}
+
             String workEncoded=js(a,
                 "JSON.stringify(WFApp.reportJson(Core.period(state,'2026-10-05','2026-10-11',new Date('2026-10-12T12:00:00Z'))))"
             );
@@ -98,7 +116,7 @@ public class SmokeInstrumentation extends Instrumentation {
             }
             screenshot.recycle();
 
-            result.putString("stream","WF_SMOKE_OK: WFAG v1.2, 08:00/custom work start, travel extends workday, overtime, free-day deduction, holiday, two PDF reports\n");
+            result.putString("stream","WF_SMOKE_OK: WFAG v2.6, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
             result.putString("stream","WF_SMOKE_FAILED: "+t.toString()+"\n");

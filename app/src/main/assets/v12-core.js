@@ -120,7 +120,10 @@ Core.week=function(state,monday,now=new Date()){
   const target=Math.round(s.weekMinutes*coveredDays/nominalDays);
   let normal=0;
   for(const r of rows){
-    if(r.scheduled){
+    if(r.type==='holidayWork'){
+      r.overtime=r.worked;
+      if(r.scheduled)normal+=Math.min(s.dayMinutes,r.credit);
+    }else if(r.scheduled){
       r.regular=Math.min(r.worked,s.dayMinutes);
       r.overtime=Math.max(0,r.worked-s.dayMinutes);
       normal+=Math.min(s.dayMinutes,r.regular+r.credit);
@@ -128,7 +131,7 @@ Core.week=function(state,monday,now=new Date()){
   }
   let gap=Math.max(0,target-normal);
   for(const r of rows){
-    if(!r.scheduled){
+    if(!r.scheduled&&r.type!=='holidayWork'){
       r.regular=Math.min(r.worked,gap);
       gap-=r.regular;
       r.overtime=r.worked-r.regular;
@@ -149,7 +152,8 @@ Core.week=function(state,monday,now=new Date()){
     compTime:compTime,
     compApplied:compApplied,
     overtime:Math.max(0,grossOvertime-compTime),
-    worked:rows.reduce((a,r)=>a+r.worked,0)
+    worked:rows.reduce((a,r)=>a+r.worked,0),
+    holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0)
   };
 };
 
@@ -201,7 +205,7 @@ Core.period=function(state,from,to,now=new Date()){
 
 function overtimeReason(r){
   if(r.type==='holidayWork'){
-    return 'Работа на празник: '+Core.hh(r.worked)+' работено, од кои '+Core.hh(r.overtime)+' се пресметани како прекувремени.';
+    return 'Работа на празник (неработен ден): сите '+Core.hh(r.worked)+' работени часови се пресметани како прекувремени.';
   }
   if(!r.scheduled){
     if(r.regular>0){
@@ -250,6 +254,8 @@ Core.overtimeBreakdown=function(state,from,to,now=new Date()){
     earned:earned,
     deductions:deductions,
     gross:p.grossOvertime,
+    holiday:p.holidayWork,
+    other:Math.max(0,p.grossOvertime-p.holidayWork),
     compApplied:p.compApplied,
     net:p.overtime
   };

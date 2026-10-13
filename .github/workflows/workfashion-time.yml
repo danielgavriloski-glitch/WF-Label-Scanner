@@ -29,6 +29,7 @@ jobs:
           node tests/core.test.js
           node tests/trips.test.js
           node tests/v12.test.js
+          node tests/holidays.test.js
           node --check app/src/main/assets/v12-core.js
           node --check app/src/main/assets/v12-ui.js
 
@@ -58,9 +59,9 @@ jobs:
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
           mkdir -p delivery/toolchain
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_5.apk
+            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_6.apk
           else
-            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_5_UNSIGNED.apk
+            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_6_UNSIGNED.apk
             printf '%s\n' 'Signing secret is not configured. Do not distribute this APK as the update build.' > delivery/SIGNING_SETUP_REQUIRED.txt
           fi
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
@@ -70,7 +71,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-Workfashion-Time-v2-5-build
+          name: WFAG-Workfashion-Time-v2-6-build
           path: delivery/
           retention-days: 7
 
@@ -98,18 +99,23 @@ jobs:
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-travel-report.pdf delivery/smoke-travel-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-holiday-report.pdf delivery/smoke-holiday-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-overtime-report.pdf delivery/smoke-overtime-report.pdf
             adb logcat -d > delivery/runtime.log
             if grep -q 'FATAL EXCEPTION' delivery/runtime.log; then exit 1; fi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-Workfashion-Time-v2-5-validation
+          name: WFAG-Workfashion-Time-v2-6-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
             delivery/smoke-report.pdf
             delivery/smoke-travel-report.pdf
+            delivery/smoke-holiday-report.pdf
+            delivery/smoke-overtime-report.pdf
             delivery/runtime.log
             app/build/reports/lint-results-release.html
           retention-days: 7
+

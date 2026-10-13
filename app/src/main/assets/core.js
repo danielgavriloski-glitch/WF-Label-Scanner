@@ -2,7 +2,8 @@
 'use strict';
 const APP_ID='workfashion-personal-time', TZ='Europe/Skopje';
 const TYPES={work:'Работа',holidayWork:'Работа на празник',vacation:'Годишен одмор',sick:'Боледување',holiday:'Празник',paid:'Платено отсуство',unpaid:'Неплатено отсуство',absent:'Отсуство',off:'Слободен ден'};
-const PAID=['vacation','sick','holiday','paid'];
+// A worked holiday keeps its nonworking-day credit; its worked hours are extra.
+const PAID=['vacation','sick','holiday','holidayWork','paid'];
 const DAY=86400000;
 const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const pad=n=>String(n).padStart(2,'0');
@@ -101,10 +102,17 @@ function week(state,monday,now=new Date()){
  const nominalDays=s.workdays.length;
  const target=Math.round(s.weekMinutes*coveredDays/nominalDays);
  let normal=0;
- for(const r of rows){if(r.scheduled){r.regular=Math.min(r.worked,s.dayMinutes);r.overtime=Math.max(0,r.worked-s.dayMinutes);normal+=Math.min(s.dayMinutes,r.regular+r.credit);}}
+ for(const r of rows){
+  if(r.type==='holidayWork'){
+   r.overtime=r.worked;
+   if(r.scheduled)normal+=Math.min(s.dayMinutes,r.credit);
+  }else if(r.scheduled){
+   r.regular=Math.min(r.worked,s.dayMinutes);r.overtime=Math.max(0,r.worked-s.dayMinutes);normal+=Math.min(s.dayMinutes,r.regular+r.credit);
+  }
+ }
  let gap=Math.max(0,target-normal);
- for(const r of rows){if(!r.scheduled){r.regular=Math.min(r.worked,gap);gap-=r.regular;r.overtime=r.worked-r.regular;normal+=r.regular;}}
- return {rows,target,normal,missing:Math.max(0,target-normal),overtime:rows.reduce((a,r)=>a+r.overtime,0),worked:rows.reduce((a,r)=>a+r.worked,0)};
+ for(const r of rows){if(!r.scheduled&&r.type!=='holidayWork'){r.regular=Math.min(r.worked,gap);gap-=r.regular;r.overtime=r.worked-r.regular;normal+=r.regular;}}
+ return {rows,target,normal,missing:Math.max(0,target-normal),overtime:rows.reduce((a,r)=>a+r.overtime,0),worked:rows.reduce((a,r)=>a+r.worked,0),holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0)};
 }
 function period(state,from,to,now=new Date()){
  const all=dates(from,to),cache={};const rows=all.map(d=>{const m=weekStart(d);if(!cache[m])cache[m]=week(state,m,now);return cache[m].rows.find(r=>r.date===d);});
@@ -130,3 +138,4 @@ function hh(min){const n=Math.max(0,Math.round(min));return `${Math.floor(n/60)}
 function displayDate(d){return `${d.slice(8)}.${d.slice(5,7)}.${d.slice(0,4)}`;}
 return {APP_ID,TZ,TYPES,PAID,pad,dateValid,plus,weekday,weekStart,dates,minutes,parts,today,timestamp,monthBounds,fresh,validate,day,week,period,leave,putRange,tripView,putTrip,removeTrip,hh,displayDate};
 });
+

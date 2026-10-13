@@ -13,8 +13,8 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 16
-        versionName '2.5'
+        versionCode 17
+        versionName '2.6'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
     }
 
@@ -48,3 +48,4 @@ dependencies {
     implementation 'org.mapsforge:mapsforge-map-android:0.25.0'
     implementation 'org.mapsforge:mapsforge-themes:0.25.0'
 }
+
