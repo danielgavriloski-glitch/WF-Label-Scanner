@@ -101,6 +101,7 @@ jobs:
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-travel-report.pdf delivery/smoke-travel-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-holiday-report.pdf delivery/smoke-holiday-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-overtime-report.pdf delivery/smoke-overtime-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-overtime-long-report.pdf delivery/smoke-overtime-long-report.pdf
             adb logcat -d > delivery/runtime.log
             if grep -q 'FATAL EXCEPTION' delivery/runtime.log; then exit 1; fi
 
@@ -115,6 +116,7 @@ jobs:
             delivery/smoke-travel-report.pdf
             delivery/smoke-holiday-report.pdf
             delivery/smoke-overtime-report.pdf
+            delivery/smoke-overtime-long-report.pdf
             delivery/runtime.log
             app/build/reports/lint-results-release.html
           retention-days: 7

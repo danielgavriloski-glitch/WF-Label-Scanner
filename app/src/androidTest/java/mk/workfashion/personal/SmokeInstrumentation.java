@@ -81,6 +81,14 @@ public class SmokeInstrumentation extends Instrumentation {
             try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-holiday-report.pdf"))){out.write(holidayPdf);}
             try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-overtime-report.pdf"))){out.write(overtimePdf);}
 
+            JSONObject longReport=new JSONObject(overtimeReport.toString());
+            StringBuilder longReason=new StringBuilder("Работа на празник\n");
+            for(int i=0;i<160;i++)longReason.append("Белешка\n");
+            longReport.getJSONArray("rows").getJSONArray(0).put(4,longReason.toString());
+            byte[] longPdf=MainActivity.PdfReport.create(longReport);
+            check(longPdf.length>overtimePdf.length,"Long overtime reason did not paginate");
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-overtime-long-report.pdf"))){out.write(longPdf);}
+
             String workEncoded=js(a,
                 "JSON.stringify(WFApp.reportJson(Core.period(state,'2026-10-05','2026-10-11',new Date('2026-10-12T12:00:00Z'))))"
             );
@@ -119,7 +127,9 @@ public class SmokeInstrumentation extends Instrumentation {
             result.putString("stream","WF_SMOKE_OK: WFAG v2.6, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
-            result.putString("stream","WF_SMOKE_FAILED: "+t.toString()+"\n");
+            java.io.StringWriter trace=new java.io.StringWriter();
+            t.printStackTrace(new java.io.PrintWriter(trace));
+            result.putString("stream","WF_SMOKE_FAILED: "+trace.toString()+"\n");
             finish(Activity.RESULT_CANCELED,result);
         }
     }

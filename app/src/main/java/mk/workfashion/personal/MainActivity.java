@@ -198,7 +198,10 @@ public class MainActivity extends Activity {
                 if(trips==null)trips=new JSONArray();
                 if(tripHeaders==null)tripHeaders=new JSONArray("[\"Датум на поаѓање\",\"Час\",\"Пристигнување\",\"На пат\",\"Белешка\"]");
                 if(rows.length()+trips.length()>10000)throw new Exception("Периодот е предолг.");
-                int row=0,tripRow=0,pageNo=0,lineIndex=0;java.util.List<String> noteLines=new java.util.ArrayList<>();
+                final boolean overtimeTable=headers.length()==5;
+                if(!overtimeTable&&headers.length()!=8)throw new Exception("Невалидни колони во извештајот.");
+                final int[] widths=overtimeTable?new int[]{120,72,50,56,229}:new int[]{43,124,80,56,56,56,48,64};
+                int row=0,rowLine=0,tripRow=0,pageNo=0,lineIndex=0;java.util.List<String> noteLines=new java.util.ArrayList<>();
                 for(int i=0;i<notes.length();i++)noteLines.addAll(wrap(notes.getString(i),8,527));
                 boolean first=true;
                 do{
@@ -209,13 +212,28 @@ public class MainActivity extends Activity {
                     text(c,"Период: "+report.optString("from")+" – "+report.optString("to"),34,104,9,GRAY,false);
                     int y=122;
                     if(first){
-                        for(int i=0;i<Math.min(summary.length(),4);i++){JSONArray a=summary.getJSONArray(i);int x=34+i*134;rect(c,x,y,124,48,Color.rgb(235,246,243));text(c,a.getString(0),x+10,y+15,8,GRAY,false);text(c,a.getString(1),x+10,y+37,17,TEAL,true);}y+=65;
+                        for(int i=0;i<summary.length();i++){JSONArray a=summary.getJSONArray(i);int x=34+(i%4)*134,sy=y+(i/4)*60;rect(c,x,sy,124,48,Color.rgb(235,246,243));text(c,fit(a.getString(0),8,104),x+10,sy+15,8,GRAY,false);text(c,fit(a.getString(1),17,104),x+10,sy+37,17,TEAL,true);}y+=Math.max(1,(summary.length()+3)/4)*60+5;
                         for(int i=0;i<details.length();i++){for(String line:wrap(details.getString(i),8,527)){text(c,line,34,y,8,GRAY,false);y+=13;}}y+=14;
                     }
                     if(row<rows.length()||first){
-                        int[] widths={43,124,80,56,56,56,48,64};int x=34;
-                        rect(c,34,y,527,23,TEAL);for(int i=0;i<8;i++){text(c,headers.getString(i),x+4,y+15,8,Color.WHITE,true);x+=widths[i];}y+=23;
-                        while(row<rows.length()&&y+19<775){JSONArray a=rows.getJSONArray(row);if(row%2==0)rect(c,34,y,527,17,Color.rgb(245,248,249));x=34;for(int i=0;i<8;i++){text(c,fit(a.optString(i,""),8,widths[i]-8),x+4,y+12,8,INK,false);x+=widths[i];}row++;y+=17;}
+                        int x=34;
+                        rect(c,34,y,527,23,TEAL);for(int i=0;i<widths.length;i++){text(c,fit(headers.getString(i),8,widths[i]-8),x+4,y+15,8,Color.WHITE,true);x+=widths[i];}y+=23;
+                        while(row<rows.length()&&y+20<775){
+                            JSONArray a=rows.getJSONArray(row);x=34;
+                            if(overtimeTable){
+                                java.util.List<java.util.List<String>> cells=new java.util.ArrayList<>();int lines=1;
+                                for(int i=0;i<widths.length;i++){java.util.List<String> cell=wrap(a.optString(i,""),8,widths[i]-8);cells.add(cell);lines=Math.max(lines,cell.size());}
+                                int visible=Math.min(lines-rowLine,(775-y-8)/12),height=visible*12+8;
+                                if(visible<=0)break;
+                                if(row%2==0)rect(c,34,y,527,height,Color.rgb(245,248,249));
+                                for(int i=0;i<cells.size();i++){java.util.List<String> cell=cells.get(i);for(int n=0;n<visible&&rowLine+n<cell.size();n++)text(c,cell.get(rowLine+n),x+4,y+13+n*12,8,INK,false);x+=widths[i];}
+                                rowLine+=visible;y+=height;
+                                if(rowLine>=lines){row++;rowLine=0;}
+                            }else{
+                                if(row%2==0)rect(c,34,y,527,17,Color.rgb(245,248,249));
+                                for(int i=0;i<widths.length;i++){text(c,fit(a.optString(i,""),8,widths[i]-8),x+4,y+12,8,INK,false);x+=widths[i];}row++;y+=17;
+                            }
+                        }
                         if(rows.length()==0&&first){text(c,"Нема записи во овој период.",34,y+20,10,GRAY,false);y+=32;}
                     }
                     if(row==rows.length()&&tripRow<trips.length()&&y+47+tripHeight(tripCells(trips.getJSONArray(tripRow)))<775){
@@ -237,3 +255,4 @@ public class MainActivity extends Activity {
         }
     }
 }
+
