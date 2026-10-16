@@ -1,6 +1,12 @@
 package mk.workfashion.personal;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.PixelCopy;
 import android.graphics.Color;
 import android.location.Location;
 import android.os.Bundle;
@@ -32,6 +38,7 @@ import org.mapsforge.map.rendertheme.internal.MapsforgeThemes;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -43,6 +50,8 @@ import java.util.Locale;
 public class RouteMapActivity extends Activity {
     public static final String EXTRA_FROM = "routeFrom";
     public static final String EXTRA_TO = "routeTo";
+    public static final String EXTRA_SESSION_ID = "routeSessionId";
+    private static final int REQUEST_MAP_PNG = 81;
     public static final String EXTRA_LAT = "routeLat";
     public static final String EXTRA_LON = "routeLon";
     private static final String MAP_URL = "https://download.mapsforge.org/maps/v5/europe/macedonia.map";
@@ -53,11 +62,13 @@ public class RouteMapActivity extends Activity {
     private TextView title;
     private Button downloadButton;
     private Button roadButton;
+    private Button imageButton;
     private MapFile offlineMap;
     private final List<Polyline> rawRouteLayers = new ArrayList<>();
     private String titleBaseText = "";
     private String from = "";
     private String to = "";
+    private String sessionFilterId = "";
     private double focusLat = Double.NaN;
     private double focusLon = Double.NaN;
 
@@ -67,6 +78,7 @@ public class RouteMapActivity extends Activity {
 
         from = safe(getIntent().getStringExtra(EXTRA_FROM));
         to = safe(getIntent().getStringExtra(EXTRA_TO));
+        sessionFilterId = safe(getIntent().getStringExtra(EXTRA_SESSION_ID));
         focusLat = getIntent().getDoubleExtra(EXTRA_LAT, Double.NaN);
         focusLon = getIntent().getDoubleExtra(EXTRA_LON, Double.NaN);
 
@@ -232,7 +244,7 @@ public class RouteMapActivity extends Activity {
 
             title = new TextView(this);
             String period = (!from.isEmpty() || !to.isEmpty()) ? "\n" + from + " – " + to : "";
-            titleBaseText = "WFAG · GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања";
+            titleBaseText = "WFAG · GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања · допри црвена точка за детали";
             title.setText(titleBaseText + (routeBounds.count > 1 ? "\nЧасовни линии ✓ · offline OSM · без плаќање" : ""));
             title.setTextSize(14f);
             title.setTextColor(Color.rgb(21, 46, 53));
@@ -258,6 +270,16 @@ public class RouteMapActivity extends Activity {
                 roadButton.postDelayed(this::showMap, 1800L);
             });
 
+            imageButton = new Button(this);
+            imageButton.setText("Зачувај слика PNG");
+            imageButton.setTextSize(13f);
+            FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            imageParams.gravity = Gravity.BOTTOM | Gravity.END;
+            imageParams.setMargins(16, 16, 20, 42);
+            root.addView(imageButton, imageParams);
+            imageButton.setOnClickListener(v -> requestPngExport());
+
             if (routeBounds.count > 1) {
                 RouteTrackingService.retryPendingCompactions(this);
             }
@@ -275,9 +297,7 @@ public class RouteMapActivity extends Activity {
             for (int i = 0; i < sessions.length(); i++) {
                 JSONObject session = sessions.optJSONObject(i);
                 if (session == null) continue;
-                String date = dateOf(session.optLong("startedAt"));
-                if (!from.isEmpty() && date.compareTo(from) < 0) continue;
-                if (!to.isEmpty() && date.compareTo(to) > 0) continue;
+                if (!sessionInRange(session)) continue;
 
                 int currentColor = 0;
                 JSONArray hourly = session.optJSONArray("hourSegments");
@@ -515,6 +535,7 @@ public class RouteMapActivity extends Activity {
     }
 
     private boolean sessionInRange(JSONObject session) {
+        if (!sessionFilterId.isEmpty() && !sessionFilterId.equals(session.optString("id"))) return false;
         String date = dateOf(session.optLong("startedAt"));
         if (!from.isEmpty() && date.compareTo(from) < 0) return false;
         if (!to.isEmpty() && date.compareTo(to) > 0) return false;
@@ -558,6 +579,70 @@ public class RouteMapActivity extends Activity {
         long h = min / 60;
         long m = min % 60;
         return h > 0 ? h + "ч " + m + "м" : m + " мин";
+    }
+
+    private void requestPngExport() {
+        if (mapView == null) {
+            Toast.makeText(this, "Прво отвори ја мапата.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/png");
+            String date = new SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(new Date());
+            intent.putExtra(Intent.EXTRA_TITLE, "WFAG_mapa_" + date + ".png");
+            startActivityForResult(intent, REQUEST_MAP_PNG);
+        } catch (Exception e) {
+            Toast.makeText(this, "Не се отвори изборот за PNG слика.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_MAP_PNG || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri target = data.getData();
+        if (root == null || mapView == null || root.getWidth() <= 0 || root.getHeight() <= 0) {
+            Toast.makeText(this, "Мапата сè уште не е подготвена.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (imageButton != null) imageButton.setVisibility(android.view.View.GONE);
+        // Capture the actual offline map tiles and route overlays, not an empty SVG.
+        root.postDelayed(() -> captureMapPng(target), 180);
+    }
+
+    private void captureMapPng(Uri target) {
+        if (isFinishing() || root == null) return;
+        final Bitmap bitmap;
+        try {
+            bitmap = Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
+        } catch (Exception | OutOfMemoryError e) {
+            if (imageButton != null) imageButton.setVisibility(android.view.View.VISIBLE);
+            Toast.makeText(this, "Нема доволно меморија за сликата.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        PixelCopy.request(getWindow(), bitmap, result -> {
+            if (imageButton != null) imageButton.setVisibility(android.view.View.VISIBLE);
+            if (result != PixelCopy.SUCCESS) {
+                bitmap.recycle();
+                Toast.makeText(this, "Сликата не се зачува. Обиди се повторно.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            new Thread(() -> {
+                boolean saved = false;
+                try (OutputStream out = getContentResolver().openOutputStream(target, "w")) {
+                    saved = out != null && bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                } catch (Exception ignored) {
+                    saved = false;
+                } finally {
+                    bitmap.recycle();
+                }
+                boolean success = saved;
+                runOnUiThread(() -> Toast.makeText(this,
+                        success ? "Мапата е зачувана како PNG слика." : "Не успеа зачувувањето на сликата.",
+                        Toast.LENGTH_LONG).show());
+            }, "wfag-png-save").start();
+        }, new Handler(Looper.getMainLooper()));
     }
 
     @Override protected void onDestroy() {

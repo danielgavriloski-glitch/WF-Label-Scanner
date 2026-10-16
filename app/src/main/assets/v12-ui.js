@@ -2,6 +2,7 @@
 'use strict';
 
 
+let routeHistoryCount=30;
 let routeMode='list',routePromptStopId='';
 function routeNativeState(){
   try{
@@ -84,7 +85,7 @@ function routePanelMarkup(from,to){
       return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+hours+' часови · '+currentGps+' тековни GPS</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 5 минути.</p>')+'</div>';
     }).join('');
   }
-  return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
+  return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Мапа и застанувања</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
 }
 function openRouteMileage(defaultFrom,defaultTo){
   const all=routeNativeState().sessions||[];
@@ -111,12 +112,71 @@ function openRouteMileage(defaultFrom,defaultTo){
   };
   $('routeKmFrom').onchange=draw;$('routeKmTo').onchange=draw;draw();
 }
+
+function openRouteHistory() {
+  const source=routeNativeState(),all=source.sessions.slice().sort((a,b)=>(Number(b.startedAt)||0)-(Number(a.startedAt)||0));
+  const today=Core.today();
+  const oldest=all.length?routeDate(all[all.length-1].startedAt):today.slice(0,4)+'-01-01';
+  routeHistoryCount=30;
+  showModal('Историја на GPS патувања',
+    '<p class="small muted">Избери датум или период. Рутите, времето на застанувањата и километражата се читаат од снимената GPS историја на телефонот.</p>'+
+    '<div class="grid"><label class="field"><span>Од датум</span><input id="gpsHistoryFrom" type="date" value="'+esc(oldest)+'"></label>'+
+    '<label class="field"><span>До датум</span><input id="gpsHistoryTo" type="date" value="'+esc(today)+'"></label></div>'+
+    '<div id="gpsHistoryResult"></div>'+
+    '<button id="gpsHistoryBackup" class="btn light full" type="button">Зачувај GPS архива (JSON)</button>'+
+    '<p class="small muted">Во отворената офлајн мапа избери „Зачувај слика PNG“ за фотографија од рутата. Извозот на архива не ги брише податоците.</p>');
+  const draw=()=>{
+    const from=$('gpsHistoryFrom').value,to=$('gpsHistoryTo').value;
+    if(!Core.dateValid(from)||!Core.dateValid(to)||from>to){
+      $('gpsHistoryResult').innerHTML='<p class="error-text">Провери ги датумите.</p>';return;
+    }
+    const matches=all.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
+    const total=matches.reduce((a,s)=>a+routeSessionMeters(s),0);
+    const stops=matches.reduce((a,s)=>a+(s.stops||[]).length,0);
+    const shown=matches.slice(0,routeHistoryCount);
+    $('gpsHistoryResult').innerHTML='<section class="card"><div class="row"><div><h3>Снимени патувања</h3><span class="small muted">'+matches.length+' рути · '+stops+' застанувања</span></div><strong class="trip-total">'+routeKm(total)+'</strong></div></section>'+
+      (shown.length?shown.map(s=>{
+        const date=routeDate(s.startedAt),st=s.stops||[],km=routeKm(routeSessionMeters(s));
+        const hasGeo=(s.points||[]).length>0||(s.hourSegments||[]).some(h=>(h.rawPoints||[]).length>0||(h.lineSegments||[]).length>0)||st.length>0;
+        return '<section class="card route-session"><div class="row"><strong>'+Core.displayDate(date)+'</strong><span class="small muted">'+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span></div>'+
+          '<div class="mini-row"><span>Поминато</span><strong>'+km+'</strong></div>'+
+          '<div class="mini-row"><span>Застанувања</span><strong>'+st.length+'</strong></div>'+
+          (st.length?st.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted">Нема снимено застанување подолго од 5 минути.</p>')+
+          (hasGeo?'<button type="button" class="btn secondary full" data-route-session="'+esc(s.id||'')+'">Отвори ја оваа рута на мапа</button>':'<p class="small muted">За ова патување нема зачувани GPS координати. Рутата не може да се реконструира.</p>')+
+          '</section>';
+      }).join(''):'<p class="trip-empty">Нема снимени GPS патувања во избраниот период. За нови рути дозволи Локација и стартувај службен пат.</p>')+
+      (matches.length>shown.length?'<button type="button" class="btn light full" id="gpsHistoryMore">Прикажи уште '+Math.min(30,matches.length-shown.length)+' рути</button>':'');
+    document.querySelectorAll('[data-route-session]').forEach(b=>b.onclick=()=>{
+      if(typeof Android!=='undefined'&&Android.openRouteSessionMap)Android.openRouteSessionMap(b.dataset.routeSession);
+      else if(typeof Android!=='undefined'&&Android.openRouteHistoryMap){
+        const found=all.find(s=>s.id===b.dataset.routeSession);
+        if(found)Android.openRouteHistoryMap(routeDate(found.startedAt),routeDate(found.startedAt));
+      }else{
+        const found=all.find(s=>s.id===b.dataset.routeSession);
+        if(found)showModal('GPS трага',routeSvg([found]));
+      }
+    });
+    document.querySelectorAll('.route-map-open').forEach(b=>b.onclick=()=>{
+      if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(b.dataset.lat),Number(b.dataset.lon));
+    });
+    const more=$('gpsHistoryMore');if(more)more.onclick=()=>{routeHistoryCount+=30;draw();};
+  };
+  ['gpsHistoryFrom','gpsHistoryTo'].forEach(id=>$(id).onchange=()=>{routeHistoryCount=30;draw();});
+  $('gpsHistoryBackup').onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.exportText){
+      Android.exportText('WFAG_GPS_istorija_'+today+'.json',JSON.stringify(source,null,2),'application/json');
+    }else toast('Архивата е достапна во Android апликацијата.');
+  };
+  draw();
+}
+
 function refreshRoutePanel(){
   const host=$('routePanel');if(!host)return;
   let from=host.dataset.from,to=host.dataset.to;
   host.innerHTML=routePanelMarkup(from,to);bindRouteButtons();
 }
 function bindRouteButtons(){
+  const history=$('routeHistory');if(history)history.onclick=openRouteHistory;
   document.querySelectorAll('[data-route-mode]').forEach(b=>b.onclick=function(){if(b.dataset.routeMode==='map'&&typeof Android!=='undefined'&&Android.openRouteHistoryMap){const host=$('routePanel');Android.openRouteHistoryMap(host?host.dataset.from:'',host?host.dataset.to:'');return;}routeMode=b.dataset.routeMode;refreshRoutePanel();});
   document.querySelectorAll('.route-map-open').forEach(b=>b.onclick=function(){if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(b.dataset.lat),Number(b.dataset.lon));});
   const km=$('routeMileage');if(km)km.onclick=function(){const host=$('routePanel');openRouteMileage(host?host.dataset.from:'',host?host.dataset.to:'');};
