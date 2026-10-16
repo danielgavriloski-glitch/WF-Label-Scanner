@@ -16,6 +16,7 @@ android {
         versionCode 18
         versionName '2.7'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
+        manifestPlaceholders = [appLabel: 'Workfashion · Мои часови']
     }
 
     signingConfigs {
@@ -30,6 +31,13 @@ android {
     }
 
     buildTypes {
+        preview {
+            initWith debug
+            applicationIdSuffix '.preview'
+            versionNameSuffix '-preview'
+            manifestPlaceholders = [appLabel: 'WFAG Preview · GPS']
+            matchingFallbacks = ['debug']
+        }
         release {
             minifyEnabled false
             if (signingPropsFile.exists()) {
