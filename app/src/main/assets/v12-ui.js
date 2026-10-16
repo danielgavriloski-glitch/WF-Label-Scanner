@@ -572,6 +572,8 @@ function bindGPSDayControls(){
     if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(btn.dataset.lat),Number(btn.dataset.lon));
   });
   const all=$('gpsSeeAll');if(all)all.onclick=()=>{view='routes';render();window.scrollTo(0,0);};
+  if(host.dataset.gpsTouchBound)return;
+  host.dataset.gpsTouchBound='yes';
   let start=null;
   host.addEventListener('touchstart',e=>{
     if(e.touches.length!==1)return;
@@ -624,9 +626,9 @@ function renderRoutes(){
   bindGPSDayControls();
   renderGPSAllHistory();
 }
-const previousRouteNativeChanged=window.onRouteNativeChanged;
+window.renderRoutes=renderRoutes;
 window.onRouteNativeChanged=function(){
-  if(typeof previousRouteNativeChanged==='function')previousRouteNativeChanged();
+  refreshRoutePanel();checkRoutePrompt();
   const host=$('gpsDayHost');
   if(host){host.innerHTML=routeDayCardMarkup(view==='home');bindGPSDayControls();}
   if(view==='routes')renderGPSAllHistory();
