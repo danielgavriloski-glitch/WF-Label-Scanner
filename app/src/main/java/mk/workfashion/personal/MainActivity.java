@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
         @JavascriptInterface public void openRouteMap(double lat,double lon){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_LAT,lat);i.putExtra(RouteMapActivity.EXTRA_LON,lon);startActivity(i);}catch(Exception e){error("Офлајн мапата не се отвори.");}});}
         @JavascriptInterface public void openRouteHistoryMap(String from,String to){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_FROM,from==null?"":from);i.putExtra(RouteMapActivity.EXTRA_TO,to==null?"":to);startActivity(i);}catch(Exception e){error("Офлајн мапата не се отвори.");}});}
+        @JavascriptInterface public void openRouteSessionMap(String sessionId){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_SESSION_ID,sessionId==null?"":sessionId);startActivity(i);}catch(Exception e){error("GPS рутата не се отвори.");}});}
     }
     private void requestSave(String name,byte[] bytes,String mime){runOnUiThread(()->{
         if(pendingBytes!=null){error("Прво заврши го претходното зачувување.");return;}
