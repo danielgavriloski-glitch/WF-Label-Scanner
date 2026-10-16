@@ -59,8 +59,12 @@ jobs:
       - name: Android build
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
+          gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assemblePreview :app:assembleDebugAndroidTest :app:lintRelease
+          cp app/build/outputs/apk/preview/app-preview.apk /tmp/wfag-preview.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose /tmp/wfag-preview.apk
           mkdir -p delivery/toolchain
+          cp /tmp/wfag-preview.apk delivery/WFAG_v2_7_PREVIEW_SAFE.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/wfag-preview.apk | grep "package: name='mk.workfashion.personal.preview'"
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_7.apk
           else
