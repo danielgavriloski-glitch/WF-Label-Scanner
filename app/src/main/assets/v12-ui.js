@@ -622,9 +622,15 @@ function renderRoutes(){
   $('app').innerHTML=header('GPS Мапа и историја','Види го денешниот или кој било претходен ден со застанувања, километража и мапа.')+
     '<div id="gpsDayHost">'+routeDayCardMarkup(false)+'</div>'+
     '<div id="gpsAllHistory"></div>'+
+    '<section class="card gps-archive-card"><h3>Пренеси постара GPS историја</h3><p class="small muted">Ако имаш GPS рути во WFAG Preview v2.7, извези „GPS архива (JSON)“ од старата Preview, па тука отвори ја архивата. Постојните записи не се бришат.</p><button type="button" class="btn secondary full" id="gpsArchiveImport">Увези GPS историја (JSON)</button></section>'+
     '<section class="card"><p class="small muted">За вистинска офлајн мапа притисни „Отвори вистинска офлајн мапа“. Скицата погоре е GPS преглед, а не улична карта. За вклучување GPS снимање оди во „Денес“ → „Тргнувам на пат“.</p></section>';
   bindGPSDayControls();
   renderGPSAllHistory();
+  const importButton=$('gpsArchiveImport');
+  if(importButton)importButton.onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.openRouteArchive)Android.openRouteArchive();
+    else toast('Увозот е достапен во Android апликацијата.');
+  };
 }
 window.renderRoutes=renderRoutes;
 window.onRouteNativeChanged=function(){
