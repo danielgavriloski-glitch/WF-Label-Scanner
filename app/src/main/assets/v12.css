@@ -14,3 +14,31 @@
 .route-map-svg polyline{fill:none;stroke:var(--teal);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.route-map-svg circle{fill:#102d35;stroke:#fff;stroke-width:2}.route-map-svg text{fill:#fff;font-size:8px;text-anchor:middle;font-weight:800}
 .route-map-empty{padding:28px 15px;text-align:center;border:1px dashed #bfd3d0;border-radius:14px;color:var(--muted);font-size:12px}.route-map-note{margin:8px 0 12px}.route-privacy{margin:9px 0 0}
 .route-prompt-place{background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 14px;margin:0 0 14px}.route-prompt-place strong,.route-prompt-place span{display:block}.route-prompt-place span{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);margin-top:4px}
+
+/* WFAG v2.8 · Daily swipeable GPS history */
+.gps-day-card{margin-top:16px}
+.gps-day-controls{display:flex;align-items:center;gap:9px;margin-top:12px}
+.gps-day-arrow{width:42px;min-width:42px;height:46px;border:1px solid #bdd8d6;border-radius:12px;background:#e7f5f0;color:#05585a;font-size:25px;font-weight:800}
+.gps-day-arrow:disabled{opacity:.35}
+.gps-day-date{flex:1;min-width:0}
+.gps-day-date span{display:block;color:#627a80;font-size:10px;font-weight:750;margin-bottom:4px}
+.gps-day-date input{min-height:42px;font-size:14px;font-weight:700}
+.gps-day-strip{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;gap:7px;margin:12px -4px;padding:0 4px 7px}
+.gps-day-chip{min-width:47px;flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid #d7e5e4;background:#f4f8f7;border-radius:12px;color:#35565b;padding:8px 3px}
+.gps-day-chip span{font-size:10px;font-weight:600}
+.gps-day-chip b{font-size:17px}
+.gps-day-chip.active{background:#036c66;color:#fff;border-color:#036c66}
+.gps-day-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.gps-day-stats span{background:#f0f6f5;padding:12px 5px;text-align:center;border-radius:11px;color:#557078;font-size:10px;min-width:0}
+.gps-day-stats b{display:block;color:#103d43;font-size:17px}
+.gps-day-route{padding:12px 0;border-top:1px solid #e2eae8}
+.gps-day-route .route-map-svg{margin:12px 0 10px}
+.gps-stop-heading{font-weight:750;margin:13px 0 3px;font-size:13px}
+.gps-empty{border:1px dashed #c1d7d5;border-radius:12px;background:#f5f9f7;padding:15px;font-size:13px;line-height:1.55;color:#4e6e70}
+.gps-history-entry .route-map-svg{margin:10px 0}
+.gps-history-day{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:0;background:none;padding:0;width:100%;text-align:left;color:var(--ink)}
+.gps-history-day span{font-size:11px;color:var(--muted);text-align:right}
+.gps-archive-card{margin-top:10px}
+.nav button{min-width:0;max-width:150px;padding:7px 2px;font-size:10px}
+.nav button svg{width:19px;height:19px}
+@media(max-width:360px){.gps-day-chip{min-width:40px}.gps-day-stats b{font-size:14px}.nav button{font-size:9px}}

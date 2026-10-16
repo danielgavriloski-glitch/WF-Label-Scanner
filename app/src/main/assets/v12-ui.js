@@ -506,6 +506,140 @@ renderSettings=function(){
   for(const p of ps)if(p.textContent.indexOf('Workfashion · Мои часови · v1.1')>=0)p.textContent='Workfashion · Мои часови · v2.6 · WFAG';
 };
 
+
+/* WFAG v2.8: daily GPS navigation and visible travel-history page. */
+let routeDaySelected=Core.today();
+let routeShownCount=12;
+const routeGPSList=()=>routeNativeState().sessions.slice().sort((a,b)=>(Number(b.startedAt)||0)-(Number(a.startedAt)||0));
+const routeDayFix=()=>{
+  const today=Core.today();
+  if(routeDaySelected>today)routeDaySelected=today;
+  return routeDaySelected;
+};
+function routeDayCardMarkup(compact) {
+  const day=routeDayFix(),all=routeGPSList(),sessions=all.filter(s=>routeDate(s.startedAt)===day);
+  const travel=(state.trips||[]).filter(t=>t.date===day);
+  const stops=sessions.reduce((v,s)=>v+(s.stops||[]).length,0);
+  const distance=sessions.reduce((v,s)=>v+routeSessionMeters(s),0);
+  const dates=[];
+  for(let i=-3;i<=3;i++){const d=Core.plus(day,i);if(d<=Core.today())dates.push(d);}
+  const nav='<div class="gps-day-controls">'+
+    '<button type="button" class="gps-day-arrow" data-gps-offset="-1" aria-label="Претходен ден">‹</button>'+
+    '<label class="gps-day-date"><span>Избран ден</span><input id="gpsDayPicker" type="date" max="'+Core.today()+'" value="'+day+'"></label>'+
+    '<button type="button" class="gps-day-arrow" data-gps-offset="1" '+(day>=Core.today()?'disabled':'')+' aria-label="Следен ден">›</button></div>'+
+    '<div class="gps-day-strip">'+dates.map(d=>'<button type="button" data-gps-date="'+d+'" class="gps-day-chip '+(d===day?'active':'')+'"><span>'+['Нед','Пон','Вто','Сре','Чет','Пет','Саб'][Core.weekday(d)]+'</span><b>'+Number(d.slice(8))+'</b></button>').join('')+'</div>';
+  let content='<div class="gps-day-stats"><span><b>'+routeKm(distance)+'</b> поминато</span><span><b>'+sessions.length+'</b> GPS рути</span><span><b>'+stops+'</b> застанувања</span></div>';
+  if(sessions.length){
+    content+=sessions.map(s=>{
+      const stopList=(s.stops||[]),start=routeClock(s.startedAt),end=s.endedAt?routeClock(s.endedAt):'во тек';
+      const points=(s.points||[]).length+(s.hourSegments||[]).reduce((k,seg)=>k+(seg.rawPoints||[]).length+(seg.lineSegments||[]).length,0);
+      return '<div class="gps-day-route"><div class="row"><strong>'+start+' – '+end+'</strong><span class="small muted">'+routeKm(routeSessionMeters(s))+'</span></div>'+
+        routeSvg([s])+
+        '<button type="button" class="btn secondary full" data-gps-open="'+esc(s.id||'')+'">Отвори вистинска офлајн мапа</button>'+
+        (stopList.length?'<div class="gps-stop-heading">Каде си застанал</div>'+stopList.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted" style="margin-top:10px">Нема регистрирано застанувања подолги од 5 минути.</p>')+
+        (points<2?'<p class="small muted">Се чекаат GPS координати за прикажување на целата линија.</p>':'')+
+        '</div>';
+    }).join('');
+  }else {
+    content+='<p class="gps-empty">За '+Core.displayDate(day)+' нема снимена GPS рута во оваа инсталација. '+
+      'Работни патувања без зачувани координати не можат да се прикажат на мапа.</p>';
+  }
+  if(travel.length){
+    content+='<div class="gps-stop-heading">Евидентирани службени патувања</div>'+travel.map(t=>
+      '<div class="mini-row"><span>'+esc(t.departure||'—')+' → '+esc(t.arrival||'во тек')+'</span><strong>'+esc(t.note||'Службен пат')+'</strong></div>').join('');
+  }
+  return '<section class="card gps-day-card" id="gpsDayCard"><div class="row"><div><h2>Мапа и историја</h2><p class="small muted" style="margin:3px 0 7px">Листај денови со прст налево/надесно или со стрелките</p></div><span class="route-live '+(routeNativeState().tracking?'on':'')+'">'+(routeNativeState().tracking?'GPS':'OFF')+'</span></div>'+
+    nav+content+(compact?'<button type="button" id="gpsSeeAll" class="btn light full">Сите поминати денови →</button>':'')+
+    '</section>';
+}
+function navigateGPSDay(date){
+  if(!Core.dateValid(date)||date>Core.today())return;
+  routeDaySelected=date;
+  const host=$('gpsDayHost');
+  if(host){host.innerHTML=routeDayCardMarkup(view==='home');bindGPSDayControls();}
+  if(view==='routes')renderGPSAllHistory();
+}
+function bindGPSDayControls(){
+  const host=$('gpsDayHost');if(!host)return;
+  host.querySelectorAll('[data-gps-offset]').forEach(btn=>btn.onclick=()=>navigateGPSDay(Core.plus(routeDayFix(),Number(btn.dataset.gpsOffset))));
+  host.querySelectorAll('[data-gps-date]').forEach(btn=>btn.onclick=()=>navigateGPSDay(btn.dataset.gpsDate));
+  const picker=$('gpsDayPicker');if(picker)picker.onchange=()=>navigateGPSDay(picker.value);
+  host.querySelectorAll('[data-gps-open]').forEach(btn=>btn.onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.openRouteSessionMap)Android.openRouteSessionMap(btn.dataset.gpsOpen);
+    else toast('Мапата е достапна во Android апликацијата.');
+  });
+  host.querySelectorAll('.route-map-open').forEach(btn=>btn.onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(btn.dataset.lat),Number(btn.dataset.lon));
+  });
+  const all=$('gpsSeeAll');if(all)all.onclick=()=>{view='routes';render();window.scrollTo(0,0);};
+  if(host.dataset.gpsTouchBound)return;
+  host.dataset.gpsTouchBound='yes';
+  let start=null;
+  host.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1)return;
+    start={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  },{passive:true});
+  host.addEventListener('touchend',e=>{
+    if(!start||!e.changedTouches.length)return;
+    const dx=e.changedTouches[0].clientX-start.x,dy=e.changedTouches[0].clientY-start.y;start=null;
+    if(Math.abs(dx)>75&&Math.abs(dx)>Math.abs(dy)*1.6){
+      navigateGPSDay(Core.plus(routeDayFix(),dx>0?-1:1));
+    }
+  },{passive:true});
+}
+function renderGPSAllHistory(){
+  const host=$('gpsAllHistory');if(!host)return;
+  const all=routeGPSList(),today=Core.today(),shown=all.slice(0,routeShownCount);
+  host.innerHTML='<div class="section-head"><h2>Сите снимени патувања</h2><span class="small muted">'+all.length+' GPS рути</span></div>'+
+    (shown.length?shown.map(s=>{
+      const d=routeDate(s.startedAt),st=s.stops||[];
+      return '<section class="card gps-history-entry"><button type="button" class="gps-history-day" data-gps-select="'+d+'"><strong>'+Core.displayDate(d)+'</strong><span>'+routeClock(s.startedAt)+'–'+(s.endedAt?routeClock(s.endedAt):'во тек')+' · '+routeKm(routeSessionMeters(s))+'</span></button>'+
+        routeSvg([s])+
+        '<button type="button" class="btn secondary full" data-gps-history-map="'+esc(s.id||'')+'">Прикажи пат на офлајн мапа</button>'+
+        '<p class="small muted" style="margin-top:9px">'+st.length+' застанувања'+(st.length?' · '+st.map(p=>(p.name||'Локација')+' ('+routeSpan(p.startAt,p.endAt)+')').map(esc).join(', '):'')+'</p></section>';
+    }).join(''):'<section class="card"><p>Сè уште нема снимени GPS патувања во оваа Preview инсталација.</p><p class="small muted">За ново снимање избери „Тргнувам на пат“ и дозволи точна GPS локација. Старата WFAG има одделна GPS база.</p></section>')+
+    (all.length>shown.length?'<button id="gpsHistoryLoadMore" class="btn secondary full">Прикажи повеќе денови</button>':'');
+  host.querySelectorAll('[data-gps-select]').forEach(b=>b.onclick=()=>{
+    navigateGPSDay(b.dataset.gpsSelect);
+    const el=$('gpsDayCard');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  host.querySelectorAll('[data-gps-history-map]').forEach(b=>b.onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.openRouteSessionMap)Android.openRouteSessionMap(b.dataset.gpsHistoryMap);
+  });
+  const more=$('gpsHistoryLoadMore');
+  if(more)more.onclick=()=>{routeShownCount+=12;renderGPSAllHistory();};
+}
+const homeWithGPS=renderHome;
+renderHome=function(){
+  homeWithGPS();
+  const hero=document.querySelector('#app .hero');
+  if(hero){
+    hero.insertAdjacentHTML('afterend','<div id="gpsDayHost">'+routeDayCardMarkup(true)+'</div>');
+    bindGPSDayControls();
+  }
+};
+function renderRoutes(){
+  $('app').innerHTML=header('GPS Мапа и историја','Види го денешниот или кој било претходен ден со застанувања, километража и мапа.')+
+    '<div id="gpsDayHost">'+routeDayCardMarkup(false)+'</div>'+
+    '<div id="gpsAllHistory"></div>'+
+    '<section class="card gps-archive-card"><h3>Пренеси постара GPS историја</h3><p class="small muted">Ако имаш GPS рути во WFAG Preview v2.7, извези „GPS архива (JSON)“ од старата Preview, па тука отвори ја архивата. Постојните записи не се бришат.</p><button type="button" class="btn secondary full" id="gpsArchiveImport">Увези GPS историја (JSON)</button></section>'+
+    '<section class="card"><p class="small muted">За вистинска офлајн мапа притисни „Отвори вистинска офлајн мапа“. Скицата погоре е GPS преглед, а не улична карта. За вклучување GPS снимање оди во „Денес“ → „Тргнувам на пат“.</p></section>';
+  bindGPSDayControls();
+  renderGPSAllHistory();
+  const importButton=$('gpsArchiveImport');
+  if(importButton)importButton.onclick=()=>{
+    if(typeof Android!=='undefined'&&Android.openRouteArchive)Android.openRouteArchive();
+    else toast('Увозот е достапен во Android апликацијата.');
+  };
+}
+window.renderRoutes=renderRoutes;
+window.onRouteNativeChanged=function(){
+  refreshRoutePanel();checkRoutePrompt();
+  const host=$('gpsDayHost');
+  if(host){host.innerHTML=routeDayCardMarkup(view==='home');bindGPSDayControls();}
+  if(view==='routes')renderGPSAllHistory();
+};
+
 if(window.WFApp){
   window.WFApp.editTrip=editTrip;
   window.WFApp.reportJson=workReportJson;
@@ -516,7 +650,8 @@ if(window.WFApp){
   window.WFApp.overtimeReportJson=overtimeReportJson;
   window.WFApp.exportOvertimePdf=exportOvertimePdf;
 }
-window.onRouteNativeChanged=function(){refreshRoutePanel();checkRoutePrompt();};
+// GPS v2.8 callback above refreshes both route list and day panel.
+
 setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
 if(state)render();
 })();

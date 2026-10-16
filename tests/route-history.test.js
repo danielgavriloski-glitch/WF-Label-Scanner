@@ -24,5 +24,5 @@ assert.match(map,/PixelCopy\.request/,'PNG should capture actual map pixels');
 assert.match(service,/wfag-routes\.json/,'Existing GPS data file path must not change');
 assert.match(service,/HISTORY_RETENTION_MS=5L\*365L/,'Retain multiple years of route history');
 assert.match(build,/applicationId 'mk\.workfashion\.personal'/,'App ID must not change');
-assert.match(build,/versionCode 18/,'Higher versionCode required for an in-place update');
+assert.ok(Number(build.match(/versionCode ([0-9]+)/)?.[1]||0)>=18,'A newer version code is required');
 console.log('WFAG_ROUTE_HISTORY_OK');

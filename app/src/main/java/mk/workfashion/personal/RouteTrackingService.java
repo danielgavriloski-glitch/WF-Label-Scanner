@@ -426,6 +426,57 @@ public class RouteTrackingService extends Service implements LocationListener {
     }
     public static String stateJson(Context c){return readState(c).toString();}
 
+    /** Merge a manually exported WFAG GPS archive; never overwrite current trips or tracking. */
+    public static int importArchive(Context c,String json)throws Exception{
+        if(json==null||json.length()>16*1024*1024)throw new Exception("GPS архивата е преголема.");
+        JSONObject archive=new JSONObject(json);
+        JSONArray incoming=archive.optJSONArray("sessions");
+        if(incoming==null||incoming.length()>5000)throw new Exception("Не е валидна WFAG GPS архива.");
+        synchronized(LOCK){
+            JSONObject current=readStateUnlocked(c);
+            JSONArray saved=current.optJSONArray("sessions");
+            if(saved==null){saved=new JSONArray();current.put("sessions",saved);}
+            Set<String> ids=new HashSet<>();
+            for(int i=0;i<saved.length();i++){
+                JSONObject item=saved.optJSONObject(i);
+                if(item!=null)ids.add(item.optString("id",""));
+            }
+            int added=0;
+            for(int i=0;i<incoming.length();i++){
+                JSONObject item=incoming.optJSONObject(i);
+                if(item==null)continue;
+                String id=item.optString("id","");
+                if(id.isEmpty()||item.optLong("startedAt",0)<=0||ids.contains(id))continue;
+                // Do not import pending active sessions as active tracking on this device.
+                JSONObject copy=new JSONObject(item.toString());
+                copy.put("endedAt",Math.max(item.optLong("endedAt"),item.optLong("startedAt")));
+                copy.put("activeStopId","");
+                JSONArray stops=copy.optJSONArray("stops");
+                if(stops!=null)for(int j=0;j<stops.length();j++){
+                    JSONObject stop=stops.optJSONObject(j);
+                    if(stop!=null){stop.put("active",false);stop.put("pending",false);}
+                }
+                saved.put(copy);ids.add(id);added++;
+            }
+            JSONArray incomingPlaces=archive.optJSONArray("savedPlaces");
+            if(incomingPlaces!=null){
+                JSONArray places=current.optJSONArray("savedPlaces");
+                if(places==null){places=new JSONArray();current.put("savedPlaces",places);}
+                Set<String> placeIds=new HashSet<>();
+                for(int i=0;i<places.length();i++){JSONObject p=places.optJSONObject(i);if(p!=null)placeIds.add(p.optString("id",""));}
+                for(int i=0;i<incomingPlaces.length()&&places.length()<500;i++){
+                    JSONObject p=incomingPlaces.optJSONObject(i);
+                    if(p!=null&&!p.optString("id","").isEmpty()&&!placeIds.contains(p.optString("id"))){
+                        places.put(new JSONObject(p.toString()));placeIds.add(p.optString("id"));
+                    }
+                }
+            }
+            writeStateUnlocked(c,current);
+            return added;
+        }
+    }
+
+
     private static JSONObject findSession(JSONObject state,String id){
         JSONArray a=state.optJSONArray("sessions");if(a==null)return null;
         for(int i=0;i<a.length();i++){JSONObject o=a.optJSONObject(i);if(o!=null&&id.equals(o.optString("id")))return o;}return null;

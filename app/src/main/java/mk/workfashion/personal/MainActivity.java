@@ -33,7 +33,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity {
-    private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, MAX_BYTES=16*1024*1024;
+    private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, OPEN_ROUTE_ARCHIVE=74, MAX_BYTES=16*1024*1024;
     WebView webView;
     private AtomicFile stateFile;
     private byte[] pendingBytes;
@@ -126,6 +126,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream"});i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_BACKUP);}catch(Exception e){error("Не се отвори изборот за бекап.");}});}
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
         @JavascriptInterface public String getRouteLog(){return RouteTrackingService.stateJson(MainActivity.this);}
+        @JavascriptInterface public void openRouteArchive(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_ROUTE_ARCHIVE);}catch(Exception e){error("Изборот на GPS архивата не се отвори.");}});}
         @JavascriptInterface public void startRouteTracking(String tripId){requestRouteStart(tripId);}
         @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
         @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
@@ -150,6 +151,20 @@ public class MainActivity extends Activity {
                     runOnUiThread(()->webView.evaluateJavascript("window.onExportComplete&&onExportComplete("+JSONObject.quote(name)+")",null));
                 }catch(Exception e){error("Фајлот не се зачува. Провери го просторот и избраната папка.");}},"wf-save").start();
             }
+        }else if(request==OPEN_ROUTE_ARCHIVE&&result==RESULT_OK&&data!=null&&data.getData()!=null){
+            Uri uri=data.getData();
+            new Thread(()->{
+                try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                    if(in==null)throw new Exception("Нема пристап.");
+                    byte[] buffer=new byte[8192];int n;
+                    while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>MAX_BYTES)throw new Exception("Архивата е преголема.");}
+                    int count=RouteTrackingService.importArchive(MainActivity.this,new String(out.toByteArray(),StandardCharsets.UTF_8));
+                    runOnUiThread(()->{
+                        webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);
+                        webView.evaluateJavascript("window.onNativeError&&onNativeError("+JSONObject.quote("Увезени "+count+" GPS патувања од архива.")+")",null);
+                    });
+                }catch(Exception e){error("GPS архивата не се увезе: "+e.getMessage());}
+            },"wfag-import-gps").start();
         }else if(request==OPEN_BACKUP&&result==RESULT_OK&&data!=null&&data.getData()!=null){
             Uri uri=data.getData();new Thread(()->{
                 try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream b=new ByteArrayOutputStream()){

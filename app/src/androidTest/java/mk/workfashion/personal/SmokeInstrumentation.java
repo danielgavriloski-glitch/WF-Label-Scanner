@@ -43,9 +43,13 @@ public class SmokeInstrumentation extends Instrumentation {
                 "(()=>{let s=Core.fresh(new Date('2026-10-01T08:00:00Z'));s.settings.trackStart='2026-10-01';s.settings.name='Тест Вработен';s.budgets['2026']={annual:20,carry:2,previous:1};if(!Android.saveState(JSON.stringify(s))||!load())return false;render();return state.trips.length===0&&state.settings.name==='Тест Вработен';})()"
             )),"Known state setup failed");
 
-            for(String v:new String[]{"history","leave","reports","settings","home"}){
+            for(String v:new String[]{"routes","history","leave","reports","settings","home"}){
                 check("true".equals(js(a,"WFApp.setView('"+v+"');document.getElementById('app').textContent.length>100")),"Missing screen: "+v);
             }
+
+            check("true".equals(js(a,
+                "(()=>{WFApp.setView('home');const p=document.getElementById('gpsDayPicker');if(!p||!document.getElementById('gpsDayCard'))return false;const date=p.value;document.querySelector('[data-gps-offset=\\\"-1\\\"]').click();const before=document.getElementById('gpsDayPicker').value;if(before===date)return false;WFApp.setView('routes');return document.getElementById('gpsAllHistory')!==null&&document.getElementById('gpsArchiveImport')!==null&&document.querySelector('[data-view=\\\"routes\\\"]')!==null;})()"
+            )),"Daily GPS browsing, history tab or import button not visible");
 
             check("true".equals(js(a,
                 "(()=>{WFApp.editTrip(null,'2026-10-07');if(!document.getElementById('workStartStandard').checked)return false;document.getElementById('tripDeparture').value='10:00';document.getElementById('tripArrivalDate').value='2026-10-07';document.getElementById('tripArrival').value='19:00';document.getElementById('tripNote').value='Велес – Скопје';document.getElementById('tripForm').dispatchEvent(new Event('submit',{cancelable:true}));return state.trips.length===1&&state.trips[0].workStart==='08:00'&&state.trips[0].arrival==='19:00';})()"
