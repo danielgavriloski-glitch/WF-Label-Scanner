@@ -1,0 +1,28 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const read=path=>fs.readFileSync(path,'utf8');
+const ui=read('app/src/main/assets/v12-ui.js');
+const activity=read('app/src/main/java/mk/workfashion/personal/MainActivity.java');
+const map=read('app/src/main/java/mk/workfashion/personal/RouteMapActivity.java');
+const service=read('app/src/main/java/mk/workfashion/personal/RouteTrackingService.java');
+const build=read('app/build.gradle');
+
+assert.match(ui,/id="routeHistory"/,'History must be visible on the travel panel');
+assert.match(ui,/function openRouteHistory\(\)/,'History has its own date-range view');
+assert.match(ui,/gpsHistoryFrom/);
+assert.match(ui,/gpsHistoryTo/);
+assert.match(ui,/routeStopMarkup\(p,i\+1\)/,'Stops must be listed with times');
+assert.match(ui,/Android\.openRouteSessionMap/,'A single GPS session must open on the real map');
+assert.match(ui,/gpsHistoryBackup/,'Saved GPS sessions must be exportable independently');
+assert.match(map,/EXTRA_SESSION_ID/);
+assert.match(map,/sessionFilterId\.equals\(session\.optString\("id"\)\)/);
+assert.match(activity,/openRouteSessionMap\(String sessionId\)/);
+assert.match(map,/Intent\.ACTION_CREATE_DOCUMENT/);
+assert.match(map,/intent\.setType\("image\/png"\)/);
+assert.match(map,/PixelCopy\.request/,'PNG should capture actual map pixels');
+assert.match(service,/wfag-routes\.json/,'Existing GPS data file path must not change');
+assert.match(service,/HISTORY_RETENTION_MS=5L\*365L/,'Retain multiple years of route history');
+assert.match(build,/applicationId 'mk\.workfashion\.personal'/,'App ID must not change');
+assert.match(build,/versionCode 18/,'Higher versionCode required for an in-place update');
+console.log('WFAG_ROUTE_HISTORY_OK');
