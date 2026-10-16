@@ -1,7 +1,9 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7]
+  pull_request:
+    branches: [workfashion-travel-time]
   workflow_dispatch:
 
 permissions:
@@ -30,6 +32,7 @@ jobs:
           node tests/trips.test.js
           node tests/v12.test.js
           node tests/holidays.test.js
+          node tests/route-history.test.js
           node --check app/src/main/assets/v12-core.js
           node --check app/src/main/assets/v12-ui.js
 
@@ -59,9 +62,9 @@ jobs:
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease
           mkdir -p delivery/toolchain
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_6.apk
+            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_7.apk
           else
-            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_6_UNSIGNED.apk
+            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_7_UNSIGNED.apk
             printf '%s\n' 'Signing secret is not configured. Do not distribute this APK as the update build.' > delivery/SIGNING_SETUP_REQUIRED.txt
           fi
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
@@ -71,7 +74,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-Workfashion-Time-v2-6-build
+          name: WFAG-Workfashion-Time-v2-7-build
           path: delivery/
           retention-days: 7
 
@@ -108,7 +111,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-Workfashion-Time-v2-6-validation
+          name: WFAG-Workfashion-Time-v2-7-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
