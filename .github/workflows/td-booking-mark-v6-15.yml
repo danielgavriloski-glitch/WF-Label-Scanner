@@ -1,0 +1,38 @@
+name: TD Booking MarK v6.15 APK build
+on:
+  push:
+    branches: [td-booking-mark-v6-15]
+    paths:
+      - "td-booking-mark/**"
+      - ".github/workflows/td-booking-mark-v6-15.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Android SDK 35
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDK_BIN=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n1)
+          test -n "$SDK_BIN" || exit 1
+          yes | "$SDK_BIN" --sdk_root="$ANDROID_HOME" --licenses > /dev/null || true
+          "$SDK_BIN" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: Compile unsigned v6.15 native classes
+        run: gradle -p td-booking-mark :admin:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TD_Booking_MarK_v6_15_CI_DEBUG_NOT_FOR_UPDATE
+          path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
+          if-no-files-found: error
