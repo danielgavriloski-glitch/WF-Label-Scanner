@@ -86,9 +86,48 @@ async function transport(msg){
  });
 }
 let conflictSnapshot=null;
-function drawRoster(){const p=document.getElementById('markReplicaRosterList');if(!p)return;const rows=Object.values(saved(ROSTER_KEY,{}));p.replaceChildren();const headline=document.createElement('b');headline.textContent='👥 Екипа (поврзани профили): '+rows.length;p.append(headline);
- for(const e of rows.slice(0,50)){const item=document.createElement('div');item.textContent=(e.name||e.id)+' · '+(e.role||'соработник')+' · '+(e.active?'Активен':'Неактивен');p.append(item)}
- if(!rows.length){const x=document.createElement('p');x.textContent='Нема синхронизирани Cloud профили. Хонорарите и исплатите се во Финансии → Екипа.';p.append(x)}
+function drawRoster(){
+ const p=document.getElementById('markReplicaRosterList');if(!p)return;
+ const bookings=saved(BOOK_KEY,[]),fin=saved(FIN_KEY,{}),cloud=saved(ROSTER_KEY,{});
+ const records=Array.isArray(bookings)?bookings:[];
+ const finance=fin&&typeof fin==='object'&&!Array.isArray(fin)?fin:{};
+ const groups=new Map();let engagements=0;
+ for(const w of records){
+  if(!w||!w.id)continue;
+  const people=Array.isArray(finance[w.id]?.crew)?finance[w.id].crew:[];
+  for(const c of people){
+   if(!c||typeof c!=='object')continue;
+   const name=String(c.name||'Непознат соработник').trim();
+   const key=(name.toLocaleLowerCase('mk-MK')+'|'+String(c.phone||'').trim());
+   const fee=Number(c.fee)||0;
+   const paid=(Array.isArray(c.payments)?c.payments:[]).reduce((s,x)=>s+(Number(x?.amount)||0),0);
+   const g=groups.get(key)||{name,role:String(c.role||''),fee:0,paid:0,weddings:new Set(),entries:0};
+   g.fee+=fee;g.paid+=paid;g.entries++;g.weddings.add(String(w.bride||'')+' и '+String(w.groom||''));
+   groups.set(key,g);engagements++;
+  }
+ }
+ p.replaceChildren();
+ const title=document.createElement('b');title.textContent='Екипа · локални ангажмани и исплати';p.append(title);
+ const desc=document.createElement('div');desc.style.cssText='margin:5px 0 8px';
+ desc.textContent='Соработници: '+groups.size+' · Ангажмани: '+engagements+
+ ' · Договорено: '+[...groups.values()].reduce((s,x)=>s+x.fee,0).toFixed(2)+' €'+
+ ' · Исплатено: '+[...groups.values()].reduce((s,x)=>s+x.paid,0).toFixed(2)+' €';
+ p.append(desc);
+ for(const g of [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'mk-MK')).slice(0,100)){
+  const item=document.createElement('div');item.style.cssText='padding:7px 0;border-top:1px solid #d6e6df';
+  const head=document.createElement('b');head.textContent=g.name+(g.role?' · '+g.role:'');item.append(head);
+  const summary=document.createElement('div');
+  summary.textContent=g.entries+' ангажман(и) · Хонорар '+g.fee.toFixed(2)+' € · Исплатено '+g.paid.toFixed(2)+' € · За исплата '+Math.max(0,g.fee-g.paid).toFixed(2)+' €';
+  item.append(summary);p.append(item);
+ }
+ if(!engagements){
+  const note=document.createElement('p');note.textContent='На овој PC нема примени финансиски ангажмани. Провери „Синхронизирај сè“ на телефонот и PC. Не прави празен увоз што би ги заменил телефонските податоци.';p.append(note);
+ }
+ const roster=cloud&&typeof cloud==='object'?Object.values(cloud):[];
+ const cloudHeading=document.createElement('div');cloudHeading.style.cssText='margin-top:10px;font-weight:bold';
+ cloudHeading.textContent='Cloud профили (одделно): '+roster.length;p.append(cloudHeading);
+ if(!roster.length){const note=document.createElement('div');note.textContent='За локални хонорари не е потребен Cloud.';p.append(note)}
+ else for(const e of roster.slice(0,50)){const item=document.createElement('div');item.textContent=(e.name||e.id)+' · '+(e.role||'соработник')+' · '+(e.active?'Активен':'Неактивен');p.append(item)}
 }
 function writeLocalRecord(kind,id,value){const cur=snap();if(value===null)delete cur[kind][id];else cur[kind][id]=value;
 if(kind==='bookings')localStorage.setItem(BOOK_KEY,JSON.stringify(Object.values(cur.bookings)));
