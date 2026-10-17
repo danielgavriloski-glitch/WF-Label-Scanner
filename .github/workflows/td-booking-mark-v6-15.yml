@@ -1,7 +1,7 @@
 name: TD Booking MarK v6.15 APK build
 on:
   push:
-    branches: [td-booking-mark-v6-15]
+    branches: [td-booking-mark-v6-15, fix/td-booking-crew-summary-nav-20261017]
     paths:
       - "td-booking-mark/**"
       - ".github/workflows/td-booking-mark-v6-15.yml"
