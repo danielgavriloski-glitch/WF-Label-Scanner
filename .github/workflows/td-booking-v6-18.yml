@@ -1,0 +1,39 @@
+name: TD Booking v6.18 unsigned APK verification
+on:
+  push:
+    branches:
+      - feature/td-booking-v6-18-real-backup-sync
+    paths:
+      - 'td-booking-mark/**'
+      - '.github/workflows/td-booking-v6-18.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK platform 35
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDK_BIN=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          test -n "$SDK_BIN"
+          yes | "$SDK_BIN" --sdk_root="$ANDROID_HOME" --licenses > /dev/null || true
+          "$SDK_BIN" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Compile native backup export and local sync code
+        run: gradle -p td-booking-mark :admin:assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TD_Booking_v6_18_UNSIGNED_MUST_SIGN_WITH_ORIGINAL_KEY
+          path: td-booking-mark/admin/build/outputs/apk/release/admin-release-unsigned.apk
+          if-no-files-found: error
