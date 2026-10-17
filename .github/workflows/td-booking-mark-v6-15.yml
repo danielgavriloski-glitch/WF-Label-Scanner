@@ -29,10 +29,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
-      - name: Compile unsigned v6.15 native classes
-        run: gradle -p td-booking-mark :admin:assembleDebug --no-daemon --stacktrace
+      - name: Build production release v6.15 native classes
+        run: gradle -p td-booking-mark :admin:assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: TD_Booking_MarK_v6_15_CI_DEBUG_NOT_FOR_UPDATE
-          path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
+          name: TD_Booking_MarK_v6_15_RELEASE_UNSIGNED_FOR_LOCAL_SIGNING
+          path: td-booking-mark/admin/build/outputs/apk/release/admin-release-unsigned.apk
           if-no-files-found: error
