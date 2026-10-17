@@ -28,6 +28,8 @@ class MainActivity : Activity() {
     private lateinit var markSync: MarKSync
     private var pendingFilePicker: ValueCallback<Array<Uri>>? = null
     private val FILE_PICKER_CODE = 8614
+    private val BACKUP_EXPORT_CODE = 8615
+    private var pendingBackupJson: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,6 +80,31 @@ class MainActivity : Activity() {
         @JavascriptInterface fun marKReplica(raw: String) = markSync.syncReplica(raw)
         @JavascriptInterface fun marKDisconnect() = markSync.disconnect()
 
+        /** Native Android save dialog. Never overwrite app data or rely on WebView downloads. */
+        @JavascriptInterface fun saveBackupJson(raw: String) = runOnUiThread {
+            try {
+                if (raw.toByteArray(Charsets.UTF_8).size > 16 * 1024 * 1024)
+                    throw IllegalArgumentException("Резервната копија е преголема")
+                val obj = JSONObject(raw)
+                val format = obj.optString("format")
+                if (format != "TD-Booking-backup" && format != "TD-Booking-FULL-backup")
+                    throw IllegalArgumentException("Непознат Backup формат")
+                if (obj.optJSONArray("bookings") == null || obj.optJSONObject("finance") == null)
+                    throw IllegalArgumentException("Недостасуваат свадбите или финансиите")
+                pendingBackupJson = raw
+                val date = java.time.LocalDate.now().toString()
+                val fileName = "TD_Booking_" + date + "_backup.json"
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_TITLE, fileName)
+                }
+                startActivityForResult(intent, BACKUP_EXPORT_CODE)
+            } catch (e: Exception) {
+                backupResult(false, "Грешка при подготовка: " + (e.message ?: "непозната"))
+            }
+        }
+
         @JavascriptInterface fun printContract() = runOnUiThread {
             val pm = getSystemService(Context.PRINT_SERVICE) as android.print.PrintManager
             pm.print("TD Booking", web.createPrintDocumentAdapter("TD Booking"), null)
@@ -89,6 +116,11 @@ class MainActivity : Activity() {
                 requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR), 43)
             } else syncNow(json)
         }
+    }
+
+    private fun backupResult(ok: Boolean, message: String) {
+        val result = JSONObject().put("ok", ok).put("message", message).toString()
+        web.evaluateJavascript("window.tdNativeBackupResult&&window.tdNativeBackupResult($result)", null)
     }
 
     private fun writableCalendar(): Long? {
@@ -155,6 +187,25 @@ class MainActivity : Activity() {
             val chosen = if (resultCode == Activity.RESULT_OK) data?.data?.let { arrayOf(it) } else null
             pendingFilePicker?.onReceiveValue(chosen)
             pendingFilePicker = null
+        }
+        if (requestCode == BACKUP_EXPORT_CODE) {
+            val payload = pendingBackupJson
+            pendingBackupJson = null
+            if (resultCode != Activity.RESULT_OK || data?.data == null) {
+                backupResult(false, "Зачувувањето е откажано. Нема изменети записи.")
+            } else if (payload == null) {
+                backupResult(false, "Податоците за Backup не се достапни — обиди се повторно.")
+            } else {
+                try {
+                    contentResolver.openOutputStream(data.data!!, "w")?.use { stream ->
+                        stream.write(payload.toByteArray(Charsets.UTF_8))
+                        stream.flush()
+                    } ?: throw java.io.IOException("Не може да се отвори избраната датотека")
+                    backupResult(true, "✓ Backup.json е зачуван на избраното место.")
+                } catch (e: Exception) {
+                    backupResult(false, "Не успеа зачувувањето: " + (e.message ?: "грешка"))
+                }
+            }
         }
     }
     @Deprecated("Deprecated in Java")
