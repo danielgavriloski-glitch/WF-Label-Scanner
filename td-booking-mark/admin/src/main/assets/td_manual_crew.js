@@ -9,7 +9,7 @@ const oldList=document.getElementById('staffList');
 if(!host||!oldList||document.getElementById('tdManualCrew'))return;
 const styles=document.createElement('style');styles.textContent=`
 #tdManualCrew{margin:12px 0;padding:14px;border:1px solid #bddbd1;background:#f8fcfa;border-radius:16px}
-#tdManualCrew h3{margin:4px 0 10px}
+#tdManualCrew [hidden]{display:none!important}\n#tdManualCrew h3{margin:4px 0 10px}
 #tdManualCrew .mc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 #tdManualCrew .mc-grid>label{margin:0;min-width:0}
 #tdManualCrew label{font-size:14px;display:block}
