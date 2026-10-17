@@ -12,10 +12,10 @@ wrap.innerHTML=`<h2>🔗 TD Booking ↔ MarK</h2><p>Поврзи го телеф
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button id="tdMarkPair">1. Започни спарување</button><button id="tdMarkFinish">2. Заврши по PC потврда</button></div>
 <div id="tdMarkCode" style="font-size:28px;font-weight:bold;color:#164d42"></div>
 <div id="tdMarkStatus" style="padding:10px;border-radius:9px;background:#e7f0eb;white-space:pre-wrap">Не е поврзано.</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button id="tdMarkNow">↻ Синхронизирај свадби</button><button class="secondary" id="tdMarkDisconnect">Раздвој уред</button><button class="secondary" id="tdMarkClose">Затвори</button></div>
-<p style="font-size:12px">Се пренесуваат само потребни податоци за продукцијата: датум, младенци, локација, пакет и услуги. Уплати, телефонски броеви, потписи и финансиски информации НЕ се испраќаат. Известувањето се појавува во MarK додека е отворен.</p>`;
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button id="tdMarkNow">↻ Само свадби (стара врска)</button><button class="secondary" id="tdMarkDisconnect">Раздвој уред</button><button class="secondary" id="tdMarkClose">Затвори</button></div>
+<p style="font-size:12px">Ова е стариот пренос САМО за свадби. За финансии, хонорари и исплати користи „Синхронизирај сè“ во панелот MarK · TD Booking. Се пренесуваат само потребни податоци за продукцијата: датум, младенци, локација, пакет и услуги. Уплати, телефонски броеви, потписи и финансиски информации НЕ се испраќаат. Известувањето се појавува во MarK додека е отворен.</p>`;
 document.body.append(wrap);
-const open=document.createElement('button');open.textContent='🔗 MarK';open.style.cssText='position:fixed;bottom:75px;right:12px;z-index:19;border-radius:99px;background:#0b6f67;color:white;padding:10px 15px;box-shadow:0 3px 9px #0004';
+const open=document.createElement('button');open.textContent='🔗 MarK';open.style.cssText='position:fixed;bottom:calc(106px + env(safe-area-inset-bottom));right:12px;z-index:19;border-radius:99px;background:#0b6f67;color:white;padding:10px 15px;box-shadow:0 3px 9px #0004;max-width:calc(100vw - 24px)';
 open.onclick=()=>{wrap.style.display='block';wrap.scrollIntoView({behavior:'smooth'});try{let cfg=JSON.parse(TDNative.marKInfo());$m('tdMarkURL').value=cfg.endpoint||$m('tdMarkURL').value}catch(e){}};
 document.body.append(open);
 $m('tdMarkClose').onclick=()=>wrap.style.display='none';
