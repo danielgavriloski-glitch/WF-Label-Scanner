@@ -90,7 +90,10 @@ class MarKSync(private val activity: Activity, private val web: WebView) {
         body.put("ok", success)
         val text = JSONObject.quote(body.toString())
         activity.runOnUiThread {
-            web.evaluateJavascript("window.tdMarKResult && window.tdMarKResult(JSON.parse($text))", null)
+            if (type == "replica")
+                web.evaluateJavascript("window.tdMarKReplicaResult && window.tdMarKReplicaResult(JSON.parse($text))", null)
+            else
+                web.evaluateJavascript("window.tdMarKResult && window.tdMarKResult(JSON.parse($text))", null)
         }
     }
 
@@ -149,6 +152,17 @@ class MarKSync(private val activity: Activity, private val web: WebView) {
             i += 80
         }
         JSONObject().put("received", sent).put("changed", changed).put("projects", projects)
+    }
+
+    /** Secure authenticated v2 replica; preserve all existing storage and pairing. */
+    fun syncReplica(rawJson: String) = run("replica") {
+        if (rawJson.toByteArray(Charsets.UTF_8).size > 10 * 1024 * 1024)
+            throw IOException("Премногу финансиски податоци за еден пренос")
+        val request = JSONObject(rawJson)
+        if (request.optInt("protocol") != 2)
+            throw IOException("Погрешна верзија на синхронизација")
+        request.put("deviceId", deviceId())
+        connect("/v2/replica", request, true)
     }
 
     fun disconnect() {
