@@ -55,7 +55,9 @@ function applyLocal(records,previous,current,ops,conflictSet){
    const was=Object.prototype.hasOwnProperty.call(current[t]||{},id)?current[t][id]:null;
    const transmitted=ops.find(x=>x.kind===t&&x.id===id);
    if(!eq(was,transmitted?transmitted.data:(prior?prior.data:null)))continue; // local editor changed while network in flight
-   const value=remote?.data??null;
+   // An absent server record is never a deletion instruction. Only explicit tombstones may remove data.
+   if(!remote)continue;
+   const value=remote.data??null;
    if(!eq(was,value)){if(value===null)delete next[t][id];else next[t][id]=value;changed=true;}
    if(remote)latest.records[t][id]=remote;else delete latest.records[t][id];
   }
@@ -82,7 +84,13 @@ function applyLocal(records,previous,current,ops,conflictSet){
 }
 async function transport(msg){
  if(PC){const res=await fetch('/api/mark/booking/replica',{method:'POST',credentials:'same-origin',headers:{'X-TD-Client':'TD-v1.4','Content-Type':'application/json'},body:JSON.stringify(msg)});const d=await res.json();if(!res.ok)throw Error(d.error||'HTTP '+res.status);return d;}
- return new Promise((resolve,reject)=>{pending={resolve,reject};window.TDNative.marKReplica(JSON.stringify(msg));
+ return new Promise((resolve,reject)=>{
+   const holder={resolve,reject};
+   const timeout=setTimeout(()=>{if(pending===holder){pending=null;reject(Error('MarK не одговори за 30 секунди — провери LAN и спарување.'))}},30000);
+   holder.resolve=(v)=>{clearTimeout(timeout);resolve(v)};
+   holder.reject=(e)=>{clearTimeout(timeout);reject(e)};
+   pending=holder;
+   try{window.TDNative.marKReplica(JSON.stringify(msg))}catch(e){pending=null;holder.reject(e)}
  });
 }
 let conflictSnapshot=null;
@@ -159,7 +167,9 @@ async function sync(manual=false){if(busy||(!PC&&!NATIVE))return;const el=docume
  const changed=applyLocal(response.snapshot||{},prior,initial,ops,new Set(conflicts.map(x=>x.kind+'|'+x.id)));
  const when=new Date().toLocaleTimeString('mk-MK',{hour:'2-digit',minute:'2-digit'});
  setStatus((conflicts.length?'⚠ Потребна проверка: '+conflicts.length+' конфликти. ':'✓ Поврзано. ')+
-   'Последно: '+when+' · '+(response.applied||[]).length+' испратени'+(changed?', примени нови податоци':''),!!conflicts.length);
+   'Последно: '+when+' · '+(response.applied||[]).length+' прифатени измени'+
+   (changed?', преземени нови податоци':'')+
+   ' · На MarK сервер: '+Object.keys(response.snapshot?.bookings||{}).length+' свадби / '+Object.keys(response.snapshot?.finance||{}).length+' финансии',!!conflicts.length);
  if(PC){const cache=Object.keys(window.marKTeamRoster||{}).length;const ex=document.getElementById('markReplicaRoster');if(ex)ex.textContent='Профили на екипа (информативно): '+cache}
  stamp=Date.now();}
  catch(error){setStatus('Нема синхронизација: '+error.message+'. Локалните податоци се зачувани.',true)}
