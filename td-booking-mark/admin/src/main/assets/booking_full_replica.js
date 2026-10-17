@@ -92,7 +92,8 @@ function drawRoster(){
  const records=Array.isArray(bookings)?bookings:[];
  const finance=fin&&typeof fin==='object'&&!Array.isArray(fin)?fin:{};
  const groups=new Map();let engagements=0;
- for(const w of records){
+ const allRecords=[...records,{id:'__td_manual_general_crew_v1__',bride:'Општ',groom:'ангажман'}];
+ for(const w of allRecords){
   if(!w||!w.id)continue;
   const people=Array.isArray(finance[w.id]?.crew)?finance[w.id].crew:[];
   for(const c of people){
