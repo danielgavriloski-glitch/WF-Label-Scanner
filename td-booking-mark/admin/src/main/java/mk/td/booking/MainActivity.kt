@@ -75,6 +75,7 @@ class MainActivity : Activity() {
         @JavascriptInterface fun marKPair(endpoint: String, fingerprint: String) = markSync.requestPair(endpoint, fingerprint)
         @JavascriptInterface fun marKConfirm() = markSync.finishPair()
         @JavascriptInterface fun marKSync(raw: String) = markSync.syncBookings(raw)
+        @JavascriptInterface fun marKReplica(raw: String) = markSync.syncReplica(raw)
         @JavascriptInterface fun marKDisconnect() = markSync.disconnect()
 
         @JavascriptInterface fun printContract() = runOnUiThread {
