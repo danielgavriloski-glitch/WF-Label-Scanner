@@ -1,0 +1,12 @@
+{
+  "apk": "TD-Booking-MarK-v6.14-SIGNED-UPDATE.apk",
+  "sha256": "477108f8743b31e52ce8d0fe6fcf9d678e2f23c4be218bcbbd4cd7bbbf54f28b",
+  "size_bytes": 1116683,
+  "package": "mk.td.booking6",
+  "versionCode": 74,
+  "versionName": "6.14",
+  "original_certificate_sha256": "76651c8cf1522f1fab74d211162eeb8122695e07490ad57ecbdd578b09a58212",
+  "signature": "APK v2",
+  "compiled": true,
+  "android_device_tested": false
+}
