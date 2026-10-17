@@ -15,9 +15,24 @@ wrap.innerHTML=`<h2>🔗 TD Booking ↔ MarK</h2><p>Поврзи го телеф
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button id="tdMarkNow">↻ Само свадби (стара врска)</button><button class="secondary" id="tdMarkDisconnect">Раздвој уред</button><button class="secondary" id="tdMarkClose">Затвори</button></div>
 <p style="font-size:12px">Ова е стариот пренос САМО за свадби. За финансии, хонорари и исплати користи „Синхронизирај сè“ во панелот MarK · TD Booking. Се пренесуваат само потребни податоци за продукцијата: датум, младенци, локација, пакет и услуги. Уплати, телефонски броеви, потписи и финансиски информации НЕ се испраќаат. Известувањето се појавува во MarK додека е отворен.</p>`;
 document.body.append(wrap);
-const open=document.createElement('button');open.textContent='🔗 MarK';open.style.cssText='position:fixed;bottom:calc(106px + env(safe-area-inset-bottom));right:12px;z-index:19;border-radius:99px;background:#0b6f67;color:white;padding:10px 15px;box-shadow:0 3px 9px #0004;max-width:calc(100vw - 24px)';
-open.onclick=()=>{wrap.style.display='block';wrap.scrollIntoView({behavior:'smooth'});try{let cfg=JSON.parse(TDNative.marKInfo());$m('tdMarkURL').value=cfg.endpoint||$m('tdMarkURL').value}catch(e){}};
-document.body.append(open);
+// Keep MarK reachable without a floating pill obscuring bottom navigation at any display scale.
+const open=document.createElement('button');
+open.type='button';open.className='secondary';open.textContent='🔗 MarK поврзување';
+open.onclick=()=>{
+  if(typeof toggleDrawer==='function')toggleDrawer(false);
+  wrap.style.display='block';wrap.scrollIntoView({behavior:'smooth',block:'start'});
+  try{const cfg=JSON.parse(TDNative.marKInfo());$m('tdMarkURL').value=cfg.endpoint||$m('tdMarkURL').value}catch(e){}
+};
+const drawer=document.getElementById('drawer');
+if(drawer){
+  const close=drawer.lastElementChild;
+  if(close&&close.tagName==='BUTTON')drawer.insertBefore(open,close);
+  else drawer.append(open);
+}else{
+  // Fallback when the drawer markup is not available, never use fixed positioning.
+  const header=document.querySelector('header');
+  if(header)header.append(open);else document.body.prepend(open);
+}
 $m('tdMarkClose').onclick=()=>wrap.style.display='none';
 $m('tdMarkStatus').textContent='Не е поврзано';
 function update(text){status=text;$m('tdMarkStatus').textContent=text}
