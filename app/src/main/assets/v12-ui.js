@@ -85,7 +85,7 @@ function routePanelMarkup(from,to){
       return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+hours+' часови · '+currentGps+' тековни GPS</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 5 минути.</p>')+'</div>';
     }).join('');
   }
-  return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Мапа и застанувања</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
+  return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Мапа и застанувања</button><button type="button" id="savedPlacesManage" class="btn light full">Зачувани места · Измени имиња</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
 }
 function openRouteMileage(defaultFrom,defaultTo){
   const all=routeNativeState().sessions||[];
@@ -113,15 +113,15 @@ function openRouteMileage(defaultFrom,defaultTo){
   $('routeKmFrom').onchange=draw;$('routeKmTo').onchange=draw;draw();
 }
 
-function openRouteHistory() {
+function openRouteHistory(selectedFrom,selectedTo) {
   const source=routeNativeState(),all=source.sessions.slice().sort((a,b)=>(Number(b.startedAt)||0)-(Number(a.startedAt)||0));
   const today=Core.today();
   const oldest=all.length?routeDate(all[all.length-1].startedAt):today.slice(0,4)+'-01-01';
   routeHistoryCount=30;
   showModal('Историја на GPS патувања',
     '<p class="small muted">Избери датум или период. Рутите, времето на застанувањата и километражата се читаат од снимената GPS историја на телефонот.</p>'+
-    '<div class="grid"><label class="field"><span>Од датум</span><input id="gpsHistoryFrom" type="date" value="'+esc(oldest)+'"></label>'+
-    '<label class="field"><span>До датум</span><input id="gpsHistoryTo" type="date" value="'+esc(today)+'"></label></div>'+
+    '<div class="grid"><label class="field"><span>Од датум</span><input id="gpsHistoryFrom" type="date" value="'+esc(typeof selectedFrom==='string'?selectedFrom:oldest)+'"></label>'+
+    '<label class="field"><span>До датум</span><input id="gpsHistoryTo" type="date" value="'+esc(typeof selectedTo==='string'?selectedTo:today)+'"></label></div>'+
     '<div id="gpsHistoryResult"></div>'+
     '<button id="gpsHistoryBackup" class="btn light full" type="button">Зачувај GPS архива (JSON)</button>'+
     '<p class="small muted">Во отворената офлајн мапа избери „Зачувај слика PNG“ за фотографија од рутата. Извозот на архива не ги брише податоците.</p>');
@@ -176,7 +176,8 @@ function refreshRoutePanel(){
   host.innerHTML=routePanelMarkup(from,to);bindRouteButtons();
 }
 function bindRouteButtons(){
-  const history=$('routeHistory');if(history)history.onclick=openRouteHistory;
+  const history=$('routeHistory');if(history)history.onclick=()=>openRouteHistory();
+  const manage=$('savedPlacesManage');if(manage)manage.onclick=openSavedPlacesModal;
   document.querySelectorAll('[data-route-mode]').forEach(b=>b.onclick=function(){if(b.dataset.routeMode==='map'&&typeof Android!=='undefined'&&Android.openRouteHistoryMap){const host=$('routePanel');Android.openRouteHistoryMap(host?host.dataset.from:'',host?host.dataset.to:'');return;}routeMode=b.dataset.routeMode;refreshRoutePanel();});
   document.querySelectorAll('.route-map-open').forEach(b=>b.onclick=function(){if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(b.dataset.lat),Number(b.dataset.lon));});
   const km=$('routeMileage');if(km)km.onclick=function(){const host=$('routePanel');openRouteMileage(host?host.dataset.from:'',host?host.dataset.to:'');};
@@ -621,11 +622,13 @@ renderHome=function(){
 function renderRoutes(){
   $('app').innerHTML=header('GPS Мапа и историја','Види го денешниот или кој било претходен ден со застанувања, километража и мапа.')+
     '<div id="gpsDayHost">'+routeDayCardMarkup(false)+'</div>'+
-    '<div id="gpsAllHistory"></div>'+
+    '<div id="gpsAllHistory"></div>'+ 
+    '<section class="card"><div class="row"><h3>Зачувани места</h3><span class="small muted">Преименувај без губење на историја</span></div><button type="button" class="btn secondary full" id="savedPlacesOnHistory">Уреди зачувани места</button></section>'+
     '<section class="card gps-archive-card"><h3>Пренеси постара GPS историја</h3><p class="small muted">Ако имаш GPS рути во WFAG Preview v2.7, извези „GPS архива (JSON)“ од старата Preview, па тука отвори ја архивата. Постојните записи не се бришат.</p><button type="button" class="btn secondary full" id="gpsArchiveImport">Увези GPS историја (JSON)</button></section>'+
     '<section class="card"><p class="small muted">За вистинска офлајн мапа притисни „Отвори вистинска офлајн мапа“. Скицата погоре е GPS преглед, а не улична карта. За вклучување GPS снимање оди во „Денес“ → „Тргнувам на пат“.</p></section>';
   bindGPSDayControls();
   renderGPSAllHistory();
+  const savedPlacesButton=$('savedPlacesOnHistory');if(savedPlacesButton)savedPlacesButton.onclick=openSavedPlacesModal;
   const importButton=$('gpsArchiveImport');
   if(importButton)importButton.onclick=()=>{
     if(typeof Android!=='undefined'&&Android.openRouteArchive)Android.openRouteArchive();
@@ -652,24 +655,49 @@ if(window.WFApp){
 }
 // GPS v2.8 callback above refreshes both route list and day panel.
 
-setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
-if(state)render();
-})();
+// Manage persistent names by saved-place ID rather than editing only a past stop.
+function openSavedPlacesModal(){
+  const places=routeNativeState().savedPlaces.slice().filter(p=>p&&p.id)
+    .sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'mk'));
+  showModal('Зачувани места',
+    '<p class="small muted">Измени го името на постојано место. Новото име се прикажува и во сите претходни патувања поврзани со него; GPS координатите остануваат непроменети.</p>'+
+    (places.length?places.map(p=>
+      '<div class="route-saved-place"><div class="route-stop-main"><strong>'+esc(p.name||'Локација')+'</strong>'+
+      '<div class="route-coords">'+Number(p.lat).toFixed(5)+', '+Number(p.lon).toFixed(5)+'</div></div>'+
+      '<button type="button" class="btn secondary route-saved-edit" data-saved-place-id="'+esc(p.id)+'" data-place-name="'+esc(p.name||'')+'">Измени</button></div>'
+    ).join(''):'<p class="gps-empty">Нема зачувани постојани места. Именувај застанување и вклучи „Запамети го ова име“.</p>'));
+  document.querySelectorAll('.route-saved-edit').forEach(button=>button.onclick=()=>{
+    if(typeof Android==='undefined'||!Android.renameSavedPlace){toast('Уредувањето е достапно во Android верзијата.');return;}
+    const current=button.dataset.placeName||'';
+    const updated=window.prompt('Ново име на зачуваното место:',current);
+    if(updated===null)return;
+    const clean=updated.trim();
+    if(!clean){toast('Внеси име на местото.');return;}
+    if(!Android.renameSavedPlace(button.dataset.savedPlaceId,clean)){toast('Името не е зачувано.');return;}
+    if(window.onRouteNativeChanged)window.onRouteNativeChanged();
+    openSavedPlacesModal();
+    toast('Името е изменето и во поврзаните стари патувања.');
+  });
+}
 
-
-// Edit an existing stop/place name without changing GPS coordinates or route history.
+// This listener belongs INSIDE the module, where toast and refresh functions exist.
 document.addEventListener('click',function(event){
   const button=event.target.closest('.route-place-edit');
   if(!button)return;
   const stopId=button.dataset.stopId;
   if(!stopId||typeof Android==='undefined'||!Android.setRouteStop)return;
-  const previous=button.dataset.placeName||'';
-  const updated=window.prompt('Измени име на локацијата:',previous);
+  const updated=window.prompt('Измени име на локацијата:',button.dataset.placeName||'');
   if(updated===null)return;
   const clean=updated.trim();
   if(!clean){toast('Внеси име за локацијата.');return;}
   if(!Android.setRouteStop(stopId,clean,true)){toast('Не успеа измената.');return;}
-  refreshRoutePanel();
-  if(typeof openRouteHistory==='function'&&document.getElementById('gpsHistoryResult'))openRouteHistory();
-  toast('Името е ажурирано во зачуваните патувања.');
+  const from=$('gpsHistoryFrom'),to=$('gpsHistoryTo');
+  const dates=from&&to?[from.value,to.value]:null;
+  if(window.onRouteNativeChanged)window.onRouteNativeChanged();
+  if(dates)openRouteHistory(dates[0],dates[1]);
+  toast('Името е ажурирано во поврзаните патувања.');
 });
+
+setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
+if(state)render();
+})();
