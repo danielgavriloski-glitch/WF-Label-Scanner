@@ -42,3 +42,8 @@
 .nav button{min-width:0;max-width:150px;padding:7px 2px;font-size:10px}
 .nav button svg{width:19px;height:19px}
 @media(max-width:360px){.gps-day-chip{min-width:40px}.gps-day-stats b{font-size:14px}.nav button{font-size:9px}}
+
+/* WFAG v2.9 saved location management */
+.route-saved-place{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.route-saved-place:first-of-type{border-top:0}
+.route-saved-place .btn{width:auto;flex:0 0 auto;padding:10px 14px}
