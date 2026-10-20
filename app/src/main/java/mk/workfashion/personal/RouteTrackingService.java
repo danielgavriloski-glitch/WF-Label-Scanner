@@ -560,6 +560,24 @@ public class RouteTrackingService extends Service implements LocationListener {
                     JSONObject near=findSavedPlace(s,found.optDouble("lat"),found.optDouble("lon"));
                     if(near==null){near=new JSONObject();near.put("id","place_"+Long.toString(System.currentTimeMillis(),36));places.put(near);}
                     near.put("name",clean);near.put("lat",found.optDouble("lat"));near.put("lon",found.optDouble("lon"));
+                    // Keep all historical stops linked to this named place in sync.
+                    String placeId=near.optString("id","");
+                    for(int i=0;sessions!=null&&i<sessions.length();i++){
+                        JSONObject session=sessions.optJSONObject(i);
+                        JSONArray stops=session==null?null:session.optJSONArray("stops");
+                        for(int j=0;stops!=null&&j<stops.length();j++){
+                            JSONObject prior=stops.optJSONObject(j);
+                            if(prior==null)continue;
+                            boolean linked=!placeId.isEmpty()&&placeId.equals(prior.optString("savedPlaceId",""));
+                            boolean nearby=distance(prior.optDouble("lat"),prior.optDouble("lon"),near.optDouble("lat"),near.optDouble("lon"))<=PLACE_RADIUS_M;
+                            if(linked||nearby){
+                                prior.put("name",clean);
+                                prior.put("savedPlaceId",placeId);
+                                prior.put("pending",false);
+                            }
+                        }
+                    }
+                    found.put("savedPlaceId",placeId);
                     while(places.length()>100)places.remove(0);
                 }
                 writeStateUnlocked(c,s);return true;
