@@ -13,8 +13,8 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 19
-        versionName '2.8'
+        versionCode 21
+        versionName '2.9'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
         manifestPlaceholders = [appLabel: 'Workfashion · Мои часови']
     }
@@ -35,7 +35,7 @@ android {
             initWith debug
             applicationIdSuffix '.preview2'
             versionNameSuffix '-preview2'
-            manifestPlaceholders = [appLabel: 'WFAG Мапа · v2.8']
+            manifestPlaceholders = [appLabel: 'WFAG Мапа · v2.9']
             matchingFallbacks = ['debug']
         }
         release {
