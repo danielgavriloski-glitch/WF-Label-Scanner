@@ -27,5 +27,5 @@ assert.match(native,/openRouteArchive\(/,'Android import picker');
 assert.match(storage,/importArchive\(/,'Merge into existing GPS history');
 assert.match(storage,/wfag-routes\.json/,'Persistent original GPS file');
 assert.match(gradle,/applicationIdSuffix '\.preview2'/,'Use separate package, no modification of original app');
-assert.match(gradle,/versionCode 19/,'New version');
+assert.ok(Number(gradle.match(/versionCode ([0-9]+)/)?.[1]||0)>=20,'New version code must be at least 20');
 console.log('WFAG_ROUTE_DAY_BROWSER_OK');
