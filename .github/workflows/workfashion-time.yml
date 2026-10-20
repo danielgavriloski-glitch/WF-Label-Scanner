@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-8-edit-saved-place-names]
   pull_request:
     branches: [workfashion-travel-time]
   workflow_dispatch:
