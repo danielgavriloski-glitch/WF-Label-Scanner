@@ -9,7 +9,7 @@ const service=read('app/src/main/java/mk/workfashion/personal/RouteTrackingServi
 const build=read('app/build.gradle');
 
 assert.match(ui,/id="routeHistory"/,'History must be visible on the travel panel');
-assert.match(ui,/function openRouteHistory\(\)/,'History has its own date-range view');
+assert.match(ui,/function openRouteHistory\(/,'History has its own date-range view');
 assert.match(ui,/gpsHistoryFrom/);
 assert.match(ui,/gpsHistoryTo/);
 assert.match(ui,/routeStopMarkup\(p,i\+1\)/,'Stops must be listed with times');
