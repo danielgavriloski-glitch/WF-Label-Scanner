@@ -493,6 +493,64 @@ public class RouteTrackingService extends Service implements LocationListener {
         for(int i=0;i<a.length();i++){JSONObject p=a.optJSONObject(i);if(p==null)continue;float d=distance(lat,lon,p.optDouble("lat"),p.optDouble("lon"));if(d<=PLACE_RADIUS_M&&d<bestD){best=p;bestD=d;}}
         return best;
     }
+    private static JSONObject findSavedPlaceById(JSONObject state,String id){
+        if(id==null||id.isEmpty())return null;
+        JSONArray places=state.optJSONArray("savedPlaces");
+        for(int i=0;places!=null&&i<places.length();i++){
+            JSONObject place=places.optJSONObject(i);
+            if(place!=null&&id.equals(place.optString("id","")))return place;
+        }
+        return null;
+    }
+
+    /** Sync an edited saved-place name to all linked historical stops.
+     * Legacy unlinked stops join only when nearby and unnamed or carrying the previous name.
+     * Explicit links to a different saved place are never changed. */
+    private static void syncSavedPlaceName(JSONObject state,JSONObject place,String previous)throws Exception{
+        String id=place.optString("id","");
+        String name=place.optString("name","");
+        double lat=place.optDouble("lat"),lon=place.optDouble("lon");
+        JSONArray sessions=state.optJSONArray("sessions");
+        for(int i=0;sessions!=null&&i<sessions.length();i++){
+            JSONObject session=sessions.optJSONObject(i);
+            JSONArray stops=session==null?null:session.optJSONArray("stops");
+            for(int j=0;stops!=null&&j<stops.length();j++){
+                JSONObject stop=stops.optJSONObject(j);
+                if(stop==null)continue;
+                String linkedId=stop.optString("savedPlaceId","");
+                boolean linked=id.equals(linkedId);
+                String oldStopName=stop.optString("name","").trim();
+                boolean legacy=linkedId.isEmpty() &&
+                    distance(stop.optDouble("lat"),stop.optDouble("lon"),lat,lon)<=PLACE_RADIUS_M &&
+                    (oldStopName.isEmpty()||oldStopName.equals(previous));
+                if(linked||legacy){
+                    stop.put("name",name);
+                    stop.put("savedPlaceId",id);
+                    stop.put("pending",false);
+                }
+            }
+        }
+    }
+
+    /** Rename a saved location in-place. Keep its ID, coordinates and travel history. */
+    public static boolean renameSavedPlace(Context c,String placeId,String name){
+        String clean=name==null?"":name.trim();
+        if(placeId==null||placeId.isEmpty()||clean.isEmpty())return false;
+        if(clean.length()>80)clean=clean.substring(0,80);
+        synchronized(LOCK){
+            try{
+                JSONObject state=readStateUnlocked(c);
+                JSONObject place=findSavedPlaceById(state,placeId);
+                if(place==null)return false;
+                String previous=place.optString("name","").trim();
+                place.put("name",clean);
+                syncSavedPlaceName(state,place,previous);
+                writeStateUnlocked(c,state);
+                return true;
+            }catch(Exception e){return false;}
+        }
+    }
+
     private static void pruneOldSessions(JSONArray sessions,long now){
         if(sessions==null)return;
         long cutoff=now-HISTORY_RETENTION_MS;
@@ -556,11 +614,23 @@ public class RouteTrackingService extends Service implements LocationListener {
                 String clean=name==null?"":name.trim();if(clean.length()>80)clean=clean.substring(0,80);
                 found.put("name",clean);found.put("pending",false);
                 if(remember&&!clean.isEmpty()){
-                    JSONArray places=s.optJSONArray("savedPlaces");if(places==null){places=new JSONArray();s.put("savedPlaces",places);}
-                    JSONObject near=findSavedPlace(s,found.optDouble("lat"),found.optDouble("lon"));
-                    if(near==null){near=new JSONObject();near.put("id","place_"+Long.toString(System.currentTimeMillis(),36));places.put(near);}
-                    near.put("name",clean);near.put("lat",found.optDouble("lat"));near.put("lon",found.optDouble("lon"));
-                    while(places.length()>100)places.remove(0);
+                    JSONArray places=s.optJSONArray("savedPlaces");
+                    if(places==null){places=new JSONArray();s.put("savedPlaces",places);}
+                    // Existing explicit place IDs take precedence over nearby coordinates.
+                    JSONObject near=findSavedPlaceById(s,found.optString("savedPlaceId",""));
+                    if(near==null)near=findSavedPlace(s,found.optDouble("lat"),found.optDouble("lon"));
+                    if(near==null){
+                        near=new JSONObject();
+                        near.put("id","place_"+java.util.UUID.randomUUID().toString());
+                        near.put("lat",found.optDouble("lat"));
+                        near.put("lon",found.optDouble("lon"));
+                        places.put(near);
+                    }
+                    String previous=near.optString("name","").trim();
+                    near.put("name",clean);
+                    // Renaming keeps original saved coordinates so recognition stays stable.
+                    syncSavedPlaceName(s,near,previous);
+                    found.put("savedPlaceId",near.optString("id",""));
                 }
                 writeStateUnlocked(c,s);return true;
             }catch(Exception e){return false;}
