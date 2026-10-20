@@ -69,7 +69,7 @@ function routeSvg(sessions){
 }
 function routeStopMarkup(stop,index){
   const name=(stop.name||'').trim()||'Локација',lat=Number(stop.lat),lon=Number(stop.lon),end=Number(stop.endAt)||Date.now();
-  return '<div class="route-stop"><div class="route-pin">'+index+'</div><div class="route-stop-main"><div class="row"><strong>'+esc(name)+'</strong><span class="small muted">'+routeSpan(stop.startAt,end)+'</span></div><div class="small muted">'+routeClock(stop.startAt)+' – '+routeClock(end)+(stop.active?' · сè уште тука':'')+'</div><div class="route-coords">'+lat.toFixed(5)+', '+lon.toFixed(5)+'</div><button class="link-btn route-map-open" data-lat="'+lat+'" data-lon="'+lon+'">Отвори офлајн мапа</button></div></div>';
+  return '<div class="route-stop"><div class="route-pin">'+index+'</div><div class="route-stop-main"><div class="row"><strong>'+esc(name)+'</strong><span class="small muted">'+routeSpan(stop.startAt,end)+'</span></div><div class="small muted">'+routeClock(stop.startAt)+' – '+routeClock(end)+(stop.active?' · сè уште тука':'')+'</div><div class="route-coords">'+lat.toFixed(5)+', '+lon.toFixed(5)+'</div><button class="link-btn route-map-open" data-lat="'+lat+'" data-lon="'+lon+'">Отвори офлајн мапа</button><button class="link-btn route-place-edit" data-stop-id="'+esc(stop.id||'')+'" data-place-name="'+esc(name)+'">Измени име</button></div></div>';
 }
 function routePanelMarkup(from,to){
   const data=routeNativeState(),sessions=data.sessions.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
@@ -655,3 +655,21 @@ if(window.WFApp){
 setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
 if(state)render();
 })();
+
+
+// Edit an existing stop/place name without changing GPS coordinates or route history.
+document.addEventListener('click',function(event){
+  const button=event.target.closest('.route-place-edit');
+  if(!button)return;
+  const stopId=button.dataset.stopId;
+  if(!stopId||typeof Android==='undefined'||!Android.setRouteStop)return;
+  const previous=button.dataset.placeName||'';
+  const updated=window.prompt('Измени име на локацијата:',previous);
+  if(updated===null)return;
+  const clean=updated.trim();
+  if(!clean){toast('Внеси име за локацијата.');return;}
+  if(!Android.setRouteStop(stopId,clean,true)){toast('Не успеа измената.');return;}
+  refreshRoutePanel();
+  if(typeof openRouteHistory==='function'&&document.getElementById('gpsHistoryResult'))openRouteHistory();
+  toast('Името е ажурирано во зачуваните патувања.');
+});
