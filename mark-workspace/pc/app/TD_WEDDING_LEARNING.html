@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="mk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TD Production · Wedding Director PRO</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,Segoe UI,sans-serif}*{box-sizing:border-box}body{background:#0c141a;color:#eaf2f5;margin:0;padding:22px}
+main{max-width:1160px;margin:auto}.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:18px}
+h1{font-size:25px;margin:0}h2{font-size:19px;margin:0 0 10px}h3{font-size:15px}p{line-height:1.5;color:#bbcbd2}
+.muted{color:#aabac1;font-size:13px}.card{background:#14232c;border:1px solid #2b4654;border-radius:14px;padding:19px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(315px,1fr));gap:14px}label{display:block;font-weight:600;font-size:13px;margin:11px 0 3px}
+input,select,textarea,button{font:inherit;color:#effbfc;border-radius:7px;border:1px solid #42606d;padding:10px;background:#203641;width:100%;max-width:100%}
+button{cursor:pointer;background:#207662;border-color:#3b9983;font-weight:600;margin-top:9px}button:hover{background:#298d77}button.secondary{background:#254050}
+button.ghost{width:auto;padding:8px 15px;background:transparent}textarea{min-height:96px;resize:vertical}input[type=checkbox]{width:auto;margin-right:9px;accent-color:#32ae90}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>*{flex:1;min-width:130px}.check{display:flex;align-items:center;font-size:14px;margin:12px 0}.check>*{min-width:auto}.status{background:#102f2d;border-left:4px solid #46a991;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:390px;overflow:auto;font:13px ui-monospace,Consolas,monospace}
+.warn{color:#ffc78b}.bad{color:#ff9e96}.ok{color:#98efd5}#feed{max-height:270px}details{border:1px solid #375160;border-radius:8px;margin:6px 0;padding:8px 12px}summary{cursor:pointer;font-size:14px}pre{white-space:pre-wrap;overflow-wrap:anywhere}progress{width:100%;height:18px;accent-color:#2cad8b}
+.tag{padding:4px 8px;background:#204139;border-radius:6px;font-size:12px}a{color:#8fe3d7}.foot{margin:24px 0;font-size:13px;opacity:.8}
+html.td-embedded body{padding:8px 4px;background:transparent}html.td-embedded body main{max-width:none}html.td-embedded body h1{font-size:21px}html.td-embedded body .top{margin-bottom:9px}html.td-embedded body .card{margin:8px 0}html.td-embedded body .foot{margin:12px 0}
+</style><script>if(new URLSearchParams(location.search).has('embedded'))document.documentElement.classList.add('td-embedded');</script></head><body><main>
+<div class="top"><div><h1>TD Production · Wedding Director</h1><div class="muted">v2.6 · локално учење · проверка на медиуми · контрола на монтажа</div></div><span class="tag">Оригиналите се read-only</span></div>
+<div class="grid">
+<section class="card"><h2>1. Научи од мои свадби</h2>
+<p>Отвори .prproj во Premiere → File → Export → Final Cut Pro XML. Може една или повеќе свадби; зачуваниот профил собира <b>реално прочитани</b> транзиции и временски распореди.</p>
+<label>Име на стил</label><input id="styleName" value="TD Production Wedding Style">
+<label>Додај ги XML фајловите (по една целосна патека во ред)</label><textarea id="xmlFiles" placeholder="H:\Projects\Wedding_01.xml&#10;H:\Projects\Wedding_02.xml"></textarea>
+<label>Додај нови примери кон постоечки научен стил</label><select id="appendStyle"><option value="">Нов стил (не додавај на постоечки)</option></select>
+<button id="learnBtn">Анализирај и зачувај</button><pre class="status" id="learnReport">Реални Premiere XML податоци: секвенци и транзиции. НЕ се тренира невронска мрежа и не се копираат автоматски одлуките за агли. Изборот на агли од визуелниот контекст сè уште не се учи.</pre>
+</section>
+<section class="card"><h2>2. Научи ме кога грешам</h2><p>Кажи му на Studio која папка е кај зетот, невестата, црквата или ресторанот. Правилото се зачувува за следните свадби.</p>
+<label>Име на папка (не целосна патека, без „cam1“)</label><input id="ruleFolder" placeholder="primer: dom_nevesta">
+<label>Поглавје</label><select id="rulePhase"><option value="groom">Кај зетот</option><option value="bride">Кај невестата</option><option value="church">Црква</option><option value="reception">Ресторан</option><option value="delete">Избриши правило</option></select>
+<button id="saveRule">Зачувај ја корекцијата</button><div class="status" id="rulesList">Ги вчитувам правилата…</div>
+<p class="muted">Ова е учење преку твоја експлицитна корекција на препознавањето. Не го менува AI моделот.</p>
+</section>
+</div>
+<section class="card"><h2>3. Монтажа на цела свадба</h2>
+<div class="grid">
+<div><label>Целосна патека до оригиналните снимки</label><input id="sourceFolder" placeholder="H:\Weddings\Kiril i Marija">
+<label>Име на проектот</label><input id="projectName" placeholder="Кирил и Марија">
+<label>Музичка папка (ако нема песни во Premiere)</label><input id="musicFolder" placeholder="H:\TD AI\Music">
+<label>Конкретна музичка датотека (опционално)</label><input id="musicFile" placeholder="H:\Music\love_song.mp3"></div>
+<div><label>Користи научен стил</label><select id="selectStyle"><option value="">Без стил / основни поставки</option></select>
+<details><summary>Што навистина е научено од избраниот стил?</summary><pre class="status" id="styleDetails">Избери стил за да ги видиш измерените параметри.</pre></details>
+<label>Визуелен Ollama модел</label><input id="model" value="qwen2.5vl:3b">
+<div class="row"><div><label>Траење на спот</label><select id="seconds"><option value="60">60 секунди</option><option value="45">45 секунди</option><option value="30">30 секунди</option></select></div>
+<div><label>Деталност на AI анализа</label><select id="quality"><option value="fast">Брза</option><option selected value="standard">Стандардна</option><option value="deep">Детална</option></select></div></div>
+<div class="check"><input id="dissolve" type="checkbox" checked> Dissolve само меѓу цели оригинални снимки</div>
+<div class="check"><input id="audioSync" type="checkbox" checked> Провери синхронизација на две камери (информативно)</div>
+<div class="check"><input id="motion" type="checkbox" checked> Маркери за нагло движење (без сечење)</div>
+<div class="check"><input id="mediaCheck" type="checkbox" checked> Провери дали крајот на секој видео фајл се чита</div>
+<div class="check"><input id="useRepairs" type="checkbox"> Користи претходно направени компатибилни копии</div></div></div>
+<h3>Контрола на премини по поглавје</h3><p class="muted">Празно = примени научен стил (ако има доказ); внеси број 0.15–1.5 секунди за рачна контрола.</p>
+<div class="row"><div><label>Зет</label><input id="fadeGroom" type="number" min="0.15" max="1.5" step="0.05" placeholder="научен"></div><div><label>Невеста</label><input id="fadeBride" type="number" min="0.15" max="1.5" step="0.05" placeholder="научен"></div><div><label>Црква</label><input id="fadeChurch" type="number" min="0.15" max="1.5" step="0.05" placeholder="научен"></div><div><label>Ресторан</label><input id="fadeReception" type="number" min="0.15" max="1.5" step="0.05" placeholder="научен"></div></div>
+<div class="row"><button id="startBtn">▶ Започни цела свадба</button><button id="scanBtn" class="secondary">Прво провери ги сите медиуми</button></div>
+<progress id="workProgress" max="100" value="0"></progress><div class="status" id="runStatus">Подготвен. Долгите оригинали остануваат цели; само кратките спотови се селектираат.</div>
+<details><summary>Детален LIVE LOG (што прави AI)</summary><pre class="status" id="jobLog">Нема активна обработка.</pre></details>
+</section>
+<div class="grid">
+<section class="card"><h2>4. Media Doctor · offline / црна слика</h2>
+<p>Проверува патека, кодек, звук, FPS и дали примероци од видеото се декодираат. Земи Deep ако сликата исчезнува дури на половина.</p>
+<div class="check"><input id="deepScan" type="checkbox"> Детална проверка: почеток + средина + крај + звук (побавно)</div>
+<button id="scanAgain" class="secondary">Скенирај извори</button>
+<progress id="scanProgress" max="100" value="0"></progress><div class="status" id="scanSummary">Чекам скенирање.</div>
+<div id="scanList"></div>
+</section>
+<section class="card"><h2>5. Поправка на проблематичен фајл</h2>
+<p>Создава одделна <b>H.264 / AAC CFR</b> копија. Оригиналот останува недопрен. За долги снимки може да потрае и да заземе многу простор на дискот.</p>
+<label>Патека до проблематичен фајл</label><input id="badFile" placeholder="H:\Weddings\Camera1\clip001.MOV">
+<label>Кој audio stream да се користи? (0 = првиот, 1 = вториот)</label>
+<input id="audioStream" type="number" min="0" max="7" value="0" step="1">
+<button id="repairBtn">Создај и провери компатибилна копија</button>
+<div class="status" id="repairStatus">По успешна поправка избери „Користи претходно направени компатибилни копии“ пред монтажа.</div>
+<h3>Провери offline XML патеки</h3>
+<p class="muted">За веќе создаден XML, побарај ги преместените снимки во избраната свадбена папка. Поправа само ако името се совпадне со <b>точно еден</b> фајл. Не ги менува постоечките .prproj.</p>
+<label>Патека до постоечкиот XML</label><input id="oldXml" placeholder="H:\Wedding\TD_AI_EDIT\...\Cena_svadba.xml">
+<button class="secondary" id="relinkBtn">Провери / направи нов RELINKED XML</button>
+<pre class="status" id="relinkReport">Проверува дали Premiere ќе може да ги најде оригиналните патеки од XML.</pre>
+<h3>Зошто може да биде offline?</h3><p class="muted">Преместена датотека, неправилна XML врска, VFR, оштетен дел од фајлот, HEVC/кодек, или проблем со Premiere декодерот. Ниедна проверка не гарантира дека секој кадар е исправен.</p>
+</section></div>
+<div class="foot">TD AI Studio е локален. Сè што модулот научил е во JSON профил; секое учење има број на примери и доказ за проценките. Нема „магично“ копирање на стилот или автоматско менување на двата агла. Пред испорака провери ја целата секвенца во Premiere.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let lastJob='';let scanned=[];let runningScan=true;let runningRepair=true;
+async function api(path,options){let r=await fetch(path,{credentials:'same-origin',...options});let j=await r.json();if(!r.ok||j.error)throw Error(j.error||'HTTP '+r.status);return j}
+function send(path,data){return api(path,{method:'POST',headers:{'Content-Type':'application/json','X-TD-Client':'TD-v1.4'},body:JSON.stringify(data)})}
+function msg(el,text){$(el).textContent=text}function esc(s){let x=document.createElement('span');x.textContent=String(s);return x.innerHTML}
+async function refreshStyles(){try{let j=await api('/api/wedding/styles');let a=$('selectStyle'),b=$('appendStyle'),v=a.value,w=b.value;a.innerHTML='<option value="">Без стил / основни поставки</option>';b.innerHTML='<option value="">Нов стил (не додавај на постоечки)</option>';for(let s of j.styles){for(let [node] of [[a],[b]]){let o=document.createElement('option');o.value=s.id;o.textContent=s.name+' · '+s.references+' свадби';node.appendChild(o)}}a.value=v;b.value=w;showStyleDetails()}catch(e){msg('learnReport','Грешка: '+e.message)}}
+async function showStyleDetails(){let id=$('selectStyle').value;if(!id){msg('styleDetails','Без научен стил: основни .45s dissolve.');return}try{let j=await api('/api/wedding/style/'+encodeURIComponent(id));msg('styleDetails',JSON.stringify(j.profile,null,2))}catch(e){msg('styleDetails','Грешка: '+e.message)}}
+$('selectStyle').onchange=showStyleDetails;
+async function refreshRules(){try{let j=await api('/api/wedding/teach');msg('rulesList',Object.keys(j.rules).length?JSON.stringify(j.rules,null,2):'Нема корекции.')}catch(e){msg('rulesList',e.message)}}
+$('learnBtn').onclick=async()=>{msg('learnReport','Анализирам референтни XML проекти…');try{let j=await send('/api/wedding/learn',{name:$('styleName').value,files:$('xmlFiles').value.split(/\r?\n/).map(x=>x.trim().replace(/^"|"$/g,'')).filter(Boolean),append_to:$('appendStyle').value});msg('learnReport',JSON.stringify(j,null,2));await refreshStyles();$('selectStyle').value=j.id;try{window.parent.postMessage({type:'td-wedding-style-updated'},location.origin)}catch(_){} }catch(e){msg('learnReport','Грешка: '+e.message)}};
+$('saveRule').onclick=async()=>{try{await send('/api/wedding/teach',{folder_name:$('ruleFolder').value,phase:$('rulePhase').value});await refreshRules()}catch(e){msg('rulesList','Грешка: '+e.message)}};
+function path(){return $('sourceFolder').value.trim()}function mediaScan(){if(!path()){msg('scanSummary','Прво внеси свадбена папка.');return}runningScan=true;msg('scanSummary','Проверката започнува…');send('/api/wedding/scan',{folder:path(),level:$('deepScan').checked?'deep':'quick'}).catch(e=>{runningScan=false;msg('scanSummary','Грешка: '+e.message)})}
+$('scanBtn').onclick=mediaScan;$('scanAgain').onclick=mediaScan;
+$('relinkBtn').onclick=async()=>{msg('relinkReport','Пребарувам медиуми и XML патеки…');try{let j=await send('/api/wedding/relink',{xml:$('oldXml').value.trim(),folder:path()});msg('relinkReport',JSON.stringify(j,null,2))}catch(e){msg('relinkReport','Грешка: '+e.message)}};
+$('repairBtn').onclick=async()=>{try{runningRepair=true;msg('repairStatus','FFmpeg создава компатибилна копија; провери ја состојбата подолу.');await send('/api/wedding/repair',{file:$('badFile').value.trim(),folder:path(),audio_stream:Number($('audioStream').value)})}catch(e){runningRepair=false;msg('repairStatus','Грешка: '+e.message)}};
+$('startBtn').onclick=async()=>{let f={groom:$('fadeGroom'),bride:$('fadeBride'),church:$('fadeChurch'),reception:$('fadeReception')},fade={};for(let [key,el] of Object.entries(f))if(el.value.trim()!=='')fade[key]=Number(el.value);try{let j=await send('/api/wedding/start',{folder:path(),project_name:$('projectName').value.trim(),music:$('musicFile').value.trim(),music_folder:$('musicFolder').value.trim(),model:$('model').value.trim(),seconds:Number($('seconds').value),quality:$('quality').value,documentary_style:$('selectStyle').value,phase_dissolves:fade,dissolve:$('dissolve').checked,audio_sync:$('audioSync').checked,motion_review:$('motion').checked,media_check:$('mediaCheck').checked?'quick':'off',use_repairs:$('useRepairs').checked});msg('runStatus',j.reply)}catch(e){msg('runStatus','Грешка: '+e.message)}};
+async function tick(){try{let j=await api('/api/wedding/status');$('workProgress').value=j.progress||0;let summary=j.summary||{};msg('runStatus',`Состојба: ${j.state} · ${j.progress||0}%\nПроект: ${j.project||'—'}\nPremiere: ${j.project_status||'—'}\nСеквенца XML: ${j.xml||'—'}\nЗавршени снимки: ${summary.assigned_count||0} · Нејасни сцени: ${summary.review_count||0} · Маркери: ${summary.motion_flags||0}\nИзвори со мешана локација: ${(summary.mixed_phase_sources||[]).length}\n${j.error||''}`);msg('jobLog',(j.log||[]).join('\n'));}catch(e){};
+if(runningScan){try{let j=await api('/api/wedding/scan');$('scanProgress').value=j.progress||0;msg('scanSummary',`${j.state} · ${j.progress||0}% · ${j.message||''}`+(j.error?'\n'+j.error:''));if(j.state!=='running'){runningScan=false;if(j.report){let r=j.report;msg('scanSummary',`Проверени ${r.total}: OK ${r.ok} · Предупредувања ${r.warning} · ПРОБЛЕМ ${r.error}\nИзвештај: ${r.report_path}`);scanned=r.files||[];let container=$('scanList');container.replaceChildren();for(let v of scanned){let detail=document.createElement('details');let title=document.createElement('summary');title.textContent=`${v.status.toUpperCase()} · ${v.path.split(/[\\/]/).pop()} · ${v.duration||'?'}s · ${v.video_codec||'?'} / ${v.audio_codec||'нема аудио'}`;detail.appendChild(title);let block=document.createElement('pre');block.textContent=JSON.stringify(v,null,2);detail.appendChild(block);container.appendChild(detail)}}}}catch(e){runningScan=false;msg('scanSummary',e.message)}}
+if(runningRepair){try{let j=await api('/api/wedding/repair');msg('repairStatus',`${j.state}: ${j.message||''}\n${j.error||''}\n${j.result?JSON.stringify(j.result,null,2):''}`);if(j.state!=='running')runningRepair=false}catch(e){runningRepair=false;msg('repairStatus',e.message)}}
+}
+window.addEventListener('message',async e=>{
+ if(e.origin!==location.origin||e.data?.type!=='td-wedding-init')return;
+ if(e.data.folder&&!$('sourceFolder').value)$('sourceFolder').value=e.data.folder;
+ if(e.data.project&&!$('projectName').value)$('projectName').value=e.data.project;
+ if(e.data.style){await refreshStyles();if([...$('selectStyle').options].some(o=>o.value===e.data.style)){$('selectStyle').value=e.data.style;showStyleDetails();}}
+});
+if(new URLSearchParams(location.search).has('embedded')&&typeof ResizeObserver!=='undefined'){
+ const sendHeight=()=>window.parent.postMessage({type:'td-wedding-iframe-height',height:document.documentElement.scrollHeight},location.origin);
+ new ResizeObserver(sendHeight).observe(document.body);window.addEventListener('load',sendHeight);
+}
+refreshStyles();refreshRules();tick();setInterval(tick,3000);
+</script></body></html>

@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=TD Booking 6
+Signer #1 certificate SHA-256 digest: 76651c8cf1522f1fab74d211162eeb8122695e07490ad57ecbdd578b09a58212
+Signer #1 certificate SHA-1 digest: 67f8a4f1fc0a5c1d4338958e5fc8e00624865a37
+Signer #1 certificate MD5 digest: 44de3e9157402fe884682253c2502ad9
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: 769562eb156afbb9cdaea2b21d6265dd9db09ec8cad5458fd642dd21b9eb868a
+Signer #1 public key SHA-1 digest: 578a185bb5bd62beed45e8ca336136d2b55f5b94
+Signer #1 public key MD5 digest: 5842d99b80be2619947f23598ae6ee34

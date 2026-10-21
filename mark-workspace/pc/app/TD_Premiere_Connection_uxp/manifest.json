@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 5,
+  "id": "com.tdproduction.ai.premiere.connection",
+  "name": "TD Production Premiere Connection Test",
+  "version": "1.6.0",
+  "main": "index.html",
+  "host": { "app": "premierepro", "minVersion": "25.6.0" },
+  "entrypoints": [
+    { "type": "panel", "id": "tdConnectionPanel", "label": { "default": "TD AI Connection" },
+      "minimumSize": { "width": 260, "height": 240 },
+      "preferredDockedSize": { "width": 330, "height": 260 } }
+  ]
+}

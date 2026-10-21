@@ -1,0 +1,7 @@
+{
+  "style": "romantic",
+  "emotion_priority": 75,
+  "cut_dynamics": 40,
+  "max_sources_uses": 2,
+  "max_source_seconds_for_spot": 300
+}

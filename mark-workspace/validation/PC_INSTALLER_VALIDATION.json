@@ -1,0 +1,12 @@
+{
+  "file": "MarK_Workspace_PC_Setup_TEST.exe",
+  "bytes": 5072022,
+  "sha256": "8ae9ee96c4912f40a7a92502f253b42e69404ed411bdca05fb0dfad2629bc875",
+  "windowsArchitecture": "x64",
+  "modes": [
+    "full-installation",
+    "update-existing"
+  ],
+  "fullInstallationDownloadsRuntimeAndModels": true,
+  "physicalWindowsTested": false
+}

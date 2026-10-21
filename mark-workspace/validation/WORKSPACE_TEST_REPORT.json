@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-21",
+  "stage": "workspace-test1",
+  "androidVersion": "6.22 TEST",
+  "androidUpdates620": false,
+  "browserChecks": 24,
+  "brandingChecks": 19,
+  "financeRegressionChecks": 50,
+  "pcBackendSmokePassed": true,
+  "pcUi": {
+    "viewport": [
+      1920,
+      1080
+    ],
+    "sidebarPx": 58,
+    "toolbarPx": 48,
+    "workingFrameLoadsAcrossModules": 1,
+    "inputPreserved": true,
+    "javascriptErrors": 0,
+    "bookingRefreshPreservesDocumentPath": true
+  },
+  "updatePreservation": [
+    "models",
+    "booking-database",
+    "pin-settings"
+  ],
+  "physicalWindowsTested": false,
+  "physicalAndroidTested": false,
+  "realGpuInferenceTested": false,
+  "androidUi": {
+    "viewport": [
+      412,
+      915
+    ],
+    "headerPx": 48,
+    "horizontalOverflow": false,
+    "javascriptErrors": 0
+  },
+  "browserVersion": "153.0.8010.0"
+}

@@ -1,0 +1,36 @@
+/* MarK x TD Booking 2026 — customer color controls affect in-app branding only. */
+:root{--mb-accent:#167a74;--mb-deep:#0c4b49;--mb-gold:#be9858;--mb-rose:#a5293e;--mb-cyan:#1d969e;--mb-bg:#f0f6f3;--mb-text:#193c3a}
+body{background:var(--mb-bg)!important;color:var(--mb-text)!important}
+header{background:linear-gradient(112deg,#102d34 0%,var(--mb-deep) 68%,#3e2e32 100%)!important;border-bottom:3px solid var(--mb-gold);min-height:108px;box-shadow:0 8px 20px #15362f22;position:relative}
+header::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(#c02c44,#d7b577,#42cad0)}
+header img{max-height:55px;object-fit:contain}
+.card{border:1px solid #c8dfd9;box-shadow:0 4px 14px #153d3715;border-radius:17px}
+h2,h3{color:var(--mb-deep)}
+button:not(.secondary){background:var(--mb-accent);color:white}
+button.secondary{background:#e2f0ed;color:var(--mb-deep);border:1px solid #d0ded9}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--mb-gold);outline-offset:2px}
+input:not([type=checkbox]),select,textarea{border-color:#b1cfc7}
+#tdMarkBrandBadge{width:51px;height:51px;position:absolute;top:9px;right:64px;background:#132d30;border:1px solid var(--mb-gold);border-radius:13px;object-fit:contain;padding:3px}
+#markSettingsBtn{position:fixed;right:13px;bottom:131px;z-index:18;border-radius:50%;width:49px;height:49px;padding:6px;border:2px solid var(--mb-gold);background:#18363b;box-shadow:0 4px 12px #031e2450}
+#markSettingsBtn img{width:100%;height:100%;object-fit:contain}
+#markBrandSettings{position:fixed;inset:0;z-index:180;display:none;background:#00191c91;align-items:center;justify-content:center;padding:16px}
+#markBrandSettings.open{display:flex}
+#markBrandBody{width:min(420px,96vw);max-height:87vh;overflow:auto;background:#f5faf7;color:#16403d;border-radius:20px;padding:18px;box-shadow:0 12px 44px #0006;border:2px solid var(--mb-gold)}
+#markBrandBody h2{margin:0 0 10px}
+#markBrandBody p{line-height:1.4;font-size:13px}
+#markBrandBody input[type=color]{width:100%;height:38px;padding:3px;margin-bottom:8px;background:#fff}
+#markCustomerLogo{display:none;height:52px;max-width:52%;object-fit:contain;vertical-align:middle;margin-left:7px}
+#markCustomerLogo.visible{display:inline-block}
+#markBrandBody input[type=file]{font:inherit;font-size:14px;padding:9px}
+#markBrandBody .brandActions{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+#markBrandBody .brandActions button{flex:1 1 115px}
+@media print{#markSettingsBtn,#markBrandSettings,#tdMarkBrandBadge,#markCustomerLogo{display:none!important}}
+
+/* Personal home-screen shortcut settings. */
+#markShortcutCard{margin:16px 0;padding:13px;border:1px solid #c3d8d1;border-radius:13px;background:#eaf3ef}
+#markShortcutCard h3{margin:0 0 10px;font-size:16px}
+.markShortcutSample{display:flex;align-items:center;gap:12px;overflow-wrap:anywhere}
+#markShortcutPreview{width:64px;height:64px;object-fit:contain;padding:5px;background:#f5faf7;border-radius:15px;border:1px solid #ceded7}
+#markShortcutStatus:empty{display:none}
+#markShortcutStatus{font-weight:600}
+#markBrandBody button:disabled{opacity:.55}

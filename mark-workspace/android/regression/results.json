@@ -1,0 +1,73 @@
+[
+  {
+    "suite": "test_direct_settlement.cjs",
+    "syntaxScripts": 13,
+    "passed": 20,
+    "results": [
+      "Pending counteroffer closes directly, saves both ledgers, and never fabricates a response or signature.",
+      "Reopening and saving the same total does not duplicate a payment or engagement.",
+      "A 50 deposit plus a total of 120 adds only 70, keeps real signatures, and retains 30 due.",
+      "Reducing a total records an explicit negative adjustment without deleting payment history.",
+      "Zero, partial, excess, and decimal payments keep the actual fee and exact balance.",
+      "Blank, negative, malformed, and overprecise amounts are blocked visibly.",
+      "Invalid dates and missing roles cannot create a settlement.",
+      "The direct payment flow cannot rewrite an agreed fee or signed contract.",
+      "Rapid repeated taps produce one conditional write and one payment.",
+      "Network failure leaves the cloud unchanged and enables a safe retry.",
+      "A lost success response is recovered without charging or recording twice.",
+      "A payment added after opening the form must be reviewed before closure.",
+      "Conditional writes preserve an update made between the final read and save.",
+      "A local refresh failure cannot undo cloud success; the next sync restores the ledger.",
+      "A second device imports paid history and closure without overwriting cloud payments.",
+      "Unlinked local crew can be closed offline, retaining signatures and previous payments.",
+      "A failed local save rolls back the payment and closure together.",
+      "Normal payout mirroring preserves unseen remote payments and updates a closed balance.",
+      "Explicit payment removal deletes only that entry and retains other cloud history.",
+      "The finance card exposes the new action and clearly labels admin closure."
+    ]
+  },
+  {
+    "suite": "test_express_separation.cjs",
+    "syntaxScripts": 13,
+    "passed": 18,
+    "results": [
+      "Reproduced 6.9 mixed client receipts; 6.10 separates 150 Express from 200 deposit and keeps 800 due.",
+      "Finance shows separate client and Express amounts without migrating or altering existing entries.",
+      "Express always adds to income after the package is paid, while the client collection stays 1000.",
+      "Large Express sales cannot pay a package; cash and expected profit include Express exactly once.",
+      "Refusal adds one unpaid 300 surcharge per wedding and preserves the original signed package and Express sales.",
+      "Visible partial and full surcharge payments update only client receipts and cannot double-save.",
+      "An unpaid refusal charge can be removed and reapplied without accumulating duplicate fees.",
+      "A paid surcharge cannot be removed by erasing its payment history.",
+      "Invalid amounts and overpayments leave the 300 surcharge unchanged with visible feedback.",
+      "A nonexistent payment date is rejected.",
+      "Comma decimal amounts are recorded precisely in the client ledger.",
+      "Storage failure rolls back both new charges and payments, and supports retry.",
+      "The refusal appears in the supplementary service record without rewriting signed terms or signatures.",
+      "Screen and printable reports keep client and Express income in separate columns.",
+      "Both ledgers use the existing wedding date filter and reject reversed ranges.",
+      "Backup retains Express entries, the refusal charge, and the previous admin closure feature.",
+      "An open payment form stays attached to its original wedding even if selection changes.",
+      "Package discounts do not discount the separate fixed 300 refusal charge."
+    ]
+  },
+  {
+    "suite": "test_price_acceptance.cjs",
+    "syntaxScripts": 13,
+    "passed": 12,
+    "results": [
+      "Reproduced old Android behavior: hidden confirm cancels acceptance.",
+      "Visible confirmation and Cancel perform no write.",
+      "Double click saves one fee+contract update; cache and finance persist without duplicate crew.",
+      "Connection failure shows an error, keeps the offer unchanged, and supports retry.",
+      "Failed pre-save read cannot accept an unverified offer.",
+      "Changed price is displayed as an error and is not accepted silently.",
+      "Database object key ordering cannot block an unchanged price.",
+      "Missing, blank, negative, and malformed fees cannot be accepted.",
+      "Pending, rejected, and role-free responses stay blocked with visible feedback.",
+      "Zero-fee and decimal accepted counteroffers retain their exact price.",
+      "Already confirmed contract is preserved without another write.",
+      "A later refresh error cannot turn a completed save into a failure."
+    ]
+  }
+]

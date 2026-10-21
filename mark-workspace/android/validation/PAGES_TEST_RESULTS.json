@@ -1,0 +1,31 @@
+{
+  "passed": 24,
+  "tests": [
+    "Starts on the wedding calendar; sync is contained only in Settings",
+    "Calendar shows every wedding on a shared date",
+    "Wedding overview separates client payments, Express and staff fees",
+    "Wedding payment page keeps the exact selected booking and hides global totals",
+    "Payment goes only to the chosen wedding and overview updates",
+    "Staff tab retains existing crew and creates payment on the same wedding",
+    "Receipts open as their own page and return to the same wedding tab",
+    "Signed contract retains original signatures and has no edit action",
+    "Settings exposes sync, backups, package prices, branding, Cloud and reports",
+    "Moved synchronization and pairing controls retain their original handlers",
+    "Backup Save As still exports current weddings, finances and signatures",
+    "Package prices and local/Cloud staff pages remain reachable",
+    "Wedding search includes venue/phone and status filtering",
+    "Unsaved edits block leaving until the user chooses to discard",
+    "Editing and saving a booking preserves its ID, finances and other weddings",
+    "New wedding on a selected day uses that date and preserves all previous records",
+    "Draft contract signing and locking still save all three signatures",
+    "Month navigation handles leap years and January rollover",
+    "Calendar, wedding overview and settings fit small and large screens",
+    "Reports keep period controls and original PDF printing",
+    "All rendered IDs remain unique and no script errors occurred",
+    "Back navigation restores the selected calendar day",
+    "An empty installation starts cleanly and can open a new booking",
+    "Local file mode used by Android supports page history and return to the calendar"
+  ],
+  "engine": "Headless Chromium 153.0.8010.0; desktop browser simulating Android WebView with native bridge mocks",
+  "physicalAndroidDeviceTested": false
+}

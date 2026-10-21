@@ -1,0 +1,19 @@
+{
+  "file": "MarK_Workspace_ANDROID_TEST.apk",
+  "package": "mk.td.booking6.workspace.test",
+  "versionName": "6.22 TEST",
+  "versionCode": 82,
+  "sha256": "c1b7add68cfccf0f2673c8200a45039c2bdbcb8d667cedbde229d386a1fd54c1",
+  "bytes": 1075852,
+  "signatureVerified": true,
+  "nativeCodeUnchanged": true,
+  "separateInstallationFrom620": true,
+  "updatesOriginal620": false,
+  "physicalAndroidTested": false,
+  "signature": {
+    "signing_block_start": 1071837,
+    "central_directory_offset": 1073738,
+    "digest": "18b94162a70631fd5962c3b85c9e7df2aa214a4390f009affcdc3eb536218344",
+    "cert_sha256": "0c4718f7eb278935961e1383d6bf4e106c5c5b2cc1551498ad93195c007a2f5e"
+  }
+}

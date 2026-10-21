@@ -1,0 +1,41 @@
+{
+    "manifestVersion":  5,
+    "id":  "com.tdproduction.ai.premiere.bridge172",
+    "name":  "TD AI Premiere Project Bridge",
+    "version":  "1.7.6",
+    "main":  "index.html",
+    "host":  {
+                 "app":  "premierepro",
+                 "minVersion":  "25.6.0"
+             },
+    "requiredPermissions":  {
+                                "network":  {
+                                                "domains":  [
+                                                                "http://127.0.0.1",
+                                                                "http://127.0.0.1:8765",
+                                                                "http://127.0.0.1:8765/",
+                                                                "http://localhost",
+                                                                "http://localhost:8765",
+                                                                "http://localhost:8765/"
+                                                            ]
+                                            },
+                                "localFileSystem":  "fullAccess"
+                            },
+    "entrypoints":  [
+                        {
+                            "type":  "panel",
+                            "id":  "tdPremiere172",
+                            "label":  {
+                                          "default":  "TD AI Project Bridge"
+                                      },
+                            "minimumSize":  {
+                                                "width":  280,
+                                                "height":  300
+                                            },
+                            "preferredDockedSize":  {
+                                                        "width":  360,
+                                                        "height":  460
+                                                    }
+                        }
+                    ]
+}

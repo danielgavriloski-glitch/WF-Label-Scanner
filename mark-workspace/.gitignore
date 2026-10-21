@@ -1,0 +1,16 @@
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+**/data/
+**/models/
+**/runtime/
+**/cache/
+**/workspace/
+**/td_local_config.json
+**/qa/
+**/*.p12
+**/*.jks
+**/*.keystore
+**/*private*.pem
+build-tools/
+dist/

@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "node tests/test_pages.cjs && node tests/test_brand_legacy.cjs && node regression/tests/test_direct_settlement.cjs && node regression/tests/test_express_separation.cjs && node regression/tests/test_price_acceptance.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.49.1",
+    "jsdom": "26.1.0"
+  }
+}

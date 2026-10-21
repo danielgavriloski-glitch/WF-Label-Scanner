@@ -1,0 +1,24 @@
+{
+  "passed": 19,
+  "tests": [
+    "Default uses original TD logo and TD Booking name without writing data",
+    "Pinning default TD passes the default image to native and requests launcher confirmation",
+    "Existing user brand and custom logo survive the update",
+    "Choosing a custom file previews the full image before saving",
+    "Save changes only brand preferences and updates an existing shortcut",
+    "Pin saves the current selection and sends the chosen logo and brand name",
+    "Reset logo restores TD while preserving the selected name and theme",
+    "TD standard restores the prior TD settings and updates the shortcut",
+    "Closing without saving discards the new logo",
+    "Oversized images are rejected without changing saved preferences",
+    "Unsupported file types do not change the logo",
+    "Undecodable images leave controls usable and keep saved data",
+    "Image processing disables save and pin until the image is ready",
+    "Reset during file processing cannot restore the discarded custom image",
+    "Full storage prevents pinning and preserves all previous records",
+    "Unsupported launchers disable pinning and still allow in-app branding",
+    "Missing native bridge disables only the new shortcut action",
+    "Native failure is reported without losing branding or business data",
+    "Damaged brand preferences fall back to TD without touching any business record"
+  ]
+}
