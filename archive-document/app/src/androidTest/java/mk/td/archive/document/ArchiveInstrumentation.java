@@ -33,7 +33,7 @@ public class ArchiveInstrumentation extends Instrumentation {
             old.execSQL("CREATE TABLE records(id TEXT PRIMARY KEY,title TEXT NOT NULL,reference TEXT NOT NULL,category TEXT NOT NULL,notes TEXT NOT NULL,date TEXT NOT NULL,status TEXT NOT NULL,created INTEGER NOT NULL,updated INTEGER NOT NULL)");
             old.execSQL("CREATE TABLE assets(id TEXT PRIMARY KEY,record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,path TEXT NOT NULL UNIQUE,name TEXT NOT NULL,mime TEXT NOT NULL,caption TEXT NOT NULL,kind TEXT NOT NULL,created INTEGER NOT NULL)");
             old.execSQL("INSERT INTO records VALUES(?,?,?,?,?,?,?,?,?)",new Object[]{record,"Стар запис","LEGACY","","Стар опис","2026-10-22","draft",1,1});
-            old.execSQL("INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?)",new Object[]{asset,record,"media/"+photo.getName(),"OLD_CAMERA.jpg","image/jpeg","Зачуван опис","photo",1});old.setVersion(1);
+            old.execSQL("INSERT INTO assets VALUES(?,?,?,?,?,?,?,?)",new Object[]{asset,record,"media/"+photo.getName(),"OLD_CAMERA.jpg","image/jpeg","Зачуван опис","photo",1});old.setVersion(1);
         }
         try(Store upgraded=new Store(context)){
             check(upgraded.get(record).fields.equals("[]"),"Version 1 record not migrated");Store.Asset a=upgraded.assets(record).get(0);File owned=upgraded.file(a);
