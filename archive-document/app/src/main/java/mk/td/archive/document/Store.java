@@ -83,8 +83,8 @@ public class Store extends SQLiteOpenHelper {
     }
     public File file(Asset a) throws IOException { return safeFile(context,a.path); }
     static File safeFile(Context c,String path) throws IOException {
-        File base=c.getFilesDir().getCanonicalFile();File f=new File(base,path).getCanonicalFile();
-        if(!f.getPath().startsWith(base.getPath()+File.separator)||!path.startsWith("media/"))throw new IOException("Недозволена патека.");
+        File base=c.getFilesDir().getCanonicalFile();File media=new File(base,"media").getCanonicalFile();File f=new File(base,path).getCanonicalFile();
+        if(!path.matches("media/[a-zA-Z0-9-]+\\.[a-zA-Z0-9]{1,10}")||!media.equals(f.getParentFile()))throw new IOException("Недозволена патека.");
         return f;
     }
     public synchronized Asset attach(String recordId,File f,String name,String mime,String caption) throws IOException {

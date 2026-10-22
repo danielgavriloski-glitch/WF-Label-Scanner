@@ -61,8 +61,8 @@ jobs:
             adb install archive-document/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w mk.td.archive.document.test/mk.td.archive.document.ArchiveInstrumentation > archive-document/validation/smoke.txt
             cat archive-document/validation/smoke.txt
-            grep ARHIVA_SMOKE_OK archive-document/validation/smoke.txt
             adb pull /sdcard/Android/data/mk.td.archive.document/files/. archive-document/validation/
+            grep ARHIVA_SMOKE_OK archive-document/validation/smoke.txt
             adb shell am force-stop mk.td.archive.document
             adb shell am start -W -n mk.td.archive.document/.MainActivity
             adb shell uiautomator dump /sdcard/archive-restarted.xml
