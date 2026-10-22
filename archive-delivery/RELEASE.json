@@ -1,13 +1,12 @@
 {
-  "filename": "Arhiva_Dokumenti_v1_0.apk",
-  "package": "mk.td.archive.document",
-  "versionName": "1.0",
-  "versionCode": 1,
-  "source_commit": "92261f17e20b379454e88e9e84113ac66647fd0c",
-  "sha256": "bb6661341e3bffef5f9d9caf065acd0da4c7deeafdb2b1f8346237fe1900504a",
-  "size_bytes": 49799,
-  "signer_certificate_sha256": "f78ad175c20b68e3c27fea5d4dbc1f4f4ee7f04bf000437459644af4bf0ef542",
-  "min_android": 8,
-  "android_emulator_validation": "passed",
-  "workflow_run": "https://github.com/danielgavriloski-glitch/WF-Label-Scanner/actions/runs/39774530123"
+  "version": "1.1",
+  "versionCode": 2,
+  "applicationId": "mk.td.archive.document",
+  "apk": "Arhiva_Dokumenti_v1_1.apk",
+  "sha256": "a6cf662e2b8a4df49763744ab9fe575daafaa7ccbc5ab2bf9b5340ba4e66c4c2",
+  "size": 57991,
+  "signingCertificateSha256": "f78ad175c20b68e3c27fea5d4dbc1f4f4ee7f04bf000437459644af4bf0ef542",
+  "sourceCommit": "6e965dd47646c4d0ea2233a04522514939f42f9d",
+  "verifiedRun": 39781786162,
+  "validation": "Android 35 end-to-end checks and lint passed; v1 database/backup migration, custom and blank fields, PDF/JPG, description-only reports and per-record folders verified. Physical Samsung camera not retested."
 }
