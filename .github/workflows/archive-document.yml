@@ -25,23 +25,14 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
-      - name: Restore persistent signing key
-        env:
-          WFAG_SIGNING_BUNDLE: ${{ secrets.WFAG_SIGNING_BUNDLE }}
-        run: |
-          test -n "$WFAG_SIGNING_BUNDLE"
-          printf '%s' "$WFAG_SIGNING_BUNDLE" | base64 -d > "$RUNNER_TEMP/archive-signing.zip"
-          unzip -q -o "$RUNNER_TEMP/archive-signing.zip"
-          test -f signing/signing.properties
-          test -f signing/wfag-release.jks
       - name: Build and lint
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease --stacktrace
           mkdir -p delivery/toolchain
-          cp app/build/outputs/apk/release/app-release.apk delivery/Arhiva_Dokumenti_v1_0.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs delivery/Arhiva_Dokumenti_v1_0.apk > delivery/signature.txt
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/Arhiva_Dokumenti_v1_0.apk > delivery/package.txt
+          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Arhiva_Dokumenti_v1_0_UNSIGNED.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk > delivery/debug-signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/Arhiva_Dokumenti_v1_0_UNSIGNED.apk > delivery/package.txt
           grep "package: name='mk.td.archive.document' versionCode='1'" delivery/package.txt
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
       - uses: actions/upload-artifact@v4
@@ -65,12 +56,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
           script: |
             mkdir -p archive-document/validation
-            adb install archive-document/app/build/outputs/apk/release/app-release.apk
-            adb logcat -c
-            adb shell am start -W -n mk.td.archive.document/.MainActivity
-            adb shell pidof mk.td.archive.document
-            adb uninstall mk.td.archive.document
             adb install archive-document/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
             adb install archive-document/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w mk.td.archive.document.test/mk.td.archive.document.ArchiveInstrumentation > archive-document/validation/smoke.txt
             cat archive-document/validation/smoke.txt

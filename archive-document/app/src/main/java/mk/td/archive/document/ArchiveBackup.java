@@ -12,6 +12,7 @@ public final class ArchiveBackup {
     public static File create(Store store) throws Exception {
         synchronized(store){
             File dir=new File(store.context.getFilesDir(),"exports");if(!dir.exists()&&!dir.mkdirs())throw new IOException("Не може да се зачува.");
+            File[] previous=dir.listFiles();if(previous!=null)for(File f:previous)if(f.getName().endsWith(".zip"))f.delete();
             File file=new File(dir,UUID.randomUUID()+".zip");
             try(ZipOutputStream z=new ZipOutputStream(new FileOutputStream(file))){
                 JSONObject root=new JSONObject();root.put("format","mk.td.archive.document");root.put("version",1);JSONArray rows=new JSONArray(),assets=new JSONArray();

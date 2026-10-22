@@ -19,6 +19,6 @@
 ## Изградба и проверка
 
 GitHub Actions: `.github/workflows/archive-document.yml`, Java 17, Gradle 8.7, SDK 35, AGP 8.6.1.
-Release е потпишан со постоечкиот приватен Actions secret `WFAG_SIGNING_BUNDLE`. Клучот не е во изворниот код. Идните надградби мора да го задржат истиот applicationId и потпис и да го зголемат versionCode.
+CI создава unsigned release кандидат. Финалната APK се потпишува со сопствен траен приватен клуч на оваа апликација; неговата копија е зачувана одделно како `Arhiva_Dokumenti_SIGNING_PRIVATE.zip`. Клучот не е во јавниот репозиториум. Идните надградби мора да го користат овој клуч, да го задржат applicationId и да го зголемат versionCode. Unsigned кандидатот не е датотеката за инсталација.
 
-CI: release/debug APK + Android lint; инсталација и старт на release; тест на Android 35 за зачувување/продолжување, full-size camera success/cancel (симулиран резултат), описи, копирање прилози, генерирање PDF/DOCX/XLSX, резервна копија/враќање, нема дупликати, одбивање ZIP traversal, повторно отворање по force-stop. Вистинската камера на Samsung и надворешните Office апликации бараат проверка на телефонот.
+CI: release/debug APK + Android lint; тест на Android 35 за зачувување/продолжување, full-size camera success/cancel (симулиран резултат), описи, копирање прилози, генерирање PDF/DOCX/XLSX, резервна копија/враќање, нема дупликати, одбивање ZIP traversal, повторно отворање по force-stop. Финалната потпишана APK дополнително се проверува со apksigner. Вистинската камера на Samsung и надворешните Office апликации бараат проверка на телефонот.

@@ -140,7 +140,7 @@ public class MainActivity extends Activity {
             gap(body,12);LinearLayout card=column();card.setBackground(bg(CARD,14));card.setPadding(dp(12),dp(12),dp(12),dp(12));
             if(a.kind.equals("photo")){
                 ImageView image=new ImageView(this);image.setContentDescription(a.name);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setBackground(bg(BG,8));card.addView(image,new LinearLayout.LayoutParams(-1,dp(180)));
-                worker.execute(()->{try{Bitmap b=loadImage(store.file(a),800);handler.post(()->{if(generation==gen&&!isDestroyed())image.setImageBitmap(b);else if(b!=null)b.recycle();});}catch(Exception ignored){}});
+                worker.execute(()->{try{Bitmap b=loadImage(store.file(a),400);handler.post(()->{if(generation==gen&&!isDestroyed())image.setImageBitmap(b);else if(b!=null)b.recycle();});}catch(Exception ignored){}});
                 image.setOnClickListener(v->photoPreview(a));
             }
             TextView n=text(a.name,16,TEXT);n.setMaxLines(2);card.addView(n);
@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
             },()->showFiles());
         }else if(request==SAVE_FILE){
             String source=prefs().getString("savePath",null);if(source==null)return;Uri uri=data.getData();
-            runJob("Зачувувам…",()->{File f=ownedFile(source);try(InputStream in=new FileInputStream(f);OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Не може да се зачува.");Store.copy(in,out,Long.MAX_VALUE);}prefs().edit().remove("savePath").commit();return "Датотеката е зачувана";},null);
+            runJob("Зачувувам…",()->{File f=ownedFile(source);try(InputStream in=new FileInputStream(f);OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException("Не може да се зачува.");Store.copy(in,out,Long.MAX_VALUE);}prefs().edit().remove("savePath").commit();if(source.startsWith("exports/"))f.delete();return "Датотеката е зачувана";},null);
         }else if(request==RESTORE){Uri uri=data.getData();runJob("Ја враќам резервната копија…",()->{try(InputStream in=getContentResolver().openInputStream(uri)){return ArchiveBackup.restore(store,in)+" записи се вратени";}},()->showHome());}
     }
     String fileName(Uri uri){String name="Датотека";try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}catch(Exception ignored){}return name==null?"Датотека":name;}
@@ -211,7 +211,7 @@ public class MainActivity extends Activity {
     }
     static Bitmap loadImage(File file,int max) throws IOException {
         BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(file.getPath(),bounds);if(bounds.outWidth<=0)return null;
-        BitmapFactory.Options o=new BitmapFactory.Options();o.inSampleSize=1;while(Math.max(bounds.outWidth,bounds.outHeight)/o.inSampleSize>max*2)o.inSampleSize*=2;
+        BitmapFactory.Options o=new BitmapFactory.Options();if(max<=800)o.inPreferredConfig=Bitmap.Config.RGB_565;o.inSampleSize=1;while(Math.max(bounds.outWidth,bounds.outHeight)/o.inSampleSize>max*2)o.inSampleSize*=2;
         Bitmap b=BitmapFactory.decodeFile(file.getPath(),o);if(b==null)return null;
         Matrix m=new Matrix();try{int orientation=new ExifInterface(file.getPath()).getAttributeInt(ExifInterface.TAG_ORIENTATION,ExifInterface.ORIENTATION_NORMAL);
             switch(orientation){case 2:m.setScale(-1,1);break;case 3:m.setRotate(180);break;case 4:m.setScale(1,-1);break;case 5:m.setRotate(90);m.postScale(-1,1);break;case 6:m.setRotate(90);break;case 7:m.setRotate(270);m.postScale(-1,1);break;case 8:m.setRotate(270);break;default:break;}
