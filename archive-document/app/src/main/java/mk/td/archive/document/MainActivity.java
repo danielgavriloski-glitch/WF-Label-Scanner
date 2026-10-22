@@ -149,12 +149,18 @@ public class MainActivity extends Activity {
             TextView more=text("Повеќе  ⋮",14,ACCENT);more.setGravity(Gravity.END);more.setPadding(0,dp(14),0,dp(8));more.setMinHeight(dp(48));more.setOnClickListener(v->assetMenu(a));card.addView(more);body.addView(card);
         }
         gap(body,16);fullButton(body,"Создај документ · PDF / Word / Excel",false,()->exportMenu());
-        fullButton(body,"Зачувај за подоцна",false,()->saveLater());
-        fullButton(body,"Заврши и зачувај запис",true,()->{try{current.status="done";store.save(current);showHome();toast("Записот е зачуван");}catch(Exception e){error(e);}});
+        LinearLayout footer=row();footer.setPadding(0,dp(10),0,dp(8));
+        LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,-2,1);left.setMargins(0,0,dp(4),0);
+        LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-2,1);right.setMargins(dp(4),0,0,0);
+        footer.addView(button("Зачувај за подоцна",false,()->saveLater()),left);
+        footer.addView(button("Заврши и зачувај запис",true,()->{try{current.status="done";store.save(current);showHome();toast("Записот е зачуван");}catch(Exception e){error(e);}}),right);
+        root.addView(footer);
     }
     void editCaption(Store.Asset a){
         EditText input=new EditText(this);input.setText(a.caption);input.setHint("Информации за оваа фотографија / документ");input.setMinLines(3);input.setGravity(Gravity.TOP);input.setPadding(dp(20),dp(16),dp(20),dp(16));input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        new AlertDialog.Builder(this).setTitle("Опис").setView(input).setNegativeButton("Откажи",null).setPositiveButton("Зачувај",(d,w)->{try{store.caption(a,input.getText().toString());showFiles();}catch(Exception e){error(e);}}).show();
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("Опис").setView(input).setNegativeButton("Откажи",null).setPositiveButton("Зачувај",(d,w)->{try{store.caption(a,input.getText().toString());showFiles();}catch(Exception e){error(e);}});
+        if(a.kind.equals("photo"))dialog.setNeutralButton("Следна слика",(d,w)->{try{store.caption(a,input.getText().toString());showFiles();takePhoto();}catch(Exception e){error(e);}});
+        dialog.show();
     }
     void takePhoto(){
         try{

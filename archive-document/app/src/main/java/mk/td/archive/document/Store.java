@@ -53,12 +53,16 @@ public class Store extends SQLiteOpenHelper {
         try(Cursor c=getReadableDatabase().query("records",null,"id=?",new String[]{id},null,null,null)) { return c.moveToFirst()?record(c):null; }
     }
     public synchronized List<Record> records(String query,String status) {
-        String q="%"+query.replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%";
-        String where="(title LIKE ? ESCAPE '\\' OR reference LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')";
-        List<String> args=new ArrayList<>(Arrays.asList(q,q,q,q));
-        if(!status.isEmpty()){where+=" AND status=?";args.add(status);}
+        String q=query.toLowerCase(Locale.ROOT);
+        String where=status.isEmpty()?null:"status=?";
+        String[] args=status.isEmpty()?null:new String[]{status};
         List<Record> list=new ArrayList<>();
-        try(Cursor c=getReadableDatabase().query("records",null,where,args.toArray(new String[0]),null,null,"updated DESC")) { while(c.moveToNext())list.add(record(c)); }
+        try(Cursor c=getReadableDatabase().query("records",null,where,args,null,null,"updated DESC")) {
+            while(c.moveToNext()){
+                Record r=record(c);
+                if((r.title+"\n"+r.reference+"\n"+r.notes+"\n"+r.category).toLowerCase(Locale.ROOT).contains(q))list.add(r);
+            }
+        }
         return list;
     }
     static Asset asset(Cursor c) {
