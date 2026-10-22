@@ -115,7 +115,11 @@ public class ArchiveInstrumentation extends Instrumentation {
             Store.Record many=db.create();many.title="Проверка на картичка";many.fields=restoredRecord.fields;db.save(many);
             for(int i=0;i<7;i++){Store.Asset copy;try(InputStream in=new FileInputStream(db.file(restoredPhoto))){copy=db.importStream(many.id,in,"DO_NOT_PRINT_"+i+".jpg","image/jpeg");}db.caption(copy,i==6?"ПОСЛЕДНА_СЛИКА":"Опис "+(i+1));
                 if(i==0){JSONObject longValues=new JSONObject();StringBuilder longText=new StringBuilder();for(int j=0;j<200;j++)longText.append("Податок за алатот ");longText.append("КРАЈ_ПОЛЕ");longValues.put(CardFields.list(many).get(0).id,longText.toString());db.describe(copy,copy.caption,longValues.toString());}}
-            File large=Exports.create(db,many,"card");try(ParcelFileDescriptor fd=ParcelFileDescriptor.open(large,ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer renderer=new PdfRenderer(fd)){check(renderer.getPageCount()>=3,"Long card data did not paginate");}exportFixture(large,"sample-card-long.pdf");large.delete();db.deleteRecord(many.id);
+            File large=Exports.create(db,many,"card");try(ParcelFileDescriptor fd=ParcelFileDescriptor.open(large,ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer renderer=new PdfRenderer(fd)){check(renderer.getPageCount()>=3,"Long card data did not paginate");}exportFixture(large,"sample-card-long.pdf");
+            List<File> cards=ArchiveCards.images(db,many,large);check(!cards.isEmpty(),"No JPG card images");
+            for(File jpg:cards){BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(jpg.getPath(),bounds);check(bounds.outWidth==1785&&bounds.outHeight==2526,"JPG card dimensions wrong");db.attachCardImage(many.id,jpg,"card.jpg","Архивска картичка");}
+            int originalPhotos=0;for(Store.Asset asset:db.assets(many.id))if(asset.kind.equals("photo"))originalPhotos++;check(originalPhotos==7,"Generated JPG cards became source photographs");
+            large.delete();db.deleteRecord(many.id);
             ByteArrayOutputStream unsafe=new ByteArrayOutputStream();try(ZipOutputStream z=new ZipOutputStream(unsafe)){z.putNextEntry(new ZipEntry("../outside.txt"));z.write("unsafe".getBytes(StandardCharsets.UTF_8));z.closeEntry();}
             boolean rejected=false;try{ArchiveBackup.restore(db,new ByteArrayInputStream(unsafe.toByteArray()));}catch(Exception e){rejected=true;}check(rejected&&db.records("","").size()==1,"Unsafe backup accepted or damaged DB");
             runOnMainSync(()->{a.current=a.store.get(rid);a.showEdit();a.notes.append("\nДополнето по продолжување.");find(a.root,"Продолжи →").performClick();});
@@ -125,7 +129,7 @@ public class ArchiveInstrumentation extends Instrumentation {
             Thread.sleep(700);Bitmap screen=getUiAutomation().takeScreenshot();try(OutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"archive-files.png"))){screen.compress(Bitmap.CompressFormat.PNG,100,out);}screen.recycle();
             // Leave a saved session for an external force-stop/restart check.
             check(!a.prefs().getString("activeRecord","").isEmpty(),"Active record not durable");
-            result.putString("stream","ARHIVA_SMOKE_OK: draft, resume, camera success/cancel, captions, custom/blank fields, field rename, card PDF pagination, no report filenames, per-record folders, v1 DB migration, v1/v2 backup restore, PDF, DOCX, XLSX, copied attachments, duplicate prevention, unsafe ZIP rejection, finish.\n");
+            result.putString("stream","ARHIVA_SMOKE_OK: draft, resume, camera success/cancel, captions, custom/blank fields, field rename, card PDF/JPG pagination, no report filenames, per-record folders, v1 DB migration, v1/v2 backup restore, PDF, DOCX, XLSX, copied attachments, duplicate prevention, unsafe ZIP rejection, finish.\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("stream","ARHIVA_SMOKE_FAILED: "+e+"\n"+android.util.Log.getStackTraceString(e));finish(Activity.RESULT_CANCELED,result);}
     }

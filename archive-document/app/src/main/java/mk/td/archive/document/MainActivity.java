@@ -150,7 +150,7 @@ public class MainActivity extends Activity {
             pair(card,"Опис",()->editCaption(a),a.kind.equals("photo")?"Преглед":"Отвори",()->{if(a.kind.equals("photo"))photoPreview(a);else openAsset(a);});
             TextView more=text("Повеќе  ⋮",14,ACCENT);more.setGravity(Gravity.END);more.setPadding(0,dp(14),0,dp(8));more.setMinHeight(dp(48));more.setOnClickListener(v->assetMenu(a));card.addView(more);body.addView(card);
         }
-        gap(body,16);fullButton(body,"Архивска картичка · PDF",false,()->exportCard());
+        gap(body,16);fullButton(body,"Архивска картичка · PDF / JPG",false,()->exportCard());
         fullButton(body,"Полиња за картичката",false,()->fieldMenu());
         fullButton(body,"Создај документ · PDF / Word / Excel",false,()->exportMenu());
         LinearLayout footer=row();footer.setPadding(0,dp(10),0,dp(8));
@@ -191,8 +191,20 @@ public class MainActivity extends Activity {
         }).setNegativeButton("Затвори",null).show();
     }
     void exportCard(){
+        new AlertDialog.Builder(this).setTitle("Архивска картичка").setItems(new String[]{"PDF за печатење","JPG слики од картичката"},(d,n)->exportCard(n==1)).show();
+    }
+    void exportCard(boolean images){
         Store.Record record=store.get(current.id);
-        runJob("Ја создавам архивската картичка…",()->{File file=Exports.create(store,record,"card");store.attach(record.id,file,Exports.label(record)+"_картичка.pdf","application/pdf","Архивска картичка");return "Картичката е додадена на записот";},()->showFiles());
+        runJob("Ја создавам архивската картичка…",()->{
+            File file=Exports.create(store,record,"card");
+            if(!images){try{store.attach(record.id,file,Exports.label(record)+"_картичка.pdf","application/pdf","Архивска картичка");}catch(Exception e){file.delete();throw e;}}
+            else{
+                List<File> pages=new ArrayList<>();List<Store.Asset> attached=new ArrayList<>();boolean success=false;
+                try{pages=ArchiveCards.images(store,record,file);for(int i=0;i<pages.size();i++)attached.add(store.attachCardImage(record.id,pages.get(i),Exports.label(record)+"_картичка_"+(i+1)+".jpg","Архивска картичка "+(i+1)+" / "+pages.size()));success=true;}
+                finally{file.delete();if(!success){for(Store.Asset asset:attached)store.deleteAsset(asset);for(File page:pages)page.delete();}}
+            }
+            return images?"Сликите од картичката се додадени на записот":"Картичката е додадена на записот";
+        },()->showFiles());
     }
     void takePhoto(){
         try{

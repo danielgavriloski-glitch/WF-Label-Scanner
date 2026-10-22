@@ -141,6 +141,11 @@ public class Store extends SQLiteOpenHelper {
             return attach(recordId,dest,name,mime,"");
         } catch(Exception e){part.delete();dest.delete();if(e instanceof IOException)throw(IOException)e;throw new IOException(e);}
     }
+    public synchronized Asset attachCardImage(String recordId,File file,String name,String caption) throws IOException {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try{Asset a=attach(recordId,file,name,"image/jpeg",caption);ContentValues v=new ContentValues();v.put("kind","document");db.update("assets",v,"id=?",new String[]{a.id});a.kind="document";db.setTransactionSuccessful();return a;}
+        finally{db.endTransaction();}
+    }
     static void copy(InputStream in,OutputStream out,long max) throws IOException {
         byte[] b=new byte[32768];long total=0;int n;
         while((n=in.read(b))!=-1){total+=n;if(total>max)throw new IOException("Датотеката е поголема од 256 MB.");out.write(b,0,n);}

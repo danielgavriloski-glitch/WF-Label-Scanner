@@ -2,6 +2,8 @@ package mk.td.archive.document;
 
 import android.graphics.*;
 import android.text.*;
+import android.graphics.pdf.PdfRenderer;
+import android.os.ParcelFileDescriptor;
 import java.io.*;
 import java.util.*;
 
@@ -9,6 +11,16 @@ import java.util.*;
 public final class ArchiveCards {
     static final float LEFT=42,WIDTH=511,BOTTOM=790,LINE=13;
     static final int INK=0xff24201b,CREAM=0xfff7f0e5,RUST=0xffa34f26;
+    public static List<File> images(Store store,Store.Record record,File pdf) throws IOException {
+        List<File> output=new ArrayList<>();boolean success=false;
+        try(ParcelFileDescriptor fd=ParcelFileDescriptor.open(pdf,ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer document=new PdfRenderer(fd)){
+            for(int i=0;i<document.getPageCount();i++)try(PdfRenderer.Page page=document.openPage(i)){
+                Bitmap image=Bitmap.createBitmap(page.getWidth()*3,page.getHeight()*3,Bitmap.Config.ARGB_8888);image.eraseColor(Color.WHITE);File file=store.mediaFile(record.id,"jpg");output.add(file);
+                try{page.render(image,null,null,PdfRenderer.Page.RENDER_MODE_FOR_PRINT);try(FileOutputStream out=new FileOutputStream(file)){if(!image.compress(Bitmap.CompressFormat.JPEG,94,out))throw new IOException("Не може да се создаде сликата.");out.getFD().sync();}}
+                finally{image.recycle();}
+            }success=true;return output;
+        }finally{if(!success)for(File file:output)file.delete();}
+    }
     static TextPaint paint(float size,boolean bold){TextPaint p=new TextPaint(Paint.ANTI_ALIAS_FLAG);p.setTextSize(size);p.setColor(INK);p.setTypeface(Typeface.create("sans-serif",bold?Typeface.BOLD:Typeface.NORMAL));return p;}
     static List<String> lines(String value,TextPaint paint,int width){
         String s=value==null?"":value;StaticLayout layout=StaticLayout.Builder.obtain(s,0,s.length(),paint,width).setIncludePad(false).build();List<String> out=new ArrayList<>();
