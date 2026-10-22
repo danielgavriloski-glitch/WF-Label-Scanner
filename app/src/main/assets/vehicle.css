@@ -1,0 +1,22 @@
+/* Vehicle log: compact controls that follow the existing WFAG theme. */
+#nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+#nav button{min-width:0;padding-left:2px;padding-right:2px}
+#nav button span{font-size:10px;overflow-wrap:anywhere}
+.van-tabs{display:flex;flex-wrap:wrap;gap:7px;margin:16px 0}
+.van-tabs button{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:10px;min-height:44px;padding:9px 13px;font:inherit;font-size:12px;font-weight:700}
+.van-tabs button[aria-pressed=true]{background:var(--pale);border-color:var(--teal);color:var(--teal)}
+.van-hero{border-color:#bcded6}
+.van-odometer{font-size:38px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--teal);margin:8px 0}
+.van-odometer small{font-size:17px;font-weight:500;letter-spacing:0}
+.van-entry{padding:15px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.van-entry:last-child{border-bottom:0}
+.van-entry>.row{align-items:flex-start}
+.van-entry>.row>strong{font-size:13px;font-weight:700;min-width:0}
+.van-entry .btn{flex-shrink:0;min-height:44px;padding:9px 12px;font-size:12px}
+.van-entry-detail{line-height:1.65;margin-top:8px}
+.van-form input,.van-form select,.van-form textarea{min-width:0;max-width:100%;font-size:16px}
+.van-form .grid{margin-bottom:12px}
+.van-form .grid .field{min-width:0}
+.van-link-choice{margin:0 0 9px;justify-content:flex-start;text-align:left;overflow-wrap:anywhere}
+.van-interval{font-size:12px;line-height:1.65;padding:12px 0;border-bottom:1px solid var(--line)}
+@media(max-width:350px){.van-form .grid{grid-template-columns:minmax(0,1fr)}.van-odometer{font-size:32px}.van-tabs{gap:5px}.van-tabs button{padding:9px 10px}}

@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log]
   pull_request:
     branches: [workfashion-travel-time]
   workflow_dispatch:
@@ -35,6 +35,8 @@ jobs:
           node tests/route-history.test.js
           node tests/route-day-browser.test.js
           node tests/saved-places.test.js
+          node tests/vehicle.test.js
+          node --check app/src/main/assets/vehicle-ui.js
           node --check app/src/main/assets/v12-core.js
           node --check app/src/main/assets/v12-ui.js
 
@@ -61,16 +63,18 @@ jobs:
       - name: Android build
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-          gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assemblePreview :app:assembleDebugAndroidTest :app:lintRelease
+          gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assemblePreview :app:assembleCrafter :app:assembleDebugAndroidTest :app:lintRelease
           cp app/build/outputs/apk/preview/app-preview.apk /tmp/wfag-preview.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose /tmp/wfag-preview.apk
           mkdir -p delivery/toolchain
-          cp /tmp/wfag-preview.apk delivery/WFAG_v2_9_CLEAN_MAP_HISTORY_PREVIEW.apk
+          cp /tmp/wfag-preview.apk delivery/WFAG_v3_0_CRAFTER_PREVIEW.apk
+          cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_0_Crafter_TEST.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_0_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='22'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/wfag-preview.apk | grep "package: name='mk.workfashion.personal.preview2'"
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_Workfashion_Time_v2_9_CLEAN.apk
+            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_0_CRAFTER.apk
           else
-            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_Workfashion_Time_v2_9_CLEAN_UNSIGNED.apk
+            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_v3_0_CRAFTER_UNSIGNED.apk
             printf '%s\n' 'Signing secret is not configured. Do not distribute this APK as the update build.' > delivery/SIGNING_SETUP_REQUIRED.txt
           fi
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
@@ -80,7 +84,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-Workfashion-Time-v2-9-clean-build
+          name: WFAG-v3-0-Crafter-build
           path: delivery/
           retention-days: 7
 
@@ -107,6 +111,8 @@ jobs:
             grep WF_SMOKE_OK delivery/smoke.txt
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-smoke.png delivery/wf-smoke.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-vehicle-report.pdf delivery/smoke-vehicle-report.pdf
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-vehicle.png delivery/wf-vehicle.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-travel-report.pdf delivery/smoke-travel-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-holiday-report.pdf delivery/smoke-holiday-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-overtime-report.pdf delivery/smoke-overtime-report.pdf
@@ -117,10 +123,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-Workfashion-Time-v2-8-validation
+          name: WFAG-v3-0-Crafter-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
+            delivery/wf-vehicle.png
+            delivery/smoke-vehicle-report.pdf
             delivery/smoke-report.pdf
             delivery/smoke-travel-report.pdf
             delivery/smoke-holiday-report.pdf

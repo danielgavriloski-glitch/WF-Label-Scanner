@@ -32,7 +32,7 @@ public class SmokeInstrumentation extends Instrumentation {
             boolean loaded=false;
             for(int i=0;i<80;i++){
                 Thread.sleep(250);
-                if("true".equals(js(a,"typeof WFApp!=='undefined'&&!!WFApp.getState()&&typeof WFApp.travelReportJson==='function'"))){loaded=true;break;}
+                if("true".equals(js(a,"typeof WFApp!=='undefined'&&!!WFApp.getState()&&typeof WFApp.travelReportJson==='function'&&typeof WFVehicle==='object'"))){loaded=true;break;}
             }
             check(loaded,"WFAG v1.2 UI did not load");
             check("true".equals(js(a,"document.querySelector('.logo').textContent==='WFAG'")),"WFAG brand missing");
@@ -113,6 +113,28 @@ public class SmokeInstrumentation extends Instrumentation {
             try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-report.pdf"))){out.write(workPdf);}
             try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-travel-report.pdf"))){out.write(travelPdf);}
 
+
+            // Vehicle module: real WebView forms, native persistence and legacy backup.
+            check("true".equals(js(a,"(()=>{WFApp.setView('vehicle');WFVehicle.setup();document.getElementById('vanAt').value='2026-10-01T08:00';document.getElementById('vanOdo').value='10000';document.getElementById('vanL100').value='10';document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));return state.vehicleLog&&Vehicle.latest(state.vehicleLog).odo===10000&&state.settings.name==='Тест Вработен';})()")), "Crafter setup form and persistence");
+            check("true".equals(js(a,"(()=>{for(const r of [{at:'2026-10-01T09:00',odo:10000,L:60,full:true},{at:'2026-10-02T09:00',odo:10300,L:30,full:false},{at:'2026-10-03T09:00',odo:10500,L:20,full:true}]){WFVehicle.edit('fills');document.getElementById('vanAt').value=r.at;document.getElementById('vanOdo').value=String(r.odo);document.getElementById('vanLitres').value=String(r.L);document.getElementById('vanFull').checked=r.full;document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));}return state.vehicleLog.fills.length===3&&Vehicle.summary(state.vehicleLog).measuredL100===10;})()")), "Full and partial fuel forms");
+            check("true".equals(js(a,"(()=>{WFVehicle.edit('fills',state.vehicleLog.fills[1].id);document.getElementById('vanLitres').value='20';document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));return Vehicle.summary(state.vehicleLog).measuredL100===8&&state.vehicleLog.audit.some(a=>a.action==='edit'&&a.before.litres===30);})()")), "Correction of earlier fill recomputes average");
+            check("true".equals(js(a,"(()=>{for(const r of [{at:'2026-09-01T08:00',odo:9000,set:'summer'},{at:'2026-10-01T09:00',odo:10000,set:'winter'},{at:'2026-10-04T08:00',odo:10600,set:'summer'}]){WFVehicle.edit('tireChanges');document.getElementById('vanAt').value=r.at;document.getElementById('vanOdo').value=String(r.odo);document.getElementById('vanSet').value=r.set;document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));}WFVehicle.edit('readings');document.getElementById('vanAt').value='2026-10-05T08:00';document.getElementById('vanOdo').value='10800';document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));const tires=Vehicle.tires(state.vehicleLog);return tires.find(t=>t.id==='summer').totalKm===1200&&tires.find(t=>t.id==='winter').totalKm===600;})()")), "Tire history across seasons through real forms");
+            check("true".equals(js(a,"(()=>{const before=JSON.stringify(state.trips);WFVehicle.edit('trips');document.getElementById('vanAt').value='2026-10-03T10:00';document.getElementById('vanEndAt').value='2026-10-03T12:00';document.getElementById('vanStartOdo').value='10500';document.getElementById('vanEndOdo').value='10600';document.getElementById('vanFrom').value='Охрид';document.getElementById('vanTo').value='Скопје';document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));const source=WFVehicle.linkCandidates()[0];if(!source)return false;WFVehicle.edit('trips',null,source);document.getElementById('vanKm').value='250';document.getElementById('vanForm').dispatchEvent(new Event('submit',{cancelable:true}));return Vehicle.summary(state.vehicleLog).tripKm===350&&state.vehicleLog.trips.length===2&&!WFVehicle.linkCandidates().some(t=>t.sourceId===source.sourceId)&&JSON.stringify(state.trips)===before;})()")), "Manual and linked trips without changing attendance");
+            check("true".equals(js(a,"(()=>{for(const tab of ['overview','fuel','tires','trips','analysis','history']){WFVehicle.setTab(tab);if(document.getElementById('app').textContent.length<150)return false;}WFVehicle.setTab('analysis');document.getElementById('vanFromDate').value='2026-10-01';document.getElementById('vanToDate').value='2026-10-31';document.getElementById('vanApplyRange').click();return WFVehicle.vehicleReport().rows.length===5&&document.documentElement.scrollWidth<=innerWidth+1;})()")), "All vehicle screens and analysis period");
+            check("true".equals(js(a,"(()=>{const old=WFApp.getState(),before=JSON.stringify(old.vehicleLog);delete old.vehicleLog;const answer=window.confirm;window.confirm=()=>true;try{handleImport(JSON.stringify(old));}finally{window.confirm=answer;}if(JSON.stringify(state.vehicleLog)!==before)return false;const saved=Android.loadState();if(!load())return false;WFVehicle.setTab('analysis');return JSON.stringify(state)===saved&&state.trips.length===2&&Vehicle.summary(state.vehicleLog).measuredL100===8;})()")), "Old backup retains van records and saved reload");
+
+            String vehicleEncoded=js(a,"JSON.stringify(WFVehicle.vehicleReport())");
+            JSONObject vehicleReport=new JSONObject(new JSONArray("["+vehicleEncoded+"]").getString(0));
+            byte[] vehiclePdf=MainActivity.PdfReport.create(vehicleReport);
+            check(vehiclePdf.length>2000,"Vehicle PDF generation failed");
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"smoke-vehicle-report.pdf"))){out.write(vehiclePdf);}
+            js(a,"WFVehicle.setTab('overview');window.scrollTo(0,0)");
+            Thread.sleep(400);
+            android.graphics.Bitmap vehicleScreenshot=getUiAutomation().takeScreenshot();
+            check(vehicleScreenshot!=null,"Vehicle screenshot failed");
+            try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"wf-vehicle.png"))){vehicleScreenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            vehicleScreenshot.recycle();
+
             js(a,"WFApp.setView('home');window.scrollTo(0,0)");
             Thread.sleep(500);
             android.graphics.Bitmap screenshot=getUiAutomation().takeScreenshot();
@@ -128,7 +150,7 @@ public class SmokeInstrumentation extends Instrumentation {
             }
             screenshot.recycle();
 
-            result.putString("stream","WF_SMOKE_OK: WFAG v2.6, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
+            result.putString("stream","WF_SMOKE_OK: WFAG v3.0 Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
             java.io.StringWriter trace=new java.io.StringWriter();

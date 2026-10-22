@@ -504,7 +504,7 @@ renderSettings=function(){
     };
   }
   const ps=document.querySelectorAll('#app p');
-  for(const p of ps)if(p.textContent.indexOf('Workfashion · Мои часови · v1.1')>=0)p.textContent='Workfashion · Мои часови · v2.6 · WFAG';
+  for(const p of ps)if(p.textContent.indexOf('Workfashion · Мои часови · v1.1')>=0)p.textContent='Workfashion · Мои часови · v3.0 · WFAG';
 };
 
 
