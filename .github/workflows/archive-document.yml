@@ -1,0 +1,94 @@
+name: Build Arhiva Dokumenti APK
+on:
+  push:
+    branches: [feature/arhiva-pdf-dokument]
+    paths: ['archive-document/**', '.github/workflows/archive-document.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: archive-document
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Restore persistent signing key
+        env:
+          WFAG_SIGNING_BUNDLE: ${{ secrets.WFAG_SIGNING_BUNDLE }}
+        run: |
+          test -n "$WFAG_SIGNING_BUNDLE"
+          printf '%s' "$WFAG_SIGNING_BUNDLE" | base64 -d > "$RUNNER_TEMP/archive-signing.zip"
+          unzip -q -o "$RUNNER_TEMP/archive-signing.zip"
+          test -f signing/signing.properties
+          test -f signing/wfag-release.jks
+      - name: Build and lint
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease --stacktrace
+          mkdir -p delivery/toolchain
+          cp app/build/outputs/apk/release/app-release.apk delivery/Arhiva_Dokumenti_v1_0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs delivery/Arhiva_Dokumenti_v1_0.apk > delivery/signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/Arhiva_Dokumenti_v1_0.apk > delivery/package.txt
+          grep "package: name='mk.td.archive.document' versionCode='1'" delivery/package.txt
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Arhiva-Dokumenti-v1-0-APK
+          path: archive-document/delivery/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android end-to-end verification
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated
+          script: |
+            mkdir -p archive-document/validation
+            adb install archive-document/app/build/outputs/apk/release/app-release.apk
+            adb logcat -c
+            adb shell am start -W -n mk.td.archive.document/.MainActivity
+            adb shell pidof mk.td.archive.document
+            adb uninstall mk.td.archive.document
+            adb install archive-document/app/build/outputs/apk/debug/app-debug.apk
+            adb install archive-document/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w mk.td.archive.document.test/mk.td.archive.document.ArchiveInstrumentation > archive-document/validation/smoke.txt
+            cat archive-document/validation/smoke.txt
+            grep ARHIVA_SMOKE_OK archive-document/validation/smoke.txt
+            adb pull /sdcard/Android/data/mk.td.archive.document/files/. archive-document/validation/
+            adb shell am force-stop mk.td.archive.document
+            adb shell am start -W -n mk.td.archive.document/.MainActivity
+            adb shell uiautomator dump /sdcard/archive-restarted.xml
+            adb pull /sdcard/archive-restarted.xml archive-document/validation/restarted.xml
+            grep 'Тест Архива' archive-document/validation/restarted.xml
+            adb exec-out screencap -p > archive-document/validation/restarted.png
+            adb logcat -d > archive-document/validation/runtime.log
+            if grep -q 'FATAL EXCEPTION' archive-document/validation/runtime.log; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Arhiva-Dokumenti-v1-0-validation
+          path: |
+            archive-document/validation/
+            archive-document/app/build/reports/lint-results-release.html
+          retention-days: 14

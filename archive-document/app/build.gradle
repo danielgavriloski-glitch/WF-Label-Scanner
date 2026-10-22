@@ -1,0 +1,37 @@
+plugins { id 'com.android.application' }
+def propsFile = rootProject.file('signing/signing.properties')
+def props = new Properties()
+if (propsFile.exists()) propsFile.withInputStream { props.load(it) }
+android {
+    namespace 'mk.td.archive.document'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'mk.td.archive.document'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        testInstrumentationRunner 'mk.td.archive.document.ArchiveInstrumentation'
+    }
+    signingConfigs {
+        if (propsFile.exists()) {
+            archiveRelease {
+                storeFile rootProject.file('signing/' + props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (propsFile.exists()) signingConfig signingConfigs.archiveRelease
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint { abortOnError true; disable 'ObsoleteSdkInt', 'SetTextI18n' }
+}
