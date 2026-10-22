@@ -1,0 +1,13 @@
+{
+  "filename": "Arhiva_Dokumenti_v1_0.apk",
+  "package": "mk.td.archive.document",
+  "versionName": "1.0",
+  "versionCode": 1,
+  "source_commit": "92261f17e20b379454e88e9e84113ac66647fd0c",
+  "sha256": "bb6661341e3bffef5f9d9caf065acd0da4c7deeafdb2b1f8346237fe1900504a",
+  "size_bytes": 49799,
+  "signer_certificate_sha256": "f78ad175c20b68e3c27fea5d4dbc1f4f4ee7f04bf000437459644af4bf0ef542",
+  "min_android": 8,
+  "android_emulator_validation": "passed",
+  "workflow_run": "https://github.com/danielgavriloski-glitch/WF-Label-Scanner/actions/runs/39774530123"
+}
