@@ -19,6 +19,7 @@ import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
+import org.json.*;
 
 public class MainActivity extends Activity {
     static final int BG=0xff151a21,CARD=0xff202832,INPUT=0xff29333f,TEXT=0xffedf2f7,MUTED=0xffaebdcb,ACCENT=0xff59d1bd;
@@ -70,7 +71,7 @@ public class MainActivity extends Activity {
         root.addView(header);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);body=column();body.setPadding(0,0,0,dp(22));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);root.requestApplyInsets();remember();
     }
     void showHome(){
-        saveFields(false);current=null;page="home";screen("Архива","Документи и фотографии · v1.0",false);
+        saveFields(false);current=null;page="home";screen("Архива","Документи и фотографии · v1.1",false);
         fullButton(body,"+ Нов запис",true,()->{try{current=store.create();showEdit();}catch(Exception e){error(e);}});
         gap(body,14);search=new EditText(this);search.setSingleLine(true);search.setHint("Пребарај наслов, број, опис…");search.setTextColor(TEXT);search.setHintTextColor(MUTED);search.setTextSize(15);search.setPadding(dp(14),dp(12),dp(14),dp(12));search.setBackground(bg(INPUT,12));body.addView(search,new LinearLayout.LayoutParams(-1,dp(50)));
         filter=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Сите записи","За подоцна","Завршени"});filter.setAdapter(adapter);body.addView(filter,new LinearLayout.LayoutParams(-1,dp(52)));
@@ -139,16 +140,19 @@ public class MainActivity extends Activity {
         for(Store.Asset a:all){
             gap(body,12);LinearLayout card=column();card.setBackground(bg(CARD,14));card.setPadding(dp(12),dp(12),dp(12),dp(12));
             if(a.kind.equals("photo")){
-                ImageView image=new ImageView(this);image.setContentDescription(a.name);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setBackground(bg(BG,8));card.addView(image,new LinearLayout.LayoutParams(-1,dp(180)));
+                ImageView image=new ImageView(this);image.setContentDescription(a.caption.trim().isEmpty()?"Фотографија":a.caption);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setBackground(bg(BG,8));card.addView(image,new LinearLayout.LayoutParams(-1,dp(180)));
                 worker.execute(()->{try{Bitmap b=loadImage(store.file(a),400);handler.post(()->{if(generation==gen&&!isDestroyed())image.setImageBitmap(b);else if(b!=null)b.recycle();});}catch(Exception ignored){}});
                 image.setOnClickListener(v->photoPreview(a));
             }
-            TextView n=text(a.name,16,TEXT);n.setMaxLines(2);card.addView(n);
-            card.addView(text(a.caption.isEmpty()?"Без опис · допри „Опис“ за да додадеш":a.caption,14,MUTED));
+            TextView n=text(a.kind.equals("photo")?(a.caption.trim().isEmpty()?"Фотографија":a.caption):a.name,16,TEXT);n.setMaxLines(3);card.addView(n);
+            if(!a.kind.equals("photo"))card.addView(text(a.caption.isEmpty()?"Без опис · допри „Опис“ за да додадеш":a.caption,14,MUTED));
+            for(CardFields.Field f:CardFields.list(current))card.addView(text(f.label+": "+CardFields.value(a,f),14,MUTED));
             pair(card,"Опис",()->editCaption(a),a.kind.equals("photo")?"Преглед":"Отвори",()->{if(a.kind.equals("photo"))photoPreview(a);else openAsset(a);});
             TextView more=text("Повеќе  ⋮",14,ACCENT);more.setGravity(Gravity.END);more.setPadding(0,dp(14),0,dp(8));more.setMinHeight(dp(48));more.setOnClickListener(v->assetMenu(a));card.addView(more);body.addView(card);
         }
-        gap(body,16);fullButton(body,"Создај документ · PDF / Word / Excel",false,()->exportMenu());
+        gap(body,16);fullButton(body,"Архивска картичка · PDF",false,()->exportCard());
+        fullButton(body,"Полиња за картичката",false,()->fieldMenu());
+        fullButton(body,"Создај документ · PDF / Word / Excel",false,()->exportMenu());
         LinearLayout footer=row();footer.setPadding(0,dp(10),0,dp(8));
         LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,-2,1);left.setMargins(0,0,dp(4),0);
         LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-2,1);right.setMargins(dp(4),0,0,0);
@@ -156,16 +160,44 @@ public class MainActivity extends Activity {
         footer.addView(button("Заврши и зачувај запис",true,()->{try{current.status="done";store.save(current);showHome();toast("Записот е зачуван");}catch(Exception e){error(e);}}),right);
         root.addView(footer);
     }
+    EditText descriptionInput(LinearLayout box,String label,String value){
+        TextView title=new TextView(this);title.setText(label);title.setTextSize(14);title.setTextColor(Color.DKGRAY);box.addView(title);
+        EditText input=new EditText(this);input.setText(value);input.setTextColor(Color.BLACK);input.setMinLines(2);input.setGravity(Gravity.TOP);input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);box.addView(input,new LinearLayout.LayoutParams(-1,-2));return input;
+    }
+    void saveDescription(Store.Asset asset,EditText caption,Map<String,EditText> fields) throws JSONException {
+        JSONObject values=new JSONObject(asset.fields);for(Map.Entry<String,EditText> e:fields.entrySet())values.put(e.getKey(),e.getValue().getText().toString());
+        store.describe(asset,caption.getText().toString(),values.toString());
+    }
     void editCaption(Store.Asset a){
-        EditText input=new EditText(this);input.setText(a.caption);input.setHint("Информации за оваа фотографија / документ");input.setMinLines(3);input.setGravity(Gravity.TOP);input.setPadding(dp(20),dp(16),dp(20),dp(16));input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("Опис").setView(input).setNegativeButton("Откажи",null).setPositiveButton("Зачувај",(d,w)->{try{store.caption(a,input.getText().toString());showFiles();}catch(Exception e){error(e);}});
-        if(a.kind.equals("photo"))dialog.setNeutralButton("Следна слика",(d,w)->{try{store.caption(a,input.getText().toString());showFiles();takePhoto();}catch(Exception e){error(e);}});
+        current=store.get(a.recordId);LinearLayout box=column();box.setPadding(dp(20),dp(12),dp(20),dp(12));ScrollView scroll=new ScrollView(this);scroll.addView(box);
+        EditText input=descriptionInput(box,"Опис",a.caption);input.setTag("asset-caption");
+        Map<String,EditText> values=new LinkedHashMap<>();
+        for(CardFields.Field f:CardFields.list(current))values.put(f.id,descriptionInput(box,f.label,CardFields.value(a,f)));
+        Button add=new Button(this);add.setText("+ Додај поле");add.setAllCaps(false);box.addView(add);
+        add.setOnClickListener(v->{EditText label=new EditText(this);label.setHint("Пример: Шифра, Назив, Големина");
+            new AlertDialog.Builder(this).setTitle("Ново поле").setView(label).setNegativeButton("Откажи",null).setPositiveButton("Додај",(d,w)->{try{
+                current=store.get(a.recordId);CardFields.add(store,current,label.getText().toString());List<CardFields.Field> all=CardFields.list(current);CardFields.Field f=all.get(all.size()-1);
+                box.removeView(add);values.put(f.id,descriptionInput(box,f.label,""));box.addView(add);
+            }catch(Exception e){error(e);}}).show();});
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("Опис и полиња").setView(scroll).setNegativeButton("Откажи",null).setPositiveButton("Зачувај",(d,w)->{try{saveDescription(a,input,values);showFiles();}catch(Exception e){error(e);}});
+        if(a.kind.equals("photo"))dialog.setNeutralButton("Следна слика",(d,w)->{try{saveDescription(a,input,values);showFiles();takePhoto();}catch(Exception e){error(e);}});
         dialog.show();
+    }
+    void fieldMenu(){
+        current=store.get(current.id);List<CardFields.Field> fields=CardFields.list(current);String[] labels=new String[fields.size()+1];labels[0]="+ Додај поле";for(int i=0;i<fields.size();i++)labels[i+1]=fields.get(i).label;
+        new AlertDialog.Builder(this).setTitle("Полиња за сите слики во записот").setItems(labels,(d,n)->{
+            CardFields.Field field=n==0?null:fields.get(n-1);EditText name=new EditText(this);name.setSingleLine(true);name.setHint("Име на поле");if(field!=null)name.setText(field.label);
+            new AlertDialog.Builder(this).setTitle(field==null?"Додај поле":"Преименувај поле").setView(name).setNegativeButton("Откажи",null).setPositiveButton("Зачувај",(x,w)->{try{current=store.get(current.id);if(field==null)CardFields.add(store,current,name.getText().toString());else CardFields.rename(store,current,field,name.getText().toString());showFiles();}catch(Exception e){error(e);}}).show();
+        }).setNegativeButton("Затвори",null).show();
+    }
+    void exportCard(){
+        Store.Record record=store.get(current.id);
+        runJob("Ја создавам архивската картичка…",()->{File file=Exports.create(store,record,"card");store.attach(record.id,file,Exports.label(record)+"_картичка.pdf","application/pdf","Архивска картичка");return "Картичката е додадена на записот";},()->showFiles());
     }
     void takePhoto(){
         try{
-            store.save(current);File f=store.mediaFile("jpg");Uri uri=ArchiveProvider.uri(this,f);
-            prefs().edit().putString("cameraPath",f.getName()).putString("cameraRecord",current.id).commit();
+            store.save(current);File f=store.mediaFile(current.id,"jpg");Uri uri=ArchiveProvider.uri(this,f);
+            prefs().edit().putString("cameraPath",store.relative(f)).putString("cameraRecord",current.id).commit();
             Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);i.putExtra(MediaStore.EXTRA_OUTPUT,uri);i.setClipData(ClipData.newRawUri("Фотографија",uri));i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             startActivityForResult(i,CAMERA);
         }catch(ActivityNotFoundException e){prefs().edit().remove("cameraPath").remove("cameraRecord").commit();toast("Нема достапна апликација за камера.");}catch(Exception e){error(e);}
@@ -177,8 +209,9 @@ public class MainActivity extends Activity {
             String name=prefs().getString("cameraPath",null),record=prefs().getString("cameraRecord",null);
             prefs().edit().remove("cameraPath").remove("cameraRecord").commit();
             if(name==null||record==null)return;
-            File f=new File(getFilesDir(),"media/"+name);
+            File f;
             try{
+                f=Store.safeFile(this,name.startsWith("media/")?name:"media/"+name);
                 revokeUriPermission(ArchiveProvider.uri(this,f),Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 if(result==RESULT_OK&&f.length()>0){
                     Store.Asset a=store.attach(record,f,"Фото_"+new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.ROOT).format(new Date())+".jpg","image/jpeg","");
@@ -207,12 +240,12 @@ public class MainActivity extends Activity {
     }
     String fileName(Uri uri){String name="Датотека";try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}catch(Exception ignored){}return name==null?"Датотека":name;}
     void openAsset(Store.Asset a){try{File f=store.file(a);Intent i=new Intent(Intent.ACTION_VIEW).setDataAndType(ArchiveProvider.uri(this,f),a.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(ActivityNotFoundException e){toast("За овој формат инсталирај соодветен прегледувач (PDF / Word / Excel).");}catch(Exception e){error(e);}}
-    void assetMenu(Store.Asset a){new AlertDialog.Builder(this).setTitle(a.name).setItems(new String[]{"Сподели","Зачувај во телефон","Отстрани од записот"},(d,n)->{try{if(n==0)share(store.file(a),a.mime);else if(n==1)saveExternal(store.file(a),a.name,a.mime);else new AlertDialog.Builder(this).setMessage("Да се отстрани оваа копија од записот?").setNegativeButton("Откажи",null).setPositiveButton("Отстрани",(x,w)->{try{store.deleteAsset(a);showFiles();}catch(Exception e){error(e);}}).show();}catch(Exception e){error(e);}}).show();}
+    void assetMenu(Store.Asset a){new AlertDialog.Builder(this).setTitle(a.kind.equals("photo")?(a.caption.trim().isEmpty()?"Фотографија":a.caption):a.name).setItems(new String[]{"Сподели","Зачувај во телефон","Отстрани од записот"},(d,n)->{try{if(n==0)share(store.file(a),a.mime);else if(n==1)saveExternal(store.file(a),a.name,a.mime);else new AlertDialog.Builder(this).setMessage("Да се отстрани оваа копија од записот?").setNegativeButton("Откажи",null).setPositiveButton("Отстрани",(x,w)->{try{store.deleteAsset(a);showFiles();}catch(Exception e){error(e);}}).show();}catch(Exception e){error(e);}}).show();}
     void photoPreview(Store.Asset a){
         runJob("Ја отворам фотографијата…",()->{
             Bitmap bitmap=loadImage(store.file(a),1800);if(bitmap==null)throw new IOException("Форматот не може да се прикаже. Користи надворешен прегледувач.");
             handler.post(()->{ImageView image=new ImageView(this);image.setImageBitmap(bitmap);image.setAdjustViewBounds(true);image.setScaleType(ImageView.ScaleType.FIT_CENTER);ScrollView scroll=new ScrollView(this);scroll.addView(image);
-                new AlertDialog.Builder(this).setTitle(a.name).setView(scroll).setMessage(a.caption.isEmpty()?null:a.caption).setPositiveButton("Затвори",null).setNeutralButton("Отвори надворешно",(d,w)->openAsset(a)).show();});return "";
+                new AlertDialog.Builder(this).setTitle(a.caption.trim().isEmpty()?"Фотографија":a.caption).setView(scroll).setMessage(a.caption.isEmpty()?null:a.caption).setPositiveButton("Затвори",null).setNeutralButton("Отвори надворешно",(d,w)->openAsset(a)).show();});return "";
         },null);
     }
     static Bitmap loadImage(File file,int max) throws IOException {
@@ -229,12 +262,12 @@ public class MainActivity extends Activity {
         runJob("Го создавам документот…",()->{File f=Exports.create(store,r,ext);store.attach(r.id,f,(r.title.isEmpty()?"Запис":r.title)+"."+ext,Exports.mime(ext),"Создаден од записот");return "Документот е додаден на записот";},()->showFiles());
     }).show();}
     void share(File file,String mime){Uri uri=ArchiveProvider.uri(this,file);Intent i=new Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Документ",uri));startActivity(Intent.createChooser(i,"Сподели"));}
-    void saveExternal(File f,String name,String mime){prefs().edit().putString("savePath",f.getParentFile().getName()+"/"+f.getName()).commit();Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE,name);startActivityForResult(i,SAVE_FILE);}
-    File ownedFile(String path) throws IOException {File f=new File(getFilesDir(),path).getCanonicalFile();File root=getFilesDir().getCanonicalFile();if(!f.getPath().startsWith(root.getPath()+File.separator)||!(path.startsWith("media/")||path.startsWith("exports/")))throw new IOException("Недозволена патека.");return f;}
+    void saveExternal(File f,String name,String mime) throws IOException {prefs().edit().putString("savePath",store.relative(f)).commit();Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE,name);startActivityForResult(i,SAVE_FILE);}
+    File ownedFile(String path) throws IOException {File f=new File(getFilesDir(),path).getCanonicalFile();File root=getFilesDir().getCanonicalFile();if(path.startsWith("media/"))return Store.safeFile(this,path);if(!f.getPath().startsWith(root.getPath()+File.separator)||!path.matches("exports/[a-zA-Z0-9-]+\\.[a-zA-Z0-9]{1,10}"))throw new IOException("Недозволена патека.");return f;}
     void showMenu(){new AlertDialog.Builder(this).setTitle("Архива – документи").setItems(new String[]{"Зачувај резервна копија (сите записи)","Врати резервна копија","За апликацијата"},(d,n)->{
-        if(n==0){final File[] f=new File[1];runJob("Создавам резервна копија…",()->{f[0]=ArchiveBackup.create(store);return "";},()->saveExternal(f[0],"Arhiva_backup_"+new SimpleDateFormat("yyyy-MM-dd_HHmmss",Locale.ROOT).format(new Date())+".zip","application/zip"));}
+        if(n==0){final File[] f=new File[1];runJob("Создавам резервна копија…",()->{f[0]=ArchiveBackup.create(store);return "";},()->{try{saveExternal(f[0],"Arhiva_backup_"+new SimpleDateFormat("yyyy-MM-dd_HHmmss",Locale.ROOT).format(new Date())+".zip","application/zip");}catch(Exception e){error(e);}});}
         else if(n==1){new AlertDialog.Builder(this).setMessage("Постоечките записи ќе останат. Ќе се додадат записите од копијата што недостигаат.").setNegativeButton("Откажи",null).setPositiveButton("Избери копија",(x,w)->{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");startActivityForResult(i,RESTORE);}).show();}
-        else new AlertDialog.Builder(this).setTitle("Верзија 1.0").setMessage("Локална архива со фотографии, описи и Word, Excel и PDF документи.\n\n„Зачувај за подоцна“ го остава записот отворен за продолжување.\n\nРедовно зачувувај резервна копија за пренос на друг телефон.").setPositiveButton("Во ред",null).show();
+        else new AlertDialog.Builder(this).setTitle("Верзија 1.1").setMessage("Локална архива со фотографии, описи и Word, Excel и PDF документи.\n\n„Зачувај за подоцна“ го остава записот отворен за продолжување.\n\nРедовно зачувувај резервна копија за пренос на друг телефон.").setPositiveButton("Во ред",null).show();
     }).show();}
     void confirmDeleteRecord(Store.Record r){new AlertDialog.Builder(this).setTitle("Избриши запис?").setMessage("Ќе се избрише овој запис со копиите на фотографиите и документите во него.").setNegativeButton("Откажи",null).setPositiveButton("Избриши",(d,w)->{try{store.deleteRecord(r.id);refreshList();}catch(Exception e){error(e);}}).show();}
     interface Job {String run() throws Exception;}

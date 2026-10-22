@@ -5,7 +5,7 @@ on:
     paths: ['archive-document/**', '.github/workflows/archive-document.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   archive:
     runs-on: ubuntu-24.04
@@ -30,14 +30,14 @@ jobs:
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
           gradle --no-daemon :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease --stacktrace
           mkdir -p delivery/toolchain
-          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Arhiva_Dokumenti_v1_0_UNSIGNED.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/Arhiva_Dokumenti_v1_1_UNSIGNED.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk > delivery/debug-signature.txt
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/Arhiva_Dokumenti_v1_0_UNSIGNED.apk > delivery/package.txt
-          grep "package: name='mk.td.archive.document' versionCode='1'" delivery/package.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/Arhiva_Dokumenti_v1_1_UNSIGNED.apk > delivery/package.txt
+          grep "package: name='mk.td.archive.document' versionCode='2'" delivery/package.txt
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
       - uses: actions/upload-artifact@v4
         with:
-          name: Arhiva-Dokumenti-v1-0-APK
+          name: Arhiva-Dokumenti-v1-1-APK
           path: archive-document/delivery/
           retention-days: 30
           if-no-files-found: error
@@ -74,8 +74,41 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Arhiva-Dokumenti-v1-0-validation
+          name: Arhiva-Dokumenti-v1-1-validation
           path: |
             archive-document/validation/
             archive-document/app/build/reports/lint-results-release.html
           retention-days: 14
+      - name: Package verified fixtures
+        run: |
+          python3 - <<'PYFIX'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          root=Path('validation')
+          with ZipFile('delivery/validation.zip','w',ZIP_DEFLATED) as z:
+              for name in ['smoke.txt','sample.pdf','sample.docx','sample.xlsx','sample-card.pdf','sample-card-long.pdf','archive-files.png','restarted.png']:
+                  z.write(root/name,name)
+          PYFIX
+      - name: Save verified build candidate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner, repo = context.repo.repo;
+            const ref = 'heads/feature/arhiva-pdf-dokument';
+            const current = (await github.rest.git.getRef({owner, repo, ref})).data.object.sha;
+            if (current !== context.sha) throw new Error('Source branch advanced; refusing stale build delivery');
+            const parent = (await github.rest.git.getCommit({owner, repo, commit_sha: current})).data;
+            const items = [
+              ['archive-document/delivery/Arhiva_Dokumenti_v1_1_UNSIGNED.apk', 'archive-delivery/v1.1-ci/Arhiva_Dokumenti_v1_1_UNSIGNED.apk'],
+              ['archive-document/delivery/validation.zip', 'archive-delivery/v1.1-ci/validation.zip']
+            ];
+            const tree = [];
+            for (const [local, path] of items) {
+              const blob = (await github.rest.git.createBlob({owner, repo, content: fs.readFileSync(local).toString('base64'), encoding: 'base64'})).data;
+              tree.push({path, mode: '100644', type: 'blob', sha: blob.sha});
+            }
+            tree.push({path: 'archive-delivery/v1.1-ci/BUILD.json', mode: '100644', type: 'blob', content: JSON.stringify({source: context.sha, run: context.runId, version: '1.1', versionCode: 2, verified: true, signing: 'UNSIGNED - not for installation'}, null, 2)});
+            const created = (await github.rest.git.createTree({owner, repo, base_tree: parent.tree.sha, tree})).data;
+            const commit = (await github.rest.git.createCommit({owner, repo, message: 'Archive v1.1 verified build candidate and validation fixtures', tree: created.sha, parents: [current]})).data;
+            await github.rest.git.updateRef({owner, repo, ref, sha: commit.sha});
