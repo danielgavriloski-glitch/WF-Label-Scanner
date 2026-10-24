@@ -3,7 +3,12 @@ package mk.wf.labelscanner
 import android.app.Activity
 import android.app.Instrumentation
 import android.os.Bundle
+import android.content.Intent
+import android.view.accessibility.AccessibilityNodeInfo
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /** Export isolated fictional fixtures with the real Android PDF renderer, without signing in. */
 class ReportPreviewInstrumentation : Instrumentation() {
@@ -24,7 +29,16 @@ class ReportPreviewInstrumentation : Instrumentation() {
                 AttendanceReportDay("petar", people[0].second, "20261007", "07.10.2026", "среда", 8 * hour, half, 8 * hour, status = "Исполнето"),
                 AttendanceReportDay("ana", people[1].second, "20261007", "07.10.2026", "среда", 7 * hour + half, half, 7 * hour + half, status = "Недостига 0ч 30м до 8ч")
             )
-            val tables = AttendanceReportTables.build(people, days)
+            val timedDays = days.map { day ->
+                if (day.worked == 0L) day else {
+                    val start = LocalDate.parse(day.dateKey, DateTimeFormatter.BASIC_ISO_DATE).atTime(8, 3, 17)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    day.copy(arrivals = listOf(start), departures = listOf(start + day.worked))
+                }
+            }
+            val tables = AttendanceReportTables.build(people, timedDays)
+            check(tables.daily[1][3] == "08:03:17")
+            check(tables.daily[1][4] == "16:03:17")
             check(tables.summary.last()[2] == "41ч 0м")
             val weekly = listOf(
                 listOf("Вработен", "Недела", "Работено", "Одмор/оправдано", "Редовен фонд", "Прекувремено", "Недостига"),
@@ -65,11 +79,44 @@ class ReportPreviewInstrumentation : Instrumentation() {
             File(directory, "MBI_Pdf_Layout_Stress.pdf").outputStream().use {
                 AttendancePdfExporter.write(it, "ПРИМЕР - проверка на пренос меѓу страници", "2026", listOf(ReportSection("Boluvanje", "БОЛУВАЊА", longRows)), "Измислени податоци за проверка на изгледот.")
             }
-            result.putString("stream", "Report previews created\n")
+            verifyManualAttendanceForm()
+            result.putString("stream", "Report previews and admin form validation passed\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "Report preview failed: ${error.stackTraceToString()}\n")
             finish(Activity.RESULT_CANCELED, result)
         }
     }
+
+    /** Exercise the actual dialog with a fictional in-memory role, without saving to Firebase. */
+    private fun verifyManualAttendanceForm() {
+        val intent = Intent().setClassName(targetContext.packageName, "mk.wf.labelscanner.MbiActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val activity = startActivitySync(intent)
+        waitForIdleSync()
+        val profile = MbiActivity::class.java.getDeclaredField("profile").apply { isAccessible = true }
+        val form = MbiActivity::class.java.getDeclaredMethod("manualAttendance", String::class.java, String::class.java).apply { isAccessible = true }
+        try {
+            runOnMainSync {
+                profile.set(activity, mapOf("isAdmin" to true, "name" to "ПРИМЕР АДМИН"))
+                form.invoke(activity, "fixture_employee", "ПРИМЕР ВРАБОТЕН")
+            }
+            waitForIdleSync()
+            fun nodes(node: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> =
+                if (node == null) emptyList() else listOf(node) + (0 until node.childCount).flatMap { nodes(node.getChild(it)) }
+            fun current() = nodes(uiAutomation.rootInActiveWindow)
+            val seconds = current().first { it.hintText?.toString() == "Секунди (0–59)" }
+            check(seconds.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "60")
+            }))
+            check(current().first { it.text?.toString() == "Зачувај" }.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            waitForIdleSync()
+            check(current().any { it.text?.toString()?.contains("Секундите треба да бидат од 0 до 59") == true })
+            runOnMainSync { profile.set(activity, emptyMap<String, Any>()) }
+            check(current().first { it.text?.toString() == "Зачувај" }.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            waitForIdleSync()
+            check(current().any { it.text?.toString() == "Потребен е администратор." })
+        } finally { runOnMainSync { activity.finish() } }
+    }
 }
+

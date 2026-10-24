@@ -15,7 +15,9 @@ data class AttendanceReportDay(
     val overtime: Long = 0L,
     val covered: Long = 0L,
     val status: String = "",
-    val present: Boolean = worked > 0L
+    val present: Boolean = worked > 0L,
+    val arrivals: List<Long> = emptyList(),
+    val departures: List<Long> = emptyList()
 )
 
 data class AttendanceReportTables(val daily: List<List<String>>, val summary: List<List<String>>) {
@@ -34,11 +36,14 @@ data class AttendanceReportTables(val daily: List<List<String>>, val summary: Li
                 val combined = first.copy(employeeName = names.getValue(first.employeeId), worked = worked,
                     pause = sessions.sumOf { it.pause }, regular = sessions.sumOf { it.regular },
                     overtime = sessions.sumOf { it.overtime }, covered = sessions.sumOf { it.covered },
-                    present = sessions.any { it.present || it.worked > 0L })
+                    present = sessions.any { it.present || it.worked > 0L },
+                    arrivals = sessions.flatMap { it.arrivals }.distinct().sorted(),
+                    departures = sessions.flatMap { it.departures }.distinct().sorted())
                 if (accountant) {
                     val allowed = worked.coerceIn(0L, 8L * 3600000L)
                     combined.copy(worked = allowed, regular = allowed, pause = 0L, overtime = 0L, covered = 0L,
-                        status = if (combined.present) "Присутен" else combined.status)
+                        status = if (combined.present) "Присутен" else combined.status,
+                        arrivals = emptyList(), departures = emptyList())
                 } else combined
             }
         }
@@ -53,12 +58,13 @@ data class AttendanceReportTables(val daily: List<List<String>>, val summary: Li
             val sorted = selected.sortedWith(compareBy({ it.dateKey }, { it.employeeName }, { it.employeeId }))
             val daily = mutableListOf(
                 if (accountant) listOf("Датум", "Ден", "Вработен", "Редовни часови")
-                else listOf("Датум", "Ден", "Вработен", "Работено", "Пауза", "Редовен фонд", "Прекувремено", "Статус")
+                else listOf("Датум", "Ден", "Вработен", "Дошол", "Си отишол", "Работено", "Пауза", "Редовен фонд", "Прекувремено", "Статус")
             )
             sorted.forEach { d ->
                 daily.add(
                     if (accountant) listOf(d.dateLabel, d.dayName, d.employeeName, duration(d.regular))
-                    else listOf(d.dateLabel, d.dayName, d.employeeName, duration(d.worked),
+                    else listOf(d.dateLabel, d.dayName, d.employeeName, AttendanceTimes.lines(d.arrivals),
+                        AttendanceTimes.lines(d.departures), duration(d.worked),
                         duration(d.pause), duration(d.regular), duration(d.overtime), d.status)
                 )
             }
@@ -80,3 +86,4 @@ data class AttendanceReportTables(val daily: List<List<String>>, val summary: Li
         }
     }
 }
+

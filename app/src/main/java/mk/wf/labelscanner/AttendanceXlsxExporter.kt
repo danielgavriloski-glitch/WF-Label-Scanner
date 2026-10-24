@@ -56,6 +56,7 @@ object AttendanceXlsxExporter {
                 "Недела" -> 27
                 "Датум", "Од", "До" -> 15
                 "Ден" -> 18
+                "Дошол", "Си отишол", "Време" -> 21
                 "Вкупно месец" -> 20
                 "Денови со работа" -> 17
                 else -> if (section.calendar) 10 else 19
@@ -99,3 +100,4 @@ object AttendanceXlsxExporter {
     private fun escape(value: String) = value.filter { it == '\n' || it == '\r' || it == '\t' || it.code >= 32 }
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 }
+

@@ -24,7 +24,7 @@ class AttendanceReportTablesTest {
         val result = AttendanceReportTables.build(listOf("a" to "Ана", "b" to "Петар"), listOf(
             day("b", "Петар", "20261006", 8), day("b", "Петар", "20261005", 8), day("a", "Ана", "20261005", 8)
         ))
-        assertEquals(listOf("05.10.2026", "понеделник", "Ана", "8ч 0м"), result.daily[1].take(4))
+        assertEquals(listOf("05.10.2026", "понеделник", "Ана", "—", "—", "8ч 0м"), result.daily[1].take(6))
         assertEquals("Петар", result.daily[2][2])
         assertEquals("06.10.2026", result.daily[3][0])
     }
@@ -77,3 +77,4 @@ class AttendanceReportTablesTest {
         assertEquals("8ч 0м", result.summary[1].last())
     }
 }
+

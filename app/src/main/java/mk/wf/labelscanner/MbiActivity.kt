@@ -58,7 +58,7 @@ class MbiActivity : AppCompatActivity() {
     private val blue = Color.rgb(62, 115, 178)
 
     private val df = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-    private val dtf = SimpleDateFormat("dd.MM.yyyy • HH:mm", Locale.getDefault())
+    private val dtf = SimpleDateFormat("dd.MM.yyyy • HH:mm:ss", Locale.getDefault())
 
     private var filterFrom: Calendar = Calendar.getInstance().apply {
         set(Calendar.DAY_OF_MONTH, 1)
@@ -74,6 +74,7 @@ class MbiActivity : AppCompatActivity() {
     private var lastDailyExportRows: List<List<String>> = emptyList()
     private var lastWeeklyExportRows: List<List<String>> = emptyList()
     private var lastSummaryExportRows: List<List<String>> = emptyList()
+    private var lastEventExportRows: List<List<String>> = emptyList()
     private var lastCalendarMonths: List<AttendanceCalendarMonth> = emptyList()
     private var attendanceLoadVersion = 0
     private var reportHeading = "Извештај за работно време"
@@ -86,7 +87,9 @@ class MbiActivity : AppCompatActivity() {
         val employeeId: String,
         val employeeName: String,
         val type: String,
-        val time: Date
+        val time: Date,
+        val source: String = "",
+        val enteredBy: String = ""
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -577,6 +580,7 @@ class MbiActivity : AppCompatActivity() {
         root.addView(space(14))
 
         root.addView(button("Додај вработен", gold, Color.BLACK) { adminAddEmployee() })
+        root.addView(button("Пријави / одјави вработен", green, Color.WHITE) { chooseManualAttendanceEmployee() })
         root.addView(button("Отвори евиденција", blue, Color.WHITE) { adminAttendance(false) })
         val leaveBtn = button("Барања за слободен ден", gold, Color.BLACK) { adminLeaveRequests() }
         root.addView(leaveBtn)
@@ -745,6 +749,9 @@ class MbiActivity : AppCompatActivity() {
         ))
 
         if (!admin) {
+            if (data["isAccountant"] != true) {
+                root.addView(button("Пријави / одјави вработен", green, Color.WHITE) { manualAttendance(id, name) })
+            }
             root.addView(button("Одмор и болување", blue, Color.WHITE) { personnelDetail(id, data) })
             val leaveTotal = (data["annualLeaveTotal"] as? Number)?.toLong() ?: 0L
             val leaveUsed = (data["annualLeaveUsed"] as? Number)?.toLong() ?: 0L
@@ -818,6 +825,127 @@ class MbiActivity : AppCompatActivity() {
             adminAttendance(false)
         })
         root.addView(button("Назад", panel2, Color.WHITE) { adminEmployees() })
+    }
+
+    private fun chooseManualAttendanceEmployee() {
+        if (!administrator) return
+        db.collection("employees").get().addOnSuccessListener { q ->
+            if (!administrator || isFinishing) return@addOnSuccessListener
+            val employees = q.documents.filter { it.getBoolean("isAdmin") != true && it.getBoolean("isAccountant") != true }
+                .sortedBy { it.getString("name") ?: it.id }
+            if (employees.isEmpty()) { toast("Нема вработени за евиденција."); return@addOnSuccessListener }
+            AlertDialog.Builder(this).setTitle("Пријави / одјави вработен")
+                .setItems(employees.map { it.getString("name") ?: it.id }.toTypedArray()) { _, which ->
+                    val employee = employees[which]
+                    manualAttendance(employee.id, employee.getString("name") ?: employee.id)
+                }.setNegativeButton("Откажи", null).show()
+        }.addOnFailureListener { toast("Не може да се вчитаат вработените: ${it.localizedMessage}") }
+    }
+
+    private fun manualAttendance(employeeId: String, employeeName: String) {
+        if (!administrator) return
+        val selected = Calendar.getInstance().apply { set(Calendar.MILLISECOND, 0) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)) }
+        box.addView(text("Внеси кога вработениот навистина дошол или си отишол.", 14f, steel))
+        val action = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MbiActivity, android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Дошол • пријава", "Си отишол • одјава"))
+        }
+        val dateButton = button("Датум: ${df.format(selected.time)}", panel2, Color.WHITE) {}
+        val timeButton = button("Време: ${AttendanceTimes.format(selected.timeInMillis)}", panel2, Color.WHITE) {}
+        val seconds = field("Секунди (0–59)").apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(2))
+            setText(selected.get(Calendar.SECOND).toString().padStart(2, '0'))
+        }
+        dateButton.setOnClickListener {
+            DatePickerDialog(this, { _, year, month, day ->
+                selected.set(Calendar.YEAR, year); selected.set(Calendar.MONTH, month); selected.set(Calendar.DAY_OF_MONTH, day)
+                dateButton.text = "Датум: ${df.format(selected.time)}"
+            }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH))
+                .apply { datePicker.maxDate = System.currentTimeMillis() }.show()
+        }
+        timeButton.setOnClickListener {
+            TimePickerDialog(this, { _, hour, minute ->
+                selected.set(Calendar.HOUR_OF_DAY, hour); selected.set(Calendar.MINUTE, minute); selected.set(Calendar.SECOND, 0)
+                seconds.setText("00")
+                timeButton.text = "Време: ${AttendanceTimes.format(selected.timeInMillis)}"
+            }, selected.get(Calendar.HOUR_OF_DAY), selected.get(Calendar.MINUTE), true).show()
+        }
+        val now = button("Сега", blue, Color.WHITE) {
+            selected.timeInMillis = System.currentTimeMillis(); selected.set(Calendar.MILLISECOND, 0)
+            dateButton.text = "Датум: ${df.format(selected.time)}"
+            timeButton.text = "Време: ${AttendanceTimes.format(selected.timeInMillis)}"
+            seconds.setText(selected.get(Calendar.SECOND).toString().padStart(2, '0'))
+        }
+        val note = field("Забелешка (по избор)").apply { filters = arrayOf(android.text.InputFilter.LengthFilter(300)) }
+        val result = text("", 14f, red)
+        box.addView(action); box.addView(dateButton); box.addView(timeButton); box.addView(seconds); box.addView(now); box.addView(note); box.addView(result)
+        val scroll = ScrollView(this).apply { addView(box) }
+        val dialog = AlertDialog.Builder(this).setTitle(employeeName).setView(scroll)
+            .setPositiveButton("Зачувај", null).setNegativeButton("Откажи", null).create()
+        dialog.setOnShowListener {
+            val save = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            val cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+            save.setOnClickListener {
+                if (!administrator) { result.text = "Потребен е администратор."; return@setOnClickListener }
+                val second = seconds.text.toString().toIntOrNull()
+                if (second == null || second !in 0..59) { result.text = "Секундите треба да бидат од 0 до 59."; return@setOnClickListener }
+                val occurredAt = try {
+                    (selected.clone() as Calendar).apply { isLenient = false; set(Calendar.SECOND, second); set(Calendar.MILLISECOND, 0) }.timeInMillis
+                } catch (_: IllegalArgumentException) { result.text = "Невалиден датум/време за оваа временска зона."; return@setOnClickListener }
+                val input = AdminAttendanceInput(employeeId, if (action.selectedItemPosition == 0) "work_start" else "work_end", occurredAt, note.text.toString().trim())
+                val error = input.error(System.currentTimeMillis())
+                if (error != null) { result.text = error; return@setOnClickListener }
+                val operatorId = docId ?: return@setOnClickListener
+                val operatorUid = auth.currentUser?.uid ?: return@setOnClickListener
+                val operatorName = profile["name"]?.toString() ?: "Администратор"
+                val effectiveLabel = dtf.format(Date(input.occurredAt))
+                val eventRef = db.collection("attendance").document(input.documentId())
+                val auditRef = db.collection("audit").document()
+                save.isEnabled = false; cancel.isEnabled = false; dialog.setCancelable(false)
+                result.setTextColor(gold); result.text = "Се зачувува… Потребна е интернет врска."
+                db.runTransaction { tx ->
+                    // Recheck the actor and target from server documents; keep event and audit atomic.
+                    val operator = tx.get(db.collection("employees").document(operatorId))
+                    val employee = tx.get(db.collection("employees").document(employeeId))
+                    val existing = tx.get(eventRef)
+                    check(operator.getBoolean("isAdmin") == true && operator.getString("uid") == operatorUid) { "Потребен е администратор." }
+                    check(employee.exists() && employee.getBoolean("isAdmin") != true && employee.getBoolean("isAccountant") != true) { "Вработениот повеќе не е достапен." }
+                    if (existing.exists()) return@runTransaction false
+                    val name = employee.getString("name") ?: employeeName
+                    tx.set(eventRef, mapOf(
+                        "uid" to operatorUid, "employeeUid" to (employee.getString("uid") ?: ""),
+                        "employeeId" to employeeId, "employeeName" to name, "type" to input.type,
+                        "timestamp" to Timestamp(Date(input.occurredAt)), "source" to "admin_manual",
+                        "enteredBy" to operatorName, "enteredByUid" to operatorUid,
+                        "enteredAt" to FieldValue.serverTimestamp(), "note" to input.note
+                    ))
+                    tx.set(auditRef, mapOf(
+                        "action" to "Рачна пријава/одјава", "details" to "$name • ${label(input.type)} • $effectiveLabel${if (input.note.isBlank()) "" else " • ${input.note}"}",
+                        "adminUid" to operatorUid, "adminName" to operatorName,
+                        "timestamp" to FieldValue.serverTimestamp(), "attendanceId" to eventRef.id,
+                        "employeeId" to employeeId, "effectiveTimestamp" to Timestamp(Date(input.occurredAt))
+                    ))
+                    true
+                }.addOnSuccessListener { created ->
+                    if (!created) {
+                        save.isEnabled = true; cancel.isEnabled = true; dialog.setCancelable(true)
+                        result.setTextColor(red); result.text = "Истиот рачен запис веќе постои. Провери ја евиденцијата."
+                        return@addOnSuccessListener
+                    }
+                    dialog.dismiss(); toast("Зачувано: $employeeName • ${label(input.type)} • ${AttendanceTimes.format(input.occurredAt)}")
+                    filterFrom = Calendar.getInstance().apply { timeInMillis = input.occurredAt; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+                    filterTo = (filterFrom.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999) }
+                    filterEmployeeId = employeeId; filterEmployeeIds.clear(); filterEmployeeIds.add(employeeId); filterEmployeeName = employeeName
+                    adminAttendance(false)
+                }.addOnFailureListener { ex ->
+                    save.isEnabled = true; cancel.isEnabled = true; dialog.setCancelable(true)
+                    result.setTextColor(red); result.text = "Не е зачувано: ${ex.localizedMessage ?: "провери интернет и дозволи"}"
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun resetEmployeeLogin(id: String, data: Map<String, Any>) {
@@ -1241,9 +1369,10 @@ class MbiActivity : AppCompatActivity() {
     private fun adminAttendance(reportOnly: Boolean) {
         reportHeading = "Извештај за работно време"
         personnelReportYear = null
-        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList(); lastCalendarMonths = emptyList()
+        lastDailyExportRows = emptyList(); lastWeeklyExportRows = emptyList(); lastSummaryExportRows = emptyList(); lastCalendarMonths = emptyList(); lastEventExportRows = emptyList()
         if (accountant && !reportOnly) return adminAttendance(true)
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
+        if (administrator) root.addView(button("＋ Пријави / одјави вработен", green, Color.WHITE) { chooseManualAttendanceEmployee() })
 
         if (reportOnly) {
             val months = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -1382,7 +1511,8 @@ class MbiActivity : AppCompatActivity() {
                                 val t = d.getTimestamp("timestamp")?.toDate() ?: return@mapNotNull null
                                 val eid = d.getString("employeeId") ?: return@mapNotNull null
                                 if (eid !in selectedIds) return@mapNotNull null
-                                AttEvent(d.id, eid, d.getString("employeeName") ?: "Вработен", d.getString("type") ?: "", t)
+                                AttEvent(d.id, eid, d.getString("employeeName") ?: "Вработен", d.getString("type") ?: "", t,
+                                    d.getString("source") ?: "", d.getString("enteredBy") ?: "")
                             }
                             val approvedAnnualLeaveKeys = mutableSetOf<String>()
                             val approvedFreeDayKeys = mutableSetOf<String>()
@@ -1491,6 +1621,8 @@ class MbiActivity : AppCompatActivity() {
                 val weekdayRegular = if (!weekend) minOf(worked, DAY_TARGET) + covered else 0L
                 val weekdayOt = if (!weekend) (worked - DAY_TARGET).coerceAtLeast(0L) else 0L
                 val status = when {
+                    worked == 0L && dayEvents.any { it.type == "work_end" } && dayEvents.none { it.type == "work_start" } -> "Недостига пријава"
+                    worked == 0L && dayEvents.any { it.type == "work_start" } && dayEvents.none { it.type == "work_end" } -> "Недостига одјава"
                     weekend && worked > 0L -> "Работа за викенд"
                     weekend -> "Викенд"
                     worked >= DAY_TARGET -> if (worked > DAY_TARGET) "Исполнето + прекувремено" else "Исполнето"
@@ -1568,9 +1700,12 @@ class MbiActivity : AppCompatActivity() {
                     else -> border
                 }
                 if (reportOnly || d.worked > 0L || d.status != "Викенд") {
+                    val dayEvents = byDay[d.key].orEmpty()
                     holder.addView(card(
                         df.format(d.date) + " • " + d.status,
-                        "Работено: " + formatDuration(d.worked) +
+                        AttendanceTimes.description(dayEvents.filter { it.type == "work_start" }.map { it.time.time },
+                            dayEvents.filter { it.type == "work_end" }.map { it.time.time }) +
+                            "\nРаботено: " + formatDuration(d.worked) +
                             " • Пауза: " + formatDuration(d.pause) +
                             "\nРедовен фонд: " + formatDuration(regular) +
                             " • Прекувремено: " + formatDuration(overtime),
@@ -1581,7 +1716,9 @@ class MbiActivity : AppCompatActivity() {
                 }
                 reportDays.add(AttendanceReportDay(
                     eid, name, d.key, df.format(d.date), dayName(d.date), d.worked,
-                    d.pause, regular, overtime, d.covered, d.status, present = byDay[d.key].orEmpty().any { it.type == "work_start" }
+                    d.pause, regular, overtime, d.covered, d.status, present = byDay[d.key].orEmpty().any { it.type == "work_start" },
+                    arrivals = byDay[d.key].orEmpty().filter { it.type == "work_start" }.map { it.time.time },
+                    departures = byDay[d.key].orEmpty().filter { it.type == "work_end" }.map { it.time.time }
                 ))
             }
             holder.addView(space(14))
@@ -1592,7 +1729,8 @@ class MbiActivity : AppCompatActivity() {
             events.sortedByDescending { it.time }.forEach { ev ->
                 holder.addView(card(
                     ev.employeeName,
-                    label(ev.type) + "\n" + dtf.format(ev.time),
+                    label(ev.type) + "\n" + df.format(ev.time) + " • " + AttendanceTimes.format(ev.time.time) +
+                        if (ev.source == "admin_manual") "\nРачно внесено • ${ev.enteredBy}" else "",
                     when (ev.type) {
                         "work_start", "break_end" -> green
                         "break_start" -> gold
@@ -1608,6 +1746,11 @@ class MbiActivity : AppCompatActivity() {
         lastDailyExportRows = tables.daily
         lastSummaryExportRows = tables.summary
         lastWeeklyExportRows = weeklyRows
+        lastEventExportRows = listOf(listOf("Датум", "Вработен", "Дејство", "Време", "Внес")) +
+            events.sortedWith(compareBy({ it.time }, { it.employeeName }, { it.id })).map { ev ->
+                listOf(df.format(ev.time), ev.employeeName, label(ev.type), AttendanceTimes.format(ev.time.time),
+                    if (ev.source == "admin_manual") "Администратор: ${ev.enteredBy}" else "Редовна евиденција")
+            }
         renderReportSummary(holder, tables.summary)
         renderCalendarReports(holder, employees, reportDays)
     }
@@ -1768,7 +1911,8 @@ class MbiActivity : AppCompatActivity() {
             ReportSection("Vkupno", "ВКУПНО ПО ВРАБОТЕН", lastSummaryExportRows),
             ReportSection("Dnevno", "ДНЕВНА ЕВИДЕНЦИЈА - ПО ДАТУМ", lastDailyExportRows),
             ReportSection("Nedelno", "НЕДЕЛЕН ПРЕСЕК", lastWeeklyExportRows)
-        )
+        ) + if (personnelReportYear == null && !accountant && lastEventExportRows.size > 1)
+            listOf(ReportSection("Nastani", "ТОЧНИ ВРЕМИЊА НА ПРИЈАВИ / ОДЈАВИ", lastEventExportRows)) else emptyList()
         val note = when {
             personnelReportYear != null -> "Годишниот одмор и болувањето се евидентираат одделно."
             accountant -> "Часови за сметководство: најмногу 8ч дневно; помалку од 8ч се бројат реално."
@@ -1818,6 +1962,7 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun editAttendance(ev: AttEvent) {
+        if (!administrator) return
         val cal = Calendar.getInstance().apply { time = ev.time }
         val types = arrayOf("Дојде на работа", "Почеток на пауза", "Продолжи со работа", "Заврши смена")
         val codes = arrayOf("work_start", "break_start", "break_end", "work_end")
@@ -1836,7 +1981,7 @@ class MbiActivity : AppCompatActivity() {
             }
         }
         val dateLabel = text("Датум: ${df.format(cal.time)}", 15f, Color.WHITE, true)
-        val timeLabel = text("Време: ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(cal.time)}", 15f, Color.WHITE, true)
+        val timeLabel = text("Време: ${AttendanceTimes.format(cal.timeInMillis)}", 15f, Color.WHITE, true)
         val dateBtn = button("Промени датум", panel2, Color.WHITE, true) {
             DatePickerDialog(this, { _, y, m, d ->
                 cal.set(Calendar.YEAR, y); cal.set(Calendar.MONTH, m); cal.set(Calendar.DAY_OF_MONTH, d)
@@ -1846,7 +1991,8 @@ class MbiActivity : AppCompatActivity() {
         val timeBtn = button("Промени време", panel2, Color.WHITE, true) {
             TimePickerDialog(this, { _, h, m ->
                 cal.set(Calendar.HOUR_OF_DAY, h); cal.set(Calendar.MINUTE, m)
-                timeLabel.text = "Време: ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(cal.time)}"
+                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+                timeLabel.text = "Време: ${AttendanceTimes.format(cal.timeInMillis)}"
             }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
         }
         box.addView(spinner)
@@ -1868,7 +2014,7 @@ class MbiActivity : AppCompatActivity() {
                         "editedAt" to FieldValue.serverTimestamp()
                     )
                 ).addOnSuccessListener {
-                    audit("Корегирана евиденција", "${ev.employeeName}: ${label(ev.type)} → ${label(codes[selectedType])}")
+                    audit("Корегирана евиденција", "${ev.employeeName}: ${label(ev.type)} ${df.format(ev.time)} ${AttendanceTimes.format(ev.time.time)} → ${label(codes[selectedType])} ${df.format(cal.time)} ${AttendanceTimes.format(cal.time.time)}")
                     adminAttendance(false)
                 }.addOnFailureListener { e -> toast("Не може да се зачува: ${e.localizedMessage}") }
             }
@@ -2367,3 +2513,4 @@ class MbiActivity : AppCompatActivity() {
     }
 
 }
+
