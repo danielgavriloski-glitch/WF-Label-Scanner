@@ -94,4 +94,3 @@ jobs:
           name: MBI-report-previews
           path: build/report-previews/report-previews/*
           if-no-files-found: error
-
