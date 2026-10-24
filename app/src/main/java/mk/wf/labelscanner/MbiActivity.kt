@@ -29,6 +29,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import java.security.MessageDigest
@@ -610,7 +611,8 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun recordAttendance(type: String, expectedEvent: String?) {
-        if (accountant || administrator || attendanceWritePending || !myWorkPresence.allows(type)) return
+        if (accountant || administrator || attendanceWritePending) return
+        if (!myWorkPresence.allows(type)) { toast("Работниот статус е променет. Провери го пред ново дејство."); return }
         val id = docId ?: return
         val uid = auth.currentUser?.uid ?: return
         val name = profile["name"]?.toString() ?: ""
@@ -944,6 +946,9 @@ class MbiActivity : AppCompatActivity() {
             adapter = ArrayAdapter(this@MbiActivity, android.R.layout.simple_spinner_dropdown_item,
                 arrayOf("Дошол • пријава", "Си отишол • одјава"))
         }
+        val useNow = CheckBox(this).apply {
+            text = "Тековно време при зачувување"; setTextColor(green); isChecked = true
+        }
         val dateButton = button("Датум: ${df.format(selected.time)}", panel2, Color.WHITE) {}
         val timeButton = button("Време: ${AttendanceTimes.format(selected.timeInMillis)}", panel2, Color.WHITE) {}
         val seconds = field("Секунди (0–59)").apply {
@@ -966,14 +971,20 @@ class MbiActivity : AppCompatActivity() {
             }, selected.get(Calendar.HOUR_OF_DAY), selected.get(Calendar.MINUTE), true).show()
         }
         val now = button("Сега", blue, Color.WHITE) {
+            useNow.isChecked = true
             selected.timeInMillis = System.currentTimeMillis(); selected.set(Calendar.MILLISECOND, 0)
             dateButton.text = "Датум: ${df.format(selected.time)}"
             timeButton.text = "Време: ${AttendanceTimes.format(selected.timeInMillis)}"
             seconds.setText(selected.get(Calendar.SECOND).toString().padStart(2, '0'))
         }
+        fun enableManualTime(enabled: Boolean) {
+            dateButton.isEnabled = enabled; timeButton.isEnabled = enabled; seconds.isEnabled = enabled
+        }
+        enableManualTime(false)
+        useNow.setOnCheckedChangeListener { _, checked -> enableManualTime(!checked) }
         val note = field("Забелешка (по избор)").apply { filters = arrayOf(android.text.InputFilter.LengthFilter(300)) }
         val result = text("", 14f, red)
-        box.addView(action); box.addView(dateButton); box.addView(timeButton); box.addView(seconds); box.addView(now); box.addView(note); box.addView(result)
+        box.addView(action); box.addView(useNow); box.addView(dateButton); box.addView(timeButton); box.addView(seconds); box.addView(now); box.addView(note); box.addView(result)
         val scroll = ScrollView(this).apply { addView(box) }
         val dialog = AlertDialog.Builder(this).setTitle(employeeName).setView(scroll)
             .setPositiveButton("Зачувај", null).setNegativeButton("Откажи", null).create()
@@ -984,7 +995,8 @@ class MbiActivity : AppCompatActivity() {
                 if (!administrator) { result.text = "Потребен е администратор."; return@setOnClickListener }
                 val second = seconds.text.toString().toIntOrNull()
                 if (second == null || second !in 0..59) { result.text = "Секундите треба да бидат од 0 до 59."; return@setOnClickListener }
-                val occurredAt = try {
+                val serverNow = useNow.isChecked
+                val occurredAt = if (serverNow) System.currentTimeMillis() else try {
                     (selected.clone() as Calendar).apply { isLenient = false; set(Calendar.SECOND, second); set(Calendar.MILLISECOND, 0) }.timeInMillis
                 } catch (_: IllegalArgumentException) { result.text = "Невалиден датум/време за оваа временска зона."; return@setOnClickListener }
                 val input = AdminAttendanceInput(employeeId, if (action.selectedItemPosition == 0) "work_start" else "work_end", occurredAt, note.text.toString().trim())
@@ -993,7 +1005,8 @@ class MbiActivity : AppCompatActivity() {
                 val operatorId = docId ?: return@setOnClickListener
                 val operatorUid = auth.currentUser?.uid ?: return@setOnClickListener
                 val operatorName = profile["name"]?.toString() ?: "Администратор"
-                val effectiveLabel = dtf.format(Date(input.occurredAt))
+                val effectiveLabel = if (serverNow) "тековно серверско време" else dtf.format(Date(input.occurredAt))
+                val effectiveTimestamp: Any = if (serverNow) FieldValue.serverTimestamp() else Timestamp(Date(input.occurredAt))
                 val eventRef = db.collection("attendance").document(input.documentId())
                 val auditRef = db.collection("audit").document()
                 save.isEnabled = false; cancel.isEnabled = false; dialog.setCancelable(false)
@@ -1010,7 +1023,7 @@ class MbiActivity : AppCompatActivity() {
                     tx.set(eventRef, mapOf(
                         "uid" to operatorUid, "employeeUid" to (employee.getString("uid") ?: ""),
                         "employeeId" to employeeId, "employeeName" to name, "type" to input.type,
-                        "timestamp" to Timestamp(Date(input.occurredAt)), "source" to "admin_manual",
+                        "timestamp" to effectiveTimestamp, "source" to "admin_manual",
                         "enteredBy" to operatorName, "enteredByUid" to operatorUid,
                         "enteredAt" to FieldValue.serverTimestamp(), "note" to input.note
                     ))
@@ -1018,7 +1031,7 @@ class MbiActivity : AppCompatActivity() {
                         "action" to "Рачна пријава/одјава", "details" to "$name • ${label(input.type)} • $effectiveLabel${if (input.note.isBlank()) "" else " • ${input.note}"}",
                         "adminUid" to operatorUid, "adminName" to operatorName,
                         "timestamp" to FieldValue.serverTimestamp(), "attendanceId" to eventRef.id,
-                        "employeeId" to employeeId, "effectiveTimestamp" to Timestamp(Date(input.occurredAt))
+                        "employeeId" to employeeId, "effectiveTimestamp" to effectiveTimestamp
                     ))
                     true
                 }.addOnSuccessListener { created ->
@@ -1027,11 +1040,21 @@ class MbiActivity : AppCompatActivity() {
                         result.setTextColor(red); result.text = "Истиот рачен запис веќе постои. Провери ја евиденцијата."
                         return@addOnSuccessListener
                     }
-                    dialog.dismiss(); toast("Зачувано: $employeeName • ${label(input.type)} • ${AttendanceTimes.format(input.occurredAt)}")
-                    filterFrom = Calendar.getInstance().apply { timeInMillis = input.occurredAt; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
-                    filterTo = (filterFrom.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999) }
-                    filterEmployeeId = employeeId; filterEmployeeIds.clear(); filterEmployeeIds.add(employeeId); filterEmployeeName = employeeName
-                    adminAttendance(false)
+                    dialog.dismiss()
+                    fun showSaved(at: Long, exactTime: Boolean = true) {
+                        if (isFinishing) return
+                        toast(if (exactTime) "Зачувано: $employeeName • ${label(input.type)} • ${AttendanceTimes.format(at)}"
+                              else "Записот е зачуван; точното серверско време се синхронизира.")
+                        filterFrom = Calendar.getInstance().apply { timeInMillis = at; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+                        filterTo = (filterFrom.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999) }
+                        filterEmployeeId = employeeId; filterEmployeeIds.clear(); filterEmployeeIds.add(employeeId); filterEmployeeName = employeeName
+                        adminAttendance(false)
+                    }
+                    if (serverNow) eventRef.get(Source.SERVER).addOnSuccessListener { saved ->
+                        val actual = saved.getTimestamp("timestamp")?.toDate()?.time
+                        showSaved(actual ?: input.occurredAt, actual != null)
+                    }.addOnFailureListener { showSaved(input.occurredAt, false) }
+                    else showSaved(input.occurredAt)
                 }.addOnFailureListener { ex ->
                     save.isEnabled = true; cancel.isEnabled = true; dialog.setCancelable(true)
                     result.setTextColor(red); result.text = "Не е зачувано: ${ex.localizedMessage ?: "провери интернет и дозволи"}"

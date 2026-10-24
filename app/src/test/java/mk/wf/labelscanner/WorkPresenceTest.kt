@@ -5,7 +5,7 @@ import org.junit.Test
 
 class WorkPresenceTest {
     private fun event(id: String, type: String, at: Long, employee: String = "a") = PresenceEvent(id, employee, type, at)
-    private fun state(vararg events: PresenceEvent) = AttendancePresence.reduce("a", events.toList(), 1000)
+    private fun state(vararg events: PresenceEvent) = AttendancePresence.reduce("a", events.toList())
 
     @Test fun administratorDepartureClosesWorkingAndBreakStates() {
         val start = event("start", "work_start", 100)
@@ -14,7 +14,7 @@ class WorkPresenceTest {
         assertEquals(WorkPresence.WORKING, state(start).state)
         assertEquals(WorkPresence.BREAK, state(start, pause).state)
         for (events in listOf(listOf(start, end), listOf(start, pause, end))) {
-            val result = AttendancePresence.reduce("a", events, 1000).copy(confirmed = true)
+            val result = AttendancePresence.reduce("a", events).copy(confirmed = true)
             assertEquals(WorkPresence.OFF, result.state)
             assertEquals("Админ", result.event?.enteredBy)
             assertFalse(result.allows("break_start")); assertFalse(result.allows("break_end")); assertFalse(result.allows("work_end"))
@@ -35,16 +35,23 @@ class WorkPresenceTest {
 
     @Test fun effectiveTimestampAndDepartureTieTakePriorityOverArrivalOrder() {
         val events = listOf(event("end", "work_end", 200), event("start", "work_start", 100), event("restart", "work_start", 200))
-        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events.reversed(), 1000).state)
-        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events, 1000).state)
+        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events.reversed()).state)
+        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events).state)
     }
 
-    @Test fun unrelatedHistoryFutureAndUntimedEventsCannotChangeThisEmployee() {
+    @Test fun unrelatedHistoryAndUntimedEventsCannotChangeThisEmployee() {
         val history = (1..2500).map { event("other$it", "work_start", it.toLong(), "another") }
         val events = history + listOf(event("start", "work_start", 100), event("end", "work_end", 200),
-            event("future", "work_start", 2000), PresenceEvent("pending", "a", "work_start", null))
-        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events, 1000).state)
-        assertEquals(2, AttendancePresence.reduce("a", events, 1000).eventCount)
+            PresenceEvent("pending", "a", "work_start", null))
+        assertEquals(WorkPresence.OFF, AttendancePresence.reduce("a", events).state)
+        assertEquals(2, AttendancePresence.reduce("a", events).eventCount)
+    }
+
+    @Test fun serverConfirmedTimesAreNotDiscardedBecauseThePhoneClockIsBehind() {
+        val serverTime = System.currentTimeMillis() + 60000
+        val result = AttendancePresence.reduce("a", listOf(event("start", "work_start", serverTime), event("end", "work_end", serverTime + 1000)))
+        assertEquals(WorkPresence.OFF, result.state); assertEquals("end", result.event?.id)
+        assertEquals(2, result.eventCount)
     }
 
     @Test fun cachePendingAndFailedStatusNeverEnableActions() {

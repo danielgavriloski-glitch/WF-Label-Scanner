@@ -78,7 +78,7 @@ jobs:
           import time, urllib.request
           for attempt in range(60):
               try:
-                  urllib.request.urlopen('http://127.0.0.1:8080/v1/projects/demo-mbi-live-status/databases/(default)/documents/emulator_probe', timeout=1)
+                  urllib.request.urlopen('http://127.0.0.1:8080/v1/projects/demo-mbi-live-status/databases/(default)/documents/emulator_probe/ready', timeout=1)
               except urllib.error.HTTPError as e:
                   if e.code == 404: break
               except OSError: pass

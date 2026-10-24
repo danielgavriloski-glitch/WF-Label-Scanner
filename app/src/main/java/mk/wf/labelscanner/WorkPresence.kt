@@ -34,10 +34,11 @@ object AttendancePresence {
     }
 
     /** Replay effective attendance times, not the time an administrator entered a correction. */
-    fun reduce(employeeId: String, events: List<PresenceEvent>, now: Long = System.currentTimeMillis()): WorkPresenceSnapshot {
+    fun reduce(employeeId: String, events: List<PresenceEvent>): WorkPresenceSnapshot {
         var state = WorkPresence.OFF
         var last: PresenceEvent? = null
-        val relevant = events.filter { it.employeeId == employeeId && it.type in types && it.at != null && it.at <= now }
+        // Server-confirmed timestamps remain authoritative when a phone clock is behind.
+        val relevant = events.filter { it.employeeId == employeeId && it.type in types && it.at != null }
             .sortedWith(compareBy({ it.at }, { priority(it.type) }, { it.id }))
         for (event in relevant) {
             when (event.type) {

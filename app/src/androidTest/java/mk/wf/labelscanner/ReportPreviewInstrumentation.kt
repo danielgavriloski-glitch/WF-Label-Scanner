@@ -16,6 +16,8 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -132,10 +134,10 @@ class ReportPreviewInstrumentation : Instrumentation() {
         Tasks.await(writer.collection("employees").document(employeeId).set(mapOf(
             "name" to name, "uid" to "fixture-user-uid", "active" to true, "isAdmin" to false)), 20, TimeUnit.SECONDS)
         val at = System.currentTimeMillis() - 10000L
-        fun writeEvent(id: String, type: String, whenAt: Long, admin: Boolean = false) {
+        fun writeEvent(id: String, type: String, whenAt: Long, admin: Boolean = false, serverNow: Boolean = false) {
             Tasks.await(writer.collection("attendance").document(id).set(mapOf(
                 "employeeId" to employeeId, "employeeName" to name, "type" to type,
-                "timestamp" to Timestamp(Date(whenAt)), "source" to if (admin) "admin_manual" else "terminal",
+                "timestamp" to if (serverNow) FieldValue.serverTimestamp() else Timestamp(Date(whenAt)), "source" to if (admin) "admin_manual" else "terminal",
                 "enteredBy" to if (admin) "ПРИМЕР АДМИН" else "")), 20, TimeUnit.SECONDS)
         }
         writeEvent("fixture_start", "work_start", at - 60000)
@@ -175,11 +177,13 @@ class ReportPreviewInstrumentation : Instrumentation() {
                     uiCheck { nodes -> nodes.filterIsInstance<TextView>().any { it.text.toString().startsWith("НА ПАУЗА") } && button(nodes, "Продолжи со работа").isEnabled }
             }
             // Same attendance shape as an administrative departure; real emulator network/listeners.
-            writeEvent("fixture_admin_end", "work_end", at, admin = true)
+            writeEvent("fixture_admin_end", "work_end", at, admin = true, serverNow = true)
+            val actualEnd = Tasks.await(writer.collection("attendance").document("fixture_admin_end").get(Source.SERVER), 20, TimeUnit.SECONDS)
+                .getTimestamp("timestamp")!!.toDate().time
             awaitCondition("administrator departure closes both clients and actual employee controls") {
                 employeeState.get().confirmed && adminState.get().confirmed &&
                     employeeState.get().state == WorkPresence.OFF && adminState.get().state == WorkPresence.OFF &&
-                    employeeState.get().event?.at == at && adminState.get().event?.enteredBy == "ПРИМЕР АДМИН" &&
+                    employeeState.get().event?.at == actualEnd && adminState.get().event?.enteredBy == "ПРИМЕР АДМИН" &&
                     uiCheck { nodes ->
                         nodes.filterIsInstance<TextView>().any { it.text.toString().startsWith("ОДЈАВЕН ОД РАБОТА") && it.text.contains("ПРИМЕР АДМИН") } &&
                             button(nodes, "Дојдов на работа").isEnabled && !button(nodes, "Продолжи со работа").isEnabled &&
@@ -187,7 +191,7 @@ class ReportPreviewInstrumentation : Instrumentation() {
                     }
             }
             writeEvent("fixture_old_correction", "work_start", at - 120000, admin = true)
-            writeEvent("fixture_orphan_resume", "break_end", at + 1)
+            writeEvent("fixture_orphan_resume", "break_end", actualEnd + 1)
             awaitCondition("a backdated record and orphan resume do not reopen the closed shift") {
                 employeeState.get().confirmed && adminState.get().confirmed && employeeState.get().eventCount == 5 &&
                     adminState.get().eventCount == 5 && employeeState.get().state == WorkPresence.OFF && adminState.get().state == WorkPresence.OFF
