@@ -8,7 +8,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Button
 import androidx.appcompat.app.AlertDialog
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreSettings
+import java.util.Date
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
@@ -16,13 +26,15 @@ import java.time.format.DateTimeFormatter
 
 /** Export isolated fictional fixtures with the real Android PDF renderer, without signing in. */
 class ReportPreviewInstrumentation : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var testArguments: Bundle? = null
+    override fun onCreate(arguments: Bundle?) { testArguments = arguments; super.onCreate(arguments); start() }
 
     override fun onStart() {
         val result = Bundle()
         try {
             val directory = File(targetContext.getExternalFilesDir(null), "report-previews").apply { mkdirs() }
             File(directory, "CHECKS_PASSED.txt").delete()
+            initializeIsolatedFirestore()
             val hour = 3600000L
             val half = hour / 2
             val people = listOf("petar" to "Петар Стојановски", "ana" to "Ана Трајковска")
@@ -85,12 +97,108 @@ class ReportPreviewInstrumentation : Instrumentation() {
                 AttendancePdfExporter.write(it, "ПРИМЕР - проверка на пренос меѓу страници", "2026", listOf(ReportSection("Boluvanje", "БОЛУВАЊА", longRows)), "Измислени податоци за проверка на изгледот.")
             }
             verifyManualAttendanceForm()
-            File(directory, "CHECKS_PASSED.txt").writeText("Report previews and admin form validation passed\n")
-            result.putString("stream", "Report previews and admin form validation passed\n")
+            verifyLiveAttendanceStatus()
+            File(directory, "CHECKS_PASSED.txt").writeText("Report previews, admin form and live attendance status passed\n")
+            result.putString("stream", "Report previews, admin form and live attendance status passed\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
             result.putString("stream", "Report preview failed: ${error.stackTraceToString()}\n")
             finish(Activity.RESULT_CANCELED, result)
+        }
+    }
+
+    private fun initializeIsolatedFirestore() {
+        check(testArguments?.getString("firestoreHost") == "10.0.2.2") { "A local test Firestore emulator is required" }
+        FirebaseApp.getApps(targetContext).forEach { it.delete() }
+        val options = FirebaseOptions.Builder().setProjectId("demo-mbi-live-status")
+            .setApplicationId("1:1234567890:android:0123456789abcdef").setApiKey("fake-emulator-only-api-key").build()
+        FirebaseApp.initializeApp(targetContext, options)
+        configureTestDatabase(FirebaseFirestore.getInstance())
+    }
+
+    private fun configureTestDatabase(db: FirebaseFirestore) {
+        check(db.app.options.projectId == "demo-mbi-live-status")
+        db.useEmulator("10.0.2.2", 8080)
+        db.firestoreSettings = FirebaseFirestoreSettings.Builder(db.firestoreSettings).setPersistenceEnabled(false).build()
+    }
+
+    private fun verifyLiveAttendanceStatus() {
+        val reader = FirebaseFirestore.getInstance()
+        val writerApp = FirebaseApp.initializeApp(targetContext, FirebaseApp.getInstance().options, "fixture-admin-writer")
+        val writer = FirebaseFirestore.getInstance(writerApp)
+        configureTestDatabase(writer)
+        val employeeId = "fixture_live_employee"
+        val name = "ПРИМЕР ВРАБОТЕН"
+        Tasks.await(writer.collection("employees").document(employeeId).set(mapOf(
+            "name" to name, "uid" to "fixture-user-uid", "active" to true, "isAdmin" to false)), 20, TimeUnit.SECONDS)
+        val at = System.currentTimeMillis() - 10000L
+        fun writeEvent(id: String, type: String, whenAt: Long, admin: Boolean = false) {
+            Tasks.await(writer.collection("attendance").document(id).set(mapOf(
+                "employeeId" to employeeId, "employeeName" to name, "type" to type,
+                "timestamp" to Timestamp(Date(whenAt)), "source" to if (admin) "admin_manual" else "terminal",
+                "enteredBy" to if (admin) "ПРИМЕР АДМИН" else "")), 20, TimeUnit.SECONDS)
+        }
+        writeEvent("fixture_start", "work_start", at - 60000)
+        writeEvent("fixture_break", "break_start", at - 30000)
+        val employeeState = AtomicReference(WorkPresenceSnapshot())
+        val adminState = AtomicReference(WorkPresenceSnapshot())
+        val employeeFeed = WorkPresenceFeed(reader).watch(employeeId) { employeeState.set(it) }
+        val adminFeed = WorkPresenceFeed(writer).watch(employeeId) { adminState.set(it) }
+        fun awaitCondition(description: String, predicate: () -> Boolean) {
+            val until = System.currentTimeMillis() + 30000
+            while (System.currentTimeMillis() < until) { if (predicate()) return; Thread.sleep(50) }
+            error("Timed out: $description; employee=${employeeState.get()}; admin=${adminState.get()}")
+        }
+        val activity = startActivitySync(Intent().setClassName(targetContext.packageName, "mk.wf.labelscanner.MbiActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val profile = MbiActivity::class.java.getDeclaredField("profile").apply { isAccessible = true }
+        val docId = MbiActivity::class.java.getDeclaredField("docId").apply { isAccessible = true }
+        val home = MbiActivity::class.java.getDeclaredMethod("employeeHome").apply { isAccessible = true }
+        val dashboard = MbiActivity::class.java.getDeclaredMethod("adminDashboard").apply { isAccessible = true }
+        fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup)
+            (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
+        fun uiCheck(predicate: (List<View>) -> Boolean): Boolean {
+            var passed = false
+            runOnMainSync { passed = predicate(views(activity.window.decorView)) }
+            return passed
+        }
+        fun button(nodes: List<View>, label: String) = nodes.filterIsInstance<Button>().first { it.text.toString() == label }
+        try {
+            waitForIdleSync()
+            runOnMainSync {
+                profile.set(activity, mapOf("name" to name, "isAdmin" to false, "pinHash" to "fixture-pin"))
+                docId.set(activity, employeeId); home.invoke(activity)
+            }
+            awaitCondition("both independent clients see the active break") {
+                employeeState.get().confirmed && adminState.get().confirmed &&
+                    employeeState.get().state == WorkPresence.BREAK && adminState.get().state == WorkPresence.BREAK &&
+                    uiCheck { nodes -> nodes.filterIsInstance<TextView>().any { it.text.toString().startsWith("НА ПАУЗА") } && button(nodes, "Продолжи со работа").isEnabled }
+            }
+            // Same attendance shape as an administrative departure; real emulator network/listeners.
+            writeEvent("fixture_admin_end", "work_end", at, admin = true)
+            awaitCondition("administrator departure closes both clients and actual employee controls") {
+                employeeState.get().confirmed && adminState.get().confirmed &&
+                    employeeState.get().state == WorkPresence.OFF && adminState.get().state == WorkPresence.OFF &&
+                    employeeState.get().event?.at == at && adminState.get().event?.enteredBy == "ПРИМЕР АДМИН" &&
+                    uiCheck { nodes ->
+                        nodes.filterIsInstance<TextView>().any { it.text.toString().startsWith("ОДЈАВЕН ОД РАБОТА") && it.text.contains("ПРИМЕР АДМИН") } &&
+                            button(nodes, "Дојдов на работа").isEnabled && !button(nodes, "Продолжи со работа").isEnabled &&
+                            !button(nodes, "Почеток на пауза").isEnabled && !button(nodes, "Заврши смена").isEnabled
+                    }
+            }
+            writeEvent("fixture_old_correction", "work_start", at - 120000, admin = true)
+            writeEvent("fixture_orphan_resume", "break_end", at + 1)
+            awaitCondition("a backdated record and orphan resume do not reopen the closed shift") {
+                employeeState.get().confirmed && adminState.get().confirmed && employeeState.get().eventCount == 5 &&
+                    adminState.get().eventCount == 5 && employeeState.get().state == WorkPresence.OFF && adminState.get().state == WorkPresence.OFF
+            }
+            runOnMainSync { profile.set(activity, mapOf("name" to "ПРИМЕР АДМИН", "isAdmin" to true)); dashboard.invoke(activity) }
+            awaitCondition("actual administrator dashboard shows the same closed status") {
+                uiCheck { nodes -> nodes.filterIsInstance<TextView>().any { it.text.toString().startsWith("ОДЈАВЕН ОД РАБОТА") && it.text.contains("ПРИМЕР АДМИН") } }
+            }
+        } finally {
+            employeeFeed.remove(); adminFeed.remove()
+            runOnMainSync { activity.finish() }
         }
     }
 

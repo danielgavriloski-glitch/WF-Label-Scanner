@@ -28,6 +28,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import java.security.MessageDigest
@@ -43,6 +44,14 @@ class MbiActivity : AppCompatActivity() {
     private var profile: Map<String, Any> = emptyMap()
     private var leaveListener: ListenerRegistration? = null
     private var leaveListenerPrimed = false
+    private val workFeed by lazy { WorkPresenceFeed(db) }
+    private val workListeners = mutableListOf<ListenerRegistration>()
+    private var reconnectWorkScreen: (() -> Unit)? = null
+    private var workGeneration = 0
+    private var workScreenActive = false
+    private var myWorkPresence = WorkPresenceSnapshot()
+    private var myWorkRenderer: ((WorkPresenceSnapshot) -> Unit)? = null
+    private var attendanceWritePending = false
     private val accountant: Boolean get() = profile["isAccountant"] == true && profile["isAdmin"] != true
     private val administrator: Boolean get() = profile["isAdmin"] == true
 
@@ -110,6 +119,67 @@ class MbiActivity : AppCompatActivity() {
         setContentView(scroll)
 
         if (auth.currentUser == null) loginScreen() else loadProfile()
+    }
+
+    override fun onStart() {
+        super.onStart(); workScreenActive = true
+        stopWorkSubscriptions(); reconnectWorkScreen?.invoke()
+    }
+
+    override fun onStop() {
+        workScreenActive = false; stopWorkSubscriptions(); super.onStop()
+    }
+
+    override fun onDestroy() {
+        stopWorkSubscriptions(); reconnectWorkScreen = null; myWorkRenderer = null
+        leaveListener?.remove(); leaveListener = null; super.onDestroy()
+    }
+
+    private fun stopWorkSubscriptions() {
+        workGeneration++
+        workListeners.forEach { it.remove() }; workListeners.clear()
+    }
+
+    private fun connectWorkScreen(connect: () -> Unit) {
+        stopWorkSubscriptions(); reconnectWorkScreen = connect
+        if (workScreenActive) connect()
+    }
+
+    private fun watchWork(employeeId: String, update: (WorkPresenceSnapshot) -> Unit): ListenerRegistration {
+        val generation = workGeneration
+        val listener = workFeed.watch(employeeId) { state ->
+            if (workScreenActive && generation == workGeneration && !isFinishing) update(state)
+        }
+        workListeners.add(listener); return listener
+    }
+
+    private fun renderWorkPresence(view: TextView, state: WorkPresenceSnapshot, busy: Boolean = false) {
+        view.text = buildString {
+            if (!state.confirmed && state.state != WorkPresence.UNKNOWN) append("Последен познат статус: ")
+            append(state.title)
+            state.event?.let { event ->
+                event.at?.let { append("\n"); append(dtf.format(Date(it))) }
+                if (event.source == "admin_manual") append("\nОд администратор: ${event.enteredBy}")
+            }
+            if (state.event == null && state.state == WorkPresence.OFF) append("\nНема претходна пријава.")
+            when {
+                busy -> append("\nСе проверува / зачувува…")
+                state.error != null -> append("\n${state.error}")
+                state.pending -> append("\nСе чека потврда за записот…")
+                !state.confirmed -> append("\nСе синхронизира; потребна е серверска потврда.")
+            }
+        }
+        view.setTextColor(when {
+            !state.confirmed || state.error != null -> gold
+            state.state == WorkPresence.OFF -> red
+            state.state == WorkPresence.WORKING -> green
+            state.state == WorkPresence.BREAK -> gold
+            else -> steel
+        })
+    }
+
+    private fun publishMyWork(state: WorkPresenceSnapshot) {
+        myWorkPresence = state; myWorkRenderer?.invoke(state)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -209,6 +279,8 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun clearScreen() {
+        reconnectWorkScreen = null; myWorkRenderer = null; stopWorkSubscriptions()
+        attendanceLoadVersion++
         root.removeAllViews()
     }
 
@@ -382,6 +454,14 @@ class MbiActivity : AppCompatActivity() {
         if (accountant) return accountantHome()
         val name = profile["name"]?.toString() ?: "Вработен"
         employeeHeader("Здраво, $name", "Избери ја активноста што ја започнуваш.")
+        myWorkPresence = WorkPresenceSnapshot()
+        val statusBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = shape(panel, 16, 1, border)
+        }
+        statusBox.addView(text("Мој работен статус", 17f, Color.WHITE, true))
+        val status = text("СЕ ПРОВЕРУВА СТАТУСОТ", 16f, gold, true)
+        status.setPadding(0, dp(5), 0, 0); statusBox.addView(status); root.addView(statusBox); root.addView(space(10))
 
         val wifiBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -401,25 +481,24 @@ class MbiActivity : AppCompatActivity() {
             root.addView(space(6))
         }
 
-        root.addView(button("Дојдов на работа", green, Color.WHITE) { employeeAction("work_start") })
-        root.addView(button("Почеток на пауза", gold, Color.BLACK) { employeeAction("break_start") })
-        root.addView(button("Продолжи со работа", blue, Color.WHITE) { employeeAction("break_end") })
-        root.addView(button("Заврши смена", red, Color.WHITE) { employeeAction("work_end") })
+        val workButtons = linkedMapOf(
+            "work_start" to button("Дојдов на работа", green, Color.WHITE) { employeeAction("work_start") },
+            "break_start" to button("Почеток на пауза", gold, Color.BLACK) { employeeAction("break_start") },
+            "break_end" to button("Продолжи со работа", blue, Color.WHITE) { employeeAction("break_end") },
+            "work_end" to button("Заврши смена", red, Color.WHITE) { employeeAction("work_end") }
+        )
+        workButtons.values.forEach { it.isEnabled = false; root.addView(it) }
         root.addView(button("Побарај слободен ден", panel2, Color.WHITE) { requestLeave(false) })
         root.addView(button("Побарај денови од годишен одмор", blue, Color.WHITE) { requestLeave(true) })
 
-        root.addView(space(12))
-        val statusBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = shape(panel, 16, 1, border)
+        myWorkRenderer = { state ->
+            renderWorkPresence(status, state, attendanceWritePending)
+            workButtons.forEach { (action, view) -> view.isEnabled = state.allows(action) && !attendanceWritePending }
         }
-        statusBox.addView(text("Мој статус", 17f, Color.WHITE, true))
-        val status = text("Последна активност: проверувам…", 14f, steel)
-        status.setPadding(0, dp(5), 0, 0)
-        statusBox.addView(status)
-        root.addView(statusBox)
-        loadMyLastStatus(status)
+        docId?.let { id -> connectWorkScreen {
+            publishMyWork(WorkPresenceSnapshot())
+            watchWork(id) { publishMyWork(it) }
+        } }
 
         root.addView(space(12))
         root.addView(text("Мои барања за слободен ден", 17f, Color.WHITE, true))
@@ -459,21 +538,6 @@ class MbiActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadMyLastStatus(v: TextView) {
-        val id = docId ?: return
-        db.collection("attendance").orderBy("timestamp", Query.Direction.DESCENDING).limit(300).get()
-            .addOnSuccessListener { q ->
-                val d = q.documents.firstOrNull { it.getString("employeeId") == id }
-                if (d == null) {
-                    v.text = "Нема претходна евиденција."
-                    return@addOnSuccessListener
-                }
-                val whenText = d.getTimestamp("timestamp")?.toDate()?.let { dtf.format(it) } ?: ""
-                v.text = "${label(d.getString("type"))}\n$whenText"
-                v.setTextColor(Color.WHITE)
-            }
-    }
-
     private fun setPin() {
         val e = field("Нов PIN", true).apply { inputType = InputType.TYPE_CLASS_NUMBER }
         AlertDialog.Builder(this)
@@ -495,6 +559,10 @@ class MbiActivity : AppCompatActivity() {
     }
 
     private fun employeeAction(type: String) {
+        if (attendanceWritePending || !myWorkPresence.allows(type)) {
+            toast("Дејството не е достапно за тековниот работен статус."); return
+        }
+        val expectedEvent = myWorkPresence.event?.id
         ensureApprovedWifi {
             val expected = profile["pinHash"]?.toString()
             if (expected == null) {
@@ -507,7 +575,7 @@ class MbiActivity : AppCompatActivity() {
                 .setView(e)
                 .setPositiveButton("Потврди") { _, _ ->
                     if (sha(e.text.toString()) != expected) toast("Погрешен PIN.")
-                    else recordAttendance(type)
+                    else recordAttendance(type, expectedEvent)
                 }
                 .setNegativeButton("Откажи", null)
                 .show()
@@ -541,28 +609,36 @@ class MbiActivity : AppCompatActivity() {
             .addOnFailureListener { toast("Не може да се провери одобрената Wi‑Fi мрежа.") }
     }
 
-    private fun recordAttendance(type: String) {
-        if (accountant || administrator) return
+    private fun recordAttendance(type: String, expectedEvent: String?) {
+        if (accountant || administrator || attendanceWritePending || !myWorkPresence.allows(type)) return
         val id = docId ?: return
+        val uid = auth.currentUser?.uid ?: return
         val name = profile["name"]?.toString() ?: ""
-        val wi = currentWifi()
-        val data = hashMapOf<String, Any>(
-            "uid" to (auth.currentUser?.uid ?: ""),
-            "employeeId" to id,
-            "employeeName" to name,
-            "type" to type,
-            "timestamp" to FieldValue.serverTimestamp()
-        )
-        if (wi != null) {
-            data["wifiSsid"] = wi.first
-            data["wifiBssid"] = wi.second
+        val generation = workGeneration
+        attendanceWritePending = true; publishMyWork(myWorkPresence)
+        fun failed(message: String) {
+            attendanceWritePending = false
+            if (generation == workGeneration) publishMyWork(myWorkPresence.copy(confirmed = false, error = message))
+            toast(message)
         }
-        db.collection("attendance").add(data)
-            .addOnSuccessListener {
-                toast("Успешно евидентирано: ${label(type)}")
-                employeeHome()
+        // Verify again after PIN entry; an administrator may have ended the shift meanwhile.
+        workFeed.readServer(id).addOnSuccessListener { current ->
+            if (auth.currentUser?.uid != uid) { failed("Најавата е променета. Обиди се повторно."); return@addOnSuccessListener }
+            if (!current.allows(type) || !current.matchesIntent(expectedEvent)) {
+                attendanceWritePending = false
+                if (generation == workGeneration) publishMyWork(current)
+                toast("Работниот статус е променет. Провери го пред ново дејство.")
+                return@addOnSuccessListener
             }
-            .addOnFailureListener { e -> toast("Не може да се запише: ${e.localizedMessage}") }
+            val data = hashMapOf<String, Any>("uid" to uid, "employeeId" to id, "employeeName" to name,
+                "type" to type, "timestamp" to FieldValue.serverTimestamp())
+            currentWifi()?.let { data["wifiSsid"] = it.first; data["wifiBssid"] = it.second }
+            db.collection("attendance").add(data).addOnSuccessListener {
+                attendanceWritePending = false
+                toast("Успешно евидентирано: ${label(type)}")
+                if (generation == workGeneration) employeeHome()
+            }.addOnFailureListener { failed("Не може да се запише: ${it.localizedMessage}") }
+        }.addOnFailureListener { failed("Нема свежа серверска потврда за статусот: ${it.localizedMessage}") }
     }
 
     private fun adminDashboard() {
@@ -574,7 +650,7 @@ class MbiActivity : AppCompatActivity() {
         val metrics = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val atWork = metric("…", "На работа", green)
         val onBreak = metric("…", "На пауза", gold)
-        val finished = metric("…", "Завршиле", steel)
+        val finished = metric("…", "Одјавени", red)
         metrics.addView(atWork); metrics.addView(onBreak); metrics.addView(finished)
         root.addView(metrics)
         root.addView(space(14))
@@ -592,41 +668,46 @@ class MbiActivity : AppCompatActivity() {
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(holder)
 
-        db.collection("attendance").orderBy("timestamp", Query.Direction.DESCENDING).limit(500).get()
-            .addOnSuccessListener { q ->
+        connectWorkScreen {
+            val generation = workGeneration
+            val rowListeners = mutableListOf<ListenerRegistration>()
+            var revision = 0
+            workListeners.add(db.collection("employees").addSnapshotListener(MetadataChanges.INCLUDE) { roster, error ->
+                if (!workScreenActive || generation != workGeneration) return@addSnapshotListener
+                rowListeners.forEach { it.remove(); workListeners.remove(it) }; rowListeners.clear(); revision++
                 holder.removeAllViews()
-                val seen = mutableSetOf<String>()
-                var workCount = 0
-                var breakCount = 0
-                var finishedCount = 0
-
-                q.documents.forEach { d ->
-                    val id = d.getString("employeeId") ?: return@forEach
-                    if (!seen.add(id)) return@forEach
-                    val type = d.getString("type")
-                    val status = when (type) {
-                        "work_start", "break_end" -> { workCount++; "НА РАБОТА" }
-                        "break_start" -> { breakCount++; "НА ПАУЗА" }
-                        "work_end" -> { finishedCount++; "ЗАВРШЕНА СМЕНА" }
-                        else -> "НЕПОЗНАТО"
-                    }
-                    val accent = when (type) {
-                        "work_start", "break_end" -> green
-                        "break_start" -> gold
-                        "work_end" -> steel
-                        else -> border
-                    }
-                    val whenText = d.getTimestamp("timestamp")?.toDate()?.let { dtf.format(it) } ?: ""
-                    holder.addView(card(d.getString("employeeName") ?: "Вработен", "$status • $whenText", accent))
+                setMetricValue(atWork, "…"); setMetricValue(onBreak, "…"); setMetricValue(finished, "…")
+                if (error != null || roster == null) {
+                    holder.addView(card("Статусот не е потврден", error?.localizedMessage ?: "Нема одговор.", red))
+                    return@addSnapshotListener
                 }
-
-                setMetricValue(atWork, workCount.toString())
-                setMetricValue(onBreak, breakCount.toString())
-                setMetricValue(finished, finishedCount.toString())
-
-                if (seen.isEmpty()) holder.addView(card("Нема евиденција", "Сè уште нема запишани активности."))
-            }
-            .addOnFailureListener { e -> holder.addView(card("Грешка", e.localizedMessage ?: "Не може да се вчита состојбата.", red)) }
+                val people = roster.documents.filter { it.getBoolean("isAdmin") != true && it.getBoolean("isAccountant") != true }
+                    .sortedBy { it.getString("name") ?: it.id }
+                val states = mutableMapOf<String, WorkPresenceSnapshot>()
+                val currentRevision = revision
+                if (people.isEmpty()) {
+                    holder.addView(card(if (roster.metadata.isFromCache) "Се вчитува списокот…" else "Нема вработени"))
+                    if (!roster.metadata.isFromCache) {
+                        setMetricValue(atWork, "0"); setMetricValue(onBreak, "0"); setMetricValue(finished, "0")
+                    }
+                }
+                people.forEach { person ->
+                    val row = card(person.getString("name") ?: person.id, accent = border) {
+                        adminEmployeeDetail(person.id, person.data ?: emptyMap())
+                    } as LinearLayout
+                    val status = text("СЕ ПРОВЕРУВА СТАТУСОТ", 15f, gold, true)
+                    row.addView(status); holder.addView(row)
+                    rowListeners.add(watchWork(person.id) { state ->
+                        if (currentRevision != revision) return@watchWork
+                        states[person.id] = state; renderWorkPresence(status, state)
+                        val ready = !roster.metadata.isFromCache && states.size == people.size && states.values.all { it.confirmed }
+                        setMetricValue(atWork, if (ready) states.values.count { it.state == WorkPresence.WORKING }.toString() else "…")
+                        setMetricValue(onBreak, if (ready) states.values.count { it.state == WorkPresence.BREAK }.toString() else "…")
+                        setMetricValue(finished, if (ready) states.values.count { it.state == WorkPresence.OFF }.toString() else "…")
+                    })
+                }
+            })
+        }
     }
 
     private fun setMetricValue(view: View, value: String) {
@@ -642,7 +723,9 @@ class MbiActivity : AppCompatActivity() {
 
         db.collection("employees").get()
             .addOnSuccessListener { q ->
+                if (holder.parent !== root) return@addOnSuccessListener
                 holder.removeAllViews()
+                val statusRows = mutableListOf<Pair<String, TextView>>()
                 val docs = q.documents.sortedBy { it.getString("name") ?: it.id }
                 docs.forEach { d ->
                     val data = d.data ?: emptyMap()
@@ -656,12 +739,18 @@ class MbiActivity : AppCompatActivity() {
                         append("@$username")
                         if (admin) append(" • ADMIN")
                         if (data["isAccountant"] == true) append(" • Сметководство")
-                        append(if (active) " • Активен" else " • Блокиран")
+                        append(if (active) " • Профил: активен" else " • Профил: блокиран")
                     }
-                    holder.addView(card(name, subtitle, if (active) green else red) {
+                    val row = card(name, subtitle, if (active) green else red) {
                         adminEmployeeDetail(d.id, data)
-                    })
+                    } as LinearLayout
+                    if (!admin && data["isAccountant"] != true) {
+                        val status = text("СЕ ПРОВЕРУВА СТАТУСОТ", 14f, gold, true)
+                        row.addView(status); statusRows.add(d.id to status)
+                    }
+                    holder.addView(row)
                 }
+                connectWorkScreen { statusRows.forEach { (id, view) -> watchWork(id) { renderWorkPresence(view, it) } } }
             }
             .addOnFailureListener { e -> holder.addView(card("Грешка", e.localizedMessage ?: "", red)) }
     }
@@ -750,6 +839,9 @@ class MbiActivity : AppCompatActivity() {
 
         if (!admin) {
             if (data["isAccountant"] != true) {
+                val presence = text("СЕ ПРОВЕРУВА СТАТУСОТ", 16f, gold, true)
+                root.addView(presence)
+                connectWorkScreen { watchWork(id) { renderWorkPresence(presence, it) } }
                 root.addView(button("Пријави / одјави вработен", green, Color.WHITE) { manualAttendance(id, name) })
             }
             root.addView(button("Одмор и болување", blue, Color.WHITE) { personnelDetail(id, data) })
@@ -847,6 +939,7 @@ class MbiActivity : AppCompatActivity() {
         val selected = Calendar.getInstance().apply { set(Calendar.MILLISECOND, 0) }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)) }
         box.addView(text("Внеси кога вработениот навистина дошол или си отишол.", 14f, steel))
+        box.addView(text("За тековната смена избери „Сега“. Постар датум ја коригира историјата.", 12f, steel))
         val action = Spinner(this).apply {
             adapter = ArrayAdapter(this@MbiActivity, android.R.layout.simple_spinner_dropdown_item,
                 arrayOf("Дошол • пријава", "Си отишол • одјава"))
@@ -1374,6 +1467,13 @@ class MbiActivity : AppCompatActivity() {
         if (accountant && !reportOnly) return adminAttendance(true)
         adminHeader(if (reportOnly) "Извештаи" else "Евиденција", "Филтрирај по вработен и датум.")
         if (administrator) root.addView(button("＋ Пријави / одјави вработен", green, Color.WHITE) { chooseManualAttendanceEmployee() })
+        val selectedWorker = if (filterEmployeeIds.size == 1) filterEmployeeIds.first() else if (filterEmployeeIds.isEmpty()) filterEmployeeId else null
+        var selectedPresence: TextView? = null
+        if (administrator && selectedWorker != null) {
+            val presence = text("Тековен работен статус: се проверува…", 15f, gold, true)
+            root.addView(presence)
+            selectedPresence = presence
+        }
 
         if (reportOnly) {
             val months = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -1424,6 +1524,17 @@ class MbiActivity : AppCompatActivity() {
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(holder)
         loadAttendance(holder, reportOnly)
+        val presence = selectedPresence
+        if (selectedWorker != null && presence != null) connectWorkScreen {
+            var previous: List<Any?>? = null
+            watchWork(selectedWorker) { state ->
+                renderWorkPresence(presence, state)
+                val current = listOf(state.state, state.event?.id, state.event?.at, state.eventCount)
+                if (state.confirmed && current != previous) {
+                    previous = current; loadAttendance(holder, reportOnly)
+                }
+            }
+        }
     }
 
     private fun attendanceMonth(delta: Int, selected: Calendar = filterFrom) {

@@ -1,7 +1,7 @@
-name: Build MBI 4.3 admin attendance and exact times
+name: Build MBI 4.4 live work status
 on:
   push:
-    branches: [feature/mbi-v4-3-admin-attendance-times]
+    branches: [feature/mbi-v4-4-live-work-status]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: MBI-v4.3-release-and-tests
+          name: MBI-v4.4-release-and-tests
           path: |
             build/report-release/manifest.json
             build/report-tools/apksigner.jar
@@ -69,6 +69,22 @@ jobs:
           name: MBI-release-part03
           path: build/report-release/app-release-unsigned.apk.part03
           if-no-files-found: error
+      - name: Start isolated Firestore emulator
+        run: |
+          mkdir -p build/firestore-fixture
+          curl --fail --location --retry 3 --output build/firestore-fixture/emulator.jar https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.19.8.jar
+          java -jar build/firestore-fixture/emulator.jar --host 0.0.0.0 --port 8080 --project_id demo-mbi-live-status --rules tests/emulator/firestore.rules > build/firestore-fixture/emulator.log 2>&1 &
+          python3 - <<'PYREADY'
+          import time, urllib.request
+          for attempt in range(60):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:8080/v1/projects/demo-mbi-live-status/databases/(default)/documents/emulator_probe', timeout=1)
+              except urllib.error.HTTPError as e:
+                  if e.code == 404: break
+              except OSError: pass
+              time.sleep(1)
+          else: raise RuntimeError('Firestore emulator did not start')
+          PYREADY
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -83,7 +99,7 @@ jobs:
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w com.mbidesign.app.next.test/mk.wf.labelscanner.ReportPreviewInstrumentation
+            adb shell am instrument -w -e firestoreHost 10.0.2.2 com.mbidesign.app.next.test/mk.wf.labelscanner.ReportPreviewInstrumentation
             mkdir -p build/report-previews
             adb pull /sdcard/Android/data/com.mbidesign.app.next/files/report-previews/ build/report-previews/
             test -s build/report-previews/report-previews/MBI_Izvestaj_Primer.pdf
@@ -94,3 +110,9 @@ jobs:
           name: MBI-report-previews
           path: build/report-previews/report-previews/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: MBI-live-status-emulator-log
+          path: build/firestore-fixture/emulator.log
+          if-no-files-found: ignore
