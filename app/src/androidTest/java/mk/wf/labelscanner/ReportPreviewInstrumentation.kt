@@ -4,7 +4,11 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.os.Bundle
 import android.content.Intent
-import android.view.accessibility.AccessibilityNodeInfo
+import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
@@ -18,6 +22,7 @@ class ReportPreviewInstrumentation : Instrumentation() {
         val result = Bundle()
         try {
             val directory = File(targetContext.getExternalFilesDir(null), "report-previews").apply { mkdirs() }
+            File(directory, "CHECKS_PASSED.txt").delete()
             val hour = 3600000L
             val half = hour / 2
             val people = listOf("petar" to "Петар Стојановски", "ana" to "Ана Трајковска")
@@ -80,6 +85,7 @@ class ReportPreviewInstrumentation : Instrumentation() {
                 AttendancePdfExporter.write(it, "ПРИМЕР - проверка на пренос меѓу страници", "2026", listOf(ReportSection("Boluvanje", "БОЛУВАЊА", longRows)), "Измислени податоци за проверка на изгледот.")
             }
             verifyManualAttendanceForm()
+            File(directory, "CHECKS_PASSED.txt").writeText("Report previews and admin form validation passed\n")
             result.putString("stream", "Report previews and admin form validation passed\n")
             finish(Activity.RESULT_OK, result)
         } catch (error: Throwable) {
@@ -96,27 +102,28 @@ class ReportPreviewInstrumentation : Instrumentation() {
         waitForIdleSync()
         val profile = MbiActivity::class.java.getDeclaredField("profile").apply { isAccessible = true }
         val form = MbiActivity::class.java.getDeclaredMethod("manualAttendance", String::class.java, String::class.java).apply { isAccessible = true }
+        var dialog: AlertDialog? = null
         try {
             runOnMainSync {
+                check(form.invoke(activity, "fixture_employee", "ПРИМЕР ВРАБОТЕН") == null)
                 profile.set(activity, mapOf("isAdmin" to true, "name" to "ПРИМЕР АДМИН"))
-                form.invoke(activity, "fixture_employee", "ПРИМЕР ВРАБОТЕН")
+                dialog = form.invoke(activity, "fixture_employee", "ПРИМЕР ВРАБОТЕН") as AlertDialog
             }
             waitForIdleSync()
-            fun nodes(node: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> =
-                if (node == null) emptyList() else listOf(node) + (0 until node.childCount).flatMap { nodes(node.getChild(it)) }
-            fun current() = nodes(uiAutomation.rootInActiveWindow)
-            val seconds = current().first { it.hintText?.toString() == "Секунди (0–59)" }
-            check(seconds.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "60")
-            }))
-            check(current().first { it.text?.toString() == "Зачувај" }.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            waitForIdleSync()
-            check(current().any { it.text?.toString()?.contains("Секундите треба да бидат од 0 до 59") == true })
-            runOnMainSync { profile.set(activity, emptyMap<String, Any>()) }
-            check(current().first { it.text?.toString() == "Зачувај" }.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            waitForIdleSync()
-            check(current().any { it.text?.toString() == "Потребен е администратор." })
-        } finally { runOnMainSync { activity.finish() } }
+            fun nodes(view: View): List<View> = listOf(view) + if (view is ViewGroup)
+                (0 until view.childCount).flatMap { nodes(view.getChildAt(it)) } else emptyList()
+            runOnMainSync {
+                val shown = checkNotNull(dialog); check(shown.isShowing)
+                val views = nodes(shown.window!!.decorView)
+                val seconds = views.filterIsInstance<EditText>().first { it.hint?.toString() == "Секунди (0–59)" }
+                seconds.setText("60")
+                shown.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                check(views.filterIsInstance<TextView>().any { it.text.toString().contains("Секундите треба да бидат од 0 до 59") })
+                profile.set(activity, emptyMap<String, Any>())
+                shown.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                check(views.filterIsInstance<TextView>().any { it.text.toString() == "Потребен е администратор." })
+            }
+        } finally { runOnMainSync { dialog?.dismiss(); activity.finish() } }
     }
 }
 

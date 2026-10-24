@@ -88,6 +88,7 @@ jobs:
             adb pull /sdcard/Android/data/com.mbidesign.app.next/files/report-previews/ build/report-previews/
             test -s build/report-previews/report-previews/MBI_Izvestaj_Primer.pdf
             test -s build/report-previews/report-previews/MBI_Pdf_Layout_Stress.pdf
+            test -s build/report-previews/report-previews/CHECKS_PASSED.txt
       - uses: actions/upload-artifact@v4
         with:
           name: MBI-report-previews

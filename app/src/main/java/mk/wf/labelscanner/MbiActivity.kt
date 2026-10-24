@@ -842,8 +842,8 @@ class MbiActivity : AppCompatActivity() {
         }.addOnFailureListener { toast("Не може да се вчитаат вработените: ${it.localizedMessage}") }
     }
 
-    private fun manualAttendance(employeeId: String, employeeName: String) {
-        if (!administrator) return
+    private fun manualAttendance(employeeId: String, employeeName: String): AlertDialog? {
+        if (!administrator) return null
         val selected = Calendar.getInstance().apply { set(Calendar.MILLISECOND, 0) }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)) }
         box.addView(text("Внеси кога вработениот навистина дошол или си отишол.", 14f, steel))
@@ -946,6 +946,7 @@ class MbiActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+        return dialog
     }
 
     private fun resetEmployeeLogin(id: String, data: Map<String, Any>) {
