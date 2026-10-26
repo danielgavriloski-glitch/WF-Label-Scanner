@@ -32,7 +32,7 @@ public class SmokeInstrumentation extends Instrumentation {
             boolean loaded=false;
             for(int i=0;i<80;i++){
                 Thread.sleep(250);
-                if("true".equals(js(a,"typeof WFApp!=='undefined'&&!!WFApp.getState()&&typeof WFApp.travelReportJson==='function'&&typeof WFVehicle==='object'"))){loaded=true;break;}
+                if("true".equals(js(a,"typeof WFApp!=='undefined'&&!!WFApp.getState()&&typeof WFApp.travelReportJson==='function'&&typeof WFVehicle==='object'&&typeof WFDocuments==='object'"))){loaded=true;break;}
             }
             check(loaded,"WFAG v1.2 UI did not load");
             check("true".equals(js(a,"document.querySelector('.logo').textContent==='WFAG'")),"WFAG brand missing");

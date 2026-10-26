@@ -109,6 +109,7 @@ jobs:
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb logcat -c
             adb shell am instrument -w mk.workfashion.personal.test/mk.workfashion.personal.SmokeInstrumentation > delivery/smoke.txt
+            adb logcat -d > delivery/runtime.log
             cat delivery/smoke.txt
             grep WF_SMOKE_OK delivery/smoke.txt
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-smoke.png delivery/wf-smoke.png

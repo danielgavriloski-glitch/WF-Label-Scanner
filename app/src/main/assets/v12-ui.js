@@ -699,4 +699,5 @@ document.addEventListener('click',function(event){
 
 setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
 if(state)render();
+window.WFRoute={state:routeNativeState,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
 })();
