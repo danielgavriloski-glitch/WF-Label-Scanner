@@ -31,6 +31,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.io.BufferedInputStream;
 
 public class MainActivity extends Activity {
     private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, OPEN_ROUTE_ARCHIVE=74, MAX_BYTES=16*1024*1024;
@@ -40,9 +41,14 @@ public class MainActivity extends Activity {
     private String pendingName;
     private boolean ready=false;
     private String pendingRouteTripId="";
+    private static final int PICK_DOCUMENT=81,CAPTURE_DOCUMENT=82,SCAN_DOCUMENT=83,CREATE_ARCHIVE=84;
+    private String documentVisit="",scanOutput="",archiveState="",archiveGps="";
+    private File archiveStage(){return new File(getCacheDir(),"wfag-restore-stage");}
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
+        documentVisit=getPreferences(0).getString("documentVisit","");
+        scanOutput=getPreferences(0).getString("scanOutput","");
         FrameLayout root=new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(16,45,53));
         root.setOnApplyWindowInsetsListener((v,insets)->{
@@ -70,6 +76,9 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return !request.getUrl().toString().startsWith("file:///android_asset/");}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
+                if("https".equals(request.getUrl().getScheme())&&"wfag.local".equals(request.getUrl().getHost())&&request.getUrl().getPath()!=null&&request.getUrl().getPath().startsWith("/documents/")){
+                    try{File f=Documents.file(MainActivity.this,request.getUrl().getLastPathSegment());return new WebResourceResponse(Documents.mime(f.getName()),null,new java.io.FileInputStream(f));}catch(Exception ignored){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
+                }
                 if(!request.getUrl().toString().startsWith("file:///android_asset/"))return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
                 return null;
             }
@@ -118,12 +127,19 @@ public class MainActivity extends Activity {
         });
     }
     public class LocalBridge {
+        @JavascriptInterface public void attachDocument(String visitId,String mode){runOnUiThread(()->chooseDocument(visitId,mode));}
+        @JavascriptInterface public void openDocument(String fileId){runOnUiThread(()->{try{File f=Documents.file(MainActivity.this,fileId);if(!f.isFile())throw new Exception();Uri uri=Uri.parse("content://"+getPackageName()+".documents/documents/"+fileId);Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,Documents.mime(fileId));i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){error("Документот не се отвори. За PDF, Word или Excel избери соодветна апликација.");}});}
+        @JavascriptInterface public void exportFullBackup(){runOnUiThread(()->{if(!archiveState.isEmpty()){error("Прво заврши го претходниот бекап.");return;}archiveState=readState();archiveGps=RouteTrackingService.stateJson(MainActivity.this);try{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");i.putExtra(Intent.EXTRA_TITLE,"WFAG_full_backup_"+new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.ROOT).format(new java.util.Date())+".zip");startActivityForResult(i,CREATE_ARCHIVE);}catch(Exception e){archiveState="";archiveGps="";error("Бекапот не се отвори.");}});}
+        @JavascriptInterface public boolean documentsAvailable(String log){try{return Documents.available(MainActivity.this,new JSONObject(log),archiveStage());}catch(Exception e){return false;}}
+        @JavascriptInterface public boolean hasStagedArchive(){return new File(archiveStage(),"state.json").isFile();}
+        @JavascriptInterface public void discardArchive(){Documents.removeTree(archiveStage());}
+        @JavascriptInterface public boolean finishArchiveRestore(){try{Documents.installArchive(MainActivity.this,archiveStage());Documents.removeTree(archiveStage());return true;}catch(Exception e){error("Враќањето не заврши: "+e.getMessage());return false;}}
         @JavascriptInterface public String loadState(){return readState();}
         @JavascriptInterface public boolean saveState(String text){return writeState(text);}
         @JavascriptInterface public void exportText(String name,String text,String mime){requestSave(name,text.getBytes(StandardCharsets.UTF_8),mime);}
         @JavascriptInterface public void exportBytes(String name,String base64,String mime){try{requestSave(name,Base64.decode(base64,Base64.DEFAULT),mime);}catch(Exception e){error("Фајлот не се подготви.");}}
         @JavascriptInterface public void exportPdf(String name,String json){try{requestSave(name,PdfReport.create(new JSONObject(json)),"application/pdf");}catch(Exception e){error("PDF извештајот не се подготви: "+e.getMessage());}}
-        @JavascriptInterface public void openBackup(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream"});i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_BACKUP);}catch(Exception e){error("Не се отвори изборот за бекап.");}});}
+        @JavascriptInterface public void openBackup(){runOnUiThread(()->{try{Documents.removeTree(archiveStage());Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream","application/zip","application/x-zip-compressed"});i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_BACKUP);}catch(Exception e){error("Не се отвори изборот за бекап.");}});}
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
         @JavascriptInterface public String getRouteLog(){return RouteTrackingService.stateJson(MainActivity.this);}
         @JavascriptInterface public void openRouteArchive(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_ROUTE_ARCHIVE);}catch(Exception e){error("Изборот на GPS архивата не се отвори.");}});}
@@ -135,6 +151,27 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void openRouteHistoryMap(String from,String to){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_FROM,from==null?"":from);i.putExtra(RouteMapActivity.EXTRA_TO,to==null?"":to);startActivity(i);}catch(Exception e){error("Офлајн мапата не се отвори.");}});}
         @JavascriptInterface public void openRouteSessionMap(String sessionId){runOnUiThread(()->{try{Intent i=new Intent(MainActivity.this,RouteMapActivity.class);i.putExtra(RouteMapActivity.EXTRA_SESSION_ID,sessionId==null?"":sessionId);startActivity(i);}catch(Exception e){error("GPS рутата не се отвори.");}});}
     }
+    private void documentsChanged(String visit,String message){runOnUiThread(()->{if(webView!=null)webView.evaluateJavascript("window.onDocumentsChanged&&onDocumentsChanged("+JSONObject.quote(visit)+","+JSONObject.quote(message)+")",null);});}
+    private void rememberDocumentRequest(){getPreferences(0).edit().putString("documentVisit",documentVisit).putString("scanOutput",scanOutput).commit();}
+    private void chooseDocument(String visitId,String mode){
+        if(!documentVisit.isEmpty()){error("Прво заврши го претходното прикачување.");return;}
+        try{JSONObject s=new JSONObject(readState());JSONArray visits=s.getJSONObject("warehouseLog").getJSONArray("visits");boolean found=false;for(int n=0;n<visits.length();n++)if(visitId.equals(visits.getJSONObject(n).optString("id")))found=true;if(!found)throw new Exception("Записот не е зачуван.");documentVisit=visitId;rememberDocumentRequest();
+            if("camera".equals(mode)){Intent i=new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);Uri uri=Uri.parse("content://"+getPackageName()+".documents/capture/camera.jpg");i.putExtra(android.provider.MediaStore.EXTRA_OUTPUT,uri);i.setClipData(android.content.ClipData.newRawUri("Скен",uri));i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivityForResult(i,CAPTURE_DOCUMENT);}
+            else{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"image/*","application/pdf","application/msword","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain"});i.addCategory(Intent.CATEGORY_OPENABLE);i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);startActivityForResult(i,PICK_DOCUMENT);}
+        }catch(Exception e){documentVisit="";rememberDocumentRequest();error("Прикачувањето не се отвори. Провери дали имаш камера или избери постоечки документ.");}
+    }
+    synchronized boolean appendDocuments(String visitId,JSONArray incoming)throws Exception{
+        JSONObject s=new JSONObject(readState());JSONArray visits=s.getJSONObject("warehouseLog").getJSONArray("visits");for(int n=0;n<visits.length();n++){JSONObject v=visits.getJSONObject(n);if(!visitId.equals(v.optString("id")))continue;JSONArray docs=v.getJSONArray("documents");if(docs.length()+incoming.length()>100)throw new Exception("Најмногу 100 документи во еден запис.");for(int j=0;j<incoming.length();j++)docs.put(incoming.getJSONObject(j));v.put("updatedAt",new java.util.Date().toInstant().toString());if(!writeState(s.toString()))throw new Exception("Записот не се зачува.");return true;}throw new Exception("Записот не е пронајден.");
+    }
+    private boolean documentResult(int request,int result,Intent data){
+        if(request==CREATE_ARCHIVE){String savedState=archiveState.isEmpty()?readState():archiveState,savedGps=archiveGps.isEmpty()?RouteTrackingService.stateJson(this):archiveGps;archiveState="";archiveGps="";if(result==RESULT_OK&&data!=null&&data.getData()!=null&&!savedState.isEmpty()){Uri uri=data.getData();new Thread(()->{try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new Exception();Documents.exportArchive(this,out,savedState,savedGps);error("Целосниот бекап со документи е зачуван.");}catch(Exception e){error("Бекапот НЕ е завршен: "+e.getMessage());}},"wfag-full-backup").start();}return true;}
+        if(request!=PICK_DOCUMENT&&request!=CAPTURE_DOCUMENT&&request!=SCAN_DOCUMENT)return false;
+        final String visit=documentVisit;
+        if(result!=RESULT_OK){if(!scanOutput.isEmpty())try{Documents.file(this,scanOutput).delete();}catch(Exception ignored){}documentVisit="";scanOutput="";rememberDocumentRequest();documentsChanged(visit,"Прикачувањето е откажано. Записот остана зачуван.");return true;}
+        if(request==CAPTURE_DOCUMENT){try{scanOutput=Documents.unique("jpg");rememberDocumentRequest();Intent i=new Intent(this,ScanActivity.class);i.putExtra("input",Uri.parse("content://"+getPackageName()+".documents/capture/camera.jpg").toString());i.putExtra("output",Documents.file(this,scanOutput).getAbsolutePath());startActivityForResult(i,SCAN_DOCUMENT);}catch(Exception e){documentVisit="";scanOutput="";rememberDocumentRequest();error("Скенерот не се отвори.");}return true;}
+        final String scanned=scanOutput;
+        new Thread(()->{JSONArray added=new JSONArray();try{if(request==SCAN_DOCUMENT){File f=Documents.file(this,scanned);added.put(Documents.metadata(f,"Скен_"+new java.text.SimpleDateFormat("yyyy-MM-dd_HHmmss",java.util.Locale.ROOT).format(new java.util.Date())+".jpg"));}else{if(data==null)throw new Exception("Нема избран документ.");android.content.ClipData clip=data.getClipData();int count=clip==null?1:clip.getItemCount();if(count>30)throw new Exception("Избери најмногу 30 документи одеднаш.");for(int n=0;n<count;n++){Uri uri=clip==null?data.getData():clip.getItemAt(n).getUri();if(uri==null)throw new Exception("Нема пристап.");added.put(Documents.importFile(this,uri));}}appendDocuments(visit,added);documentsChanged(visit,"Прикачени документи: "+added.length());}catch(Exception e){for(int n=0;n<added.length();n++)try{Documents.file(this,added.getJSONObject(n).getString("fileId")).delete();}catch(Exception ignored){}documentsChanged(visit,"Документите не се прикачија: "+e.getMessage());}finally{documentVisit="";scanOutput="";rememberDocumentRequest();new File(getCacheDir(),"wfag-camera.jpg").delete();}},"wfag-documents").start();return true;
+    }
     private void requestSave(String name,byte[] bytes,String mime){runOnUiThread(()->{
         if(pendingBytes!=null){error("Прво заврши го претходното зачувување.");return;}
         if(bytes.length>MAX_BYTES){error("Фајлот е предолг. Избери пократок период.");return;}
@@ -144,6 +181,7 @@ public class MainActivity extends Activity {
     });}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(documentResult(request,result,data))return;
         if(request==CREATE_FILE){
             byte[] bytes=pendingBytes;String name=pendingName;pendingBytes=null;pendingName=null;
             if(result==RESULT_OK&&data!=null&&data.getData()!=null&&bytes!=null){
@@ -168,12 +206,14 @@ public class MainActivity extends Activity {
             },"wfag-import-gps").start();
         }else if(request==OPEN_BACKUP&&result==RESULT_OK&&data!=null&&data.getData()!=null){
             Uri uri=data.getData();new Thread(()->{
-                try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream b=new ByteArrayOutputStream()){
+                try(BufferedInputStream in=new BufferedInputStream(getContentResolver().openInputStream(uri));ByteArrayOutputStream b=new ByteArrayOutputStream()){
                     if(in==null)throw new Exception();byte[] buffer=new byte[8192];int n;
+                    in.mark(4);int first=in.read(),second=in.read();in.reset();
+                    if(first=='P'&&second=='K'){String text=Documents.stageArchive(this,in,archiveStage());runOnUiThread(()->webView.evaluateJavascript("window.handleImport&&handleImport("+JSONObject.quote(text)+")",null));return;}
                     while((n=in.read(buffer))!=-1){b.write(buffer,0,n);if(b.size()>MAX_BYTES)throw new Exception();}
                     String text=new String(b.toByteArray(),StandardCharsets.UTF_8);
                     runOnUiThread(()->webView.evaluateJavascript("window.handleImport&&handleImport("+JSONObject.quote(text)+")",null));
-                }catch(Exception e){error("Бекапот не се прочита. Избери валиден JSON бекап.");}
+                }catch(Exception e){Documents.removeTree(archiveStage());error("Бекапот не се прочита: "+e.getMessage());}
             },"wf-import").start();
         }
     }

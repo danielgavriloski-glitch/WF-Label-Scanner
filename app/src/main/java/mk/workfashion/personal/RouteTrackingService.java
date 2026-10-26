@@ -213,7 +213,7 @@ public class RouteTrackingService extends Service implements LocationListener {
                         }
                         stops.put(stop);
                         session.put("activeStopId",id);
-                        if(stop.optBoolean("pending"))notifyStop(stop);
+                        notifyStop(stop);
                     }else{
                         stop.put("endAt",now);
                     }
@@ -390,7 +390,7 @@ public class RouteTrackingService extends Service implements LocationListener {
     private void notifyStop(JSONObject stop){
         if(android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED){
             NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-            nm.notify(NOTIFICATION_ID,notification("Застанување над 5 минути","Допри за да внесеш име или остави „Локација“."));
+            nm.notify(NOTIFICATION_ID,notification("Застанување над 5 минути","Допри за достава, преземање или прикачување документи."));
         }
     }
 

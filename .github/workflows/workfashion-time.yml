@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log, feature/wfag-v3-1-warehouse-documents]
   pull_request:
     branches: [workfashion-travel-time]
   workflow_dispatch:
@@ -36,6 +36,8 @@ jobs:
           node tests/route-day-browser.test.js
           node tests/saved-places.test.js
           node tests/vehicle.test.js
+          node tests/documents.test.js
+          node --check app/src/main/assets/documents-ui.js
           node --check app/src/main/assets/vehicle-ui.js
           node --check app/src/main/assets/v12-core.js
           node --check app/src/main/assets/v12-ui.js
@@ -67,14 +69,14 @@ jobs:
           cp app/build/outputs/apk/preview/app-preview.apk /tmp/wfag-preview.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose /tmp/wfag-preview.apk
           mkdir -p delivery/toolchain
-          cp /tmp/wfag-preview.apk delivery/WFAG_v3_0_CRAFTER_PREVIEW.apk
-          cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_0_Crafter_TEST.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_0_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='22'"
+          cp /tmp/wfag-preview.apk delivery/WFAG_v3_1_CRAFTER_PREVIEW.apk
+          cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_1_Crafter_TEST.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_1_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='23'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/wfag-preview.apk | grep "package: name='mk.workfashion.personal.preview2'"
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_0_CRAFTER.apk
+            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_1_CRAFTER.apk
           else
-            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_v3_0_CRAFTER_UNSIGNED.apk
+            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_v3_1_CRAFTER_UNSIGNED.apk
             printf '%s\n' 'Signing secret is not configured. Do not distribute this APK as the update build.' > delivery/SIGNING_SETUP_REQUIRED.txt
           fi
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
@@ -84,7 +86,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-v3-0-Crafter-build
+          name: WFAG-v3-1-Documents-build
           path: delivery/
           retention-days: 7
 
@@ -113,6 +115,7 @@ jobs:
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-report.pdf delivery/smoke-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-vehicle-report.pdf delivery/smoke-vehicle-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-vehicle.png delivery/wf-vehicle.png
+            adb pull /sdcard/Android/data/mk.workfashion.personal/files/wf-documents.png delivery/wf-documents.png
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-travel-report.pdf delivery/smoke-travel-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-holiday-report.pdf delivery/smoke-holiday-report.pdf
             adb pull /sdcard/Android/data/mk.workfashion.personal/files/smoke-overtime-report.pdf delivery/smoke-overtime-report.pdf
@@ -123,11 +126,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-v3-0-Crafter-validation
+          name: WFAG-v3-1-Documents-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
             delivery/wf-vehicle.png
+            delivery/wf-documents.png
             delivery/smoke-vehicle-report.pdf
             delivery/smoke-report.pdf
             delivery/smoke-travel-report.pdf

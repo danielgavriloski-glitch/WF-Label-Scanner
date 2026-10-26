@@ -123,6 +123,23 @@ public class SmokeInstrumentation extends Instrumentation {
             check("true".equals(js(a,"(()=>{for(const tab of ['overview','fuel','tires','trips','analysis','history']){WFVehicle.setTab(tab);if(document.getElementById('app').textContent.length<150)return false;}WFVehicle.setTab('analysis');document.getElementById('vanFromDate').value='2026-10-01';document.getElementById('vanToDate').value='2026-10-31';document.getElementById('vanApplyRange').click();return WFVehicle.vehicleReport().rows.length===5&&document.documentElement.scrollWidth<=innerWidth+1;})()")), "All vehicle screens and analysis period");
             check("true".equals(js(a,"(()=>{const old=WFApp.getState(),before=JSON.stringify(old.vehicleLog);delete old.vehicleLog;const answer=window.confirm;window.confirm=()=>true;try{handleImport(JSON.stringify(old));}finally{window.confirm=answer;}if(JSON.stringify(state.vehicleLog)!==before)return false;const saved=Android.loadState();if(!load())return false;WFVehicle.setTab('analysis');return JSON.stringify(state)===saved&&state.trips.length===2&&Vehicle.summary(state.vehicleLog).measuredL100===8;})()")), "Old backup retains van records and saved reload");
 
+            // Warehouse forms and real, private attachment bytes, with a complete backup round trip.
+            check("true".equals(js(a,"(()=>{WFApp.setView('documents');WFDocuments.openVisit(null,{date:'2024-01-01'});document.getElementById('warehouseNewName').value='Магацин Охрид';document.getElementById('warehouseAction').value='pickup';document.getElementById('warehouseNote').value='Зедов испратница';document.getElementById('warehouseForm').dispatchEvent(new Event('submit',{cancelable:true}));return state.warehouseLog.visits.length===1&&state.warehouseLog.visits[0].date==='2024-01-01'&&state.warehouseLog.warehouses.length===1;})()")),"Manual warehouse entry before attendance start");
+            android.graphics.Bitmap page=android.graphics.Bitmap.createBitmap(1400,2000,android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas pageCanvas=new android.graphics.Canvas(page);pageCanvas.drawColor(android.graphics.Color.WHITE);android.graphics.Paint ink=new android.graphics.Paint(3);ink.setColor(android.graphics.Color.BLACK);ink.setTextSize(52);pageCanvas.drawText("WFAG TEST DOCUMENT 12345",80,180,ink);
+            File document=Documents.file(getTargetContext(),Documents.unique("jpg"));Documents.writeJpeg(page,document);page.recycle();
+            JSONObject attachment=Documents.metadata(document,"Испратница 12345.jpg");
+            String visitId=new JSONObject(a.new LocalBridge().loadState()).getJSONObject("warehouseLog").getJSONArray("visits").getJSONObject(0).getString("id");
+            a.appendDocuments(visitId,new JSONArray().put(attachment));
+            check("true".equals(js(a,"(()=>{if(!load())return false;WFDocuments.openVisit(state.warehouseLog.visits[0].id);return document.querySelectorAll('[data-open-document]').length===1&&document.querySelector('.warehouse-doc img')!==null;})()")),"Native attachment persists and opens in the WebView");
+            String beforeBackup=a.new LocalBridge().loadState();java.io.ByteArrayOutputStream archiveBytes=new java.io.ByteArrayOutputStream();Documents.exportArchive(getTargetContext(),archiveBytes,beforeBackup,RouteTrackingService.stateJson(getTargetContext()));
+            File stage=new File(getTargetContext().getCacheDir(),"test-documents-restore");String restored=Documents.stageArchive(getTargetContext(),new java.io.ByteArrayInputStream(archiveBytes.toByteArray()),stage);check(restored.equals(beforeBackup),"Archive did not preserve exact working state");
+            File stagedFile=new File(stage,"documents/"+document.getName());check(stagedFile.isFile()&&Documents.hash(stagedFile).equals(attachment.getString("sha256")),"Archive lost attachment bytes");
+            check(document.delete(),"Test attachment removal failed");check(Documents.available(getTargetContext(),new JSONObject(restored).getJSONObject("warehouseLog"),stage),"Staged backup was not readable");Documents.installArchive(getTargetContext(),stage);check(document.isFile()&&Documents.hash(document).equals(attachment.getString("sha256")),"Attachment failed to restore");Documents.removeTree(stage);
+            check("true".equals(js(a,"(()=>{closeModal();WFDocuments.setFilters({query:'испратница',from:'2024-01-01',to:'2024-12-31'});return document.getElementById('app').textContent.includes('Магацин Охрид')&&state.trips.length===2&&state.vehicleLog.fills.length===3;})()")),"Warehouse search or existing data preservation");
+            Thread.sleep(500);android.graphics.Bitmap docsScreenshot=getUiAutomation().takeScreenshot();try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),"wf-documents.png"))){docsScreenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}docsScreenshot.recycle();
+            js(a,"WFVehicle.setTab('analysis')");
+
             String vehicleEncoded=js(a,"JSON.stringify(WFVehicle.vehicleReport())");
             JSONObject vehicleReport=new JSONObject(new JSONArray("["+vehicleEncoded+"]").getString(0));
             byte[] vehiclePdf=MainActivity.PdfReport.create(vehicleReport);
@@ -150,7 +167,7 @@ public class SmokeInstrumentation extends Instrumentation {
             }
             screenshot.recycle();
 
-            result.putString("stream","WF_SMOKE_OK: WFAG v3.0 Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
+            result.putString("stream","WF_SMOKE_OK: WFAG v3.1 warehouse documents, native attachment and complete ZIP restore; Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
             java.io.StringWriter trace=new java.io.StringWriter();
