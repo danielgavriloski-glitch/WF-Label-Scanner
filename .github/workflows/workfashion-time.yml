@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log, feature/wfag-v3-1-warehouse-documents]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log, feature/wfag-v3-1-warehouse-documents, feature/wfag-v3-2-retroactive-overtime-balance]
   pull_request:
     branches: [workfashion-travel-time]
   workflow_dispatch:
@@ -37,6 +37,7 @@ jobs:
           node tests/saved-places.test.js
           node tests/vehicle.test.js
           node tests/documents.test.js
+          node tests/retroactive-overtime.test.js
           node --check app/src/main/assets/documents-ui.js
           node --check app/src/main/assets/vehicle-ui.js
           node --check app/src/main/assets/v12-core.js
@@ -69,14 +70,14 @@ jobs:
           cp app/build/outputs/apk/preview/app-preview.apk /tmp/wfag-preview.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose /tmp/wfag-preview.apk
           mkdir -p delivery/toolchain
-          cp /tmp/wfag-preview.apk delivery/WFAG_v3_1_CRAFTER_PREVIEW.apk
-          cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_1_Crafter_TEST.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_1_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='23'"
+          cp /tmp/wfag-preview.apk delivery/WFAG_v3_2_PREVIEW.apk
+          cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_2_Crafter_TEST.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_1_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='24'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/wfag-preview.apk | grep "package: name='mk.workfashion.personal.preview2'"
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
-            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_1_CRAFTER.apk
+            cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_2_OVERTIME_UPDATE.apk
           else
-            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_v3_1_CRAFTER_UNSIGNED.apk
+            cp app/build/outputs/apk/release/app-release-unsigned.apk delivery/WFAG_v3_2_OVERTIME_UNSIGNED.apk
             printf '%s\n' 'Signing secret is not configured. Do not distribute this APK as the update build.' > delivery/SIGNING_SETUP_REQUIRED.txt
           fi
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/toolchain/
@@ -86,7 +87,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WFAG-v3-1-Documents-build
+          name: WFAG-v3-2-Overtime-build
           path: delivery/
           retention-days: 7
 
@@ -127,7 +128,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: WFAG-v3-1-Documents-validation
+          name: WFAG-v3-2-Overtime-validation
           path: |
             delivery/smoke.txt
             delivery/wf-smoke.png
