@@ -336,8 +336,8 @@ renderHome=function(){
   $('app').innerHTML=header(state.settings.name?'Здраво, '+esc(state.settings.name.split(' ')[0]):'Твоето работно време',Core.displayDate(d)+' · '+['Недела','Понеделник','Вторник','Среда','Четврток','Петок','Сабота'][Core.weekday(d)])+
     '<section class="card hero"><div class="hero-top"><span class="small">'+esc(status)+'</span>'+badge(r)+'</div><div class="clock">'+Core.hh(r.worked)+'</div><span class="muted small">реално работени часови денес'+(r.start?' · од '+r.start:'')+'</span><button class="btn hero-btn" data-day="'+d+'">'+icon('edit')+'Измени го денешниот ден</button></section>'+
     tripHomeMarkup(r)+
-    '<div class="grid stats">'+stat('Работено месецов',Core.hh(p.worked),p.workDays+' работни '+dayWord(p.workDays),'accent')+stat('Прекувремено',Core.hh(p.overtime),overtimeFoot(p,p.compDays?'по '+p.compDays+' слободен '+dayWord(p.compDays):'овој месец'),'warn')+stat('На пат / возење',Core.hh(p.travel),'овој месец')+stat('Годишен одмор',p.counts.vacation+' дена','евидентирано')+'</div>'+
-    '<section class="card"><div class="row"><h3>Оваа недела</h3><strong>'+Core.hh(w.normal)+' / '+Core.hh(w.target)+'</strong></div><div class="progress"><span style="width:'+Math.min(100,w.normal/Math.max(1,w.target)*100)+'%"></span></div><div class="mini-row"><span class="muted">Прекувремено по слободни денови</span><strong>'+Core.hh(w.overtime)+'</strong></div><div class="mini-row"><span class="muted">Прекувремено – работа на празник</span><strong>'+Core.hh(w.holidayWork)+'</strong></div><div class="mini-row"><span class="muted">Други прекувремени (пред слободни)</span><strong>'+Core.hh(Math.max(0,w.grossOvertime-w.holidayWork))+'</strong></div><div class="mini-row"><span class="muted">Искористени слободни денови</span><strong>'+w.compDays+'</strong></div><p class="small muted" style="margin:8px 0 0">Работата на празник е целосно во прекувремените. Секој рачно означен слободен работен ден одзема 8 часа од нив.</p></section>'+
+    '<div class="grid stats">'+stat('Работено месецов',Core.hh(p.worked),p.workDays+' работни '+dayWord(p.workDays),'accent')+stat('Прекувремено месецов',Core.hhSigned(p.overtime),'по кратки денови и слободни','warn')+stat('Вкупен биланс',Core.hhSigned(Core.balance(state,now)),'од почетокот на евиденцијата','accent')+stat('На пат / возење',Core.hh(p.travel),'овој месец')+stat('Годишен одмор',p.counts.vacation+' дена','евидентирано')+'</div>'+
+    '<section class="card"><div class="row"><h3>Оваа недела</h3><strong>'+Core.hh(w.normal)+' / '+Core.hh(w.target)+'</strong></div><div class="progress"><span style="width:'+Math.min(100,w.normal/Math.max(1,w.target)*100)+'%"></span></div><div class="mini-row"><span class="muted">Прекувремено по слободни денови</span><strong>'+Core.hhSigned(w.overtime)+'</strong></div><div class="mini-row"><span class="muted">Прекувремено – работа на празник</span><strong>'+Core.hh(w.holidayWork)+'</strong></div><div class="mini-row"><span class="muted">Други прекувремени (пред слободни)</span><strong>'+Core.hh(Math.max(0,w.grossOvertime-w.holidayWork))+'</strong></div><div class="mini-row"><span class="muted">Минус за кратки денови</span><strong>−'+Core.hh(w.shortfall)+'</strong></div><div class="mini-row"><span class="muted">Искористени слободни денови</span><strong>'+w.compDays+'</strong></div><p class="small muted" style="margin:8px 0 0">Работата на празник е целосно во прекувремените. Пократок завршен работен ден одзема разлика до 8 часа. Рачен слободен работен ден одзема 8 часа. Се пресметуваат и старите записи.</p></section>'+
     '<section class="card"><div class="row"><div><h3>Автоматски распоред</h3><span class="small muted">Понеделник–петок · 08:00–16:00</span></div>'+icon('shield')+'</div><div class="note">Годишниот одмор и неработниот празник се евидентираат посебно. Во „работено“ влегуваат само реално работените часови.</div><div class="actions"><button id="homeAbsence" class="btn secondary">'+icon('plus')+'Одмор / отсуство</button><button id="homePdf" class="btn light">'+icon('report')+'PDF работно време</button></div></section>'+
     '<p class="small muted">Почеток на евиденцијата: '+Core.displayDate(state.settings.trackStart)+'.</p>';
   $('homeAbsence').onclick=function(){editDay(d,'vacation',true);};
@@ -349,7 +349,7 @@ renderHistory=function(){
   const typeShort={vacation:'одмор',sick:'болед.',holiday:'празник',paid:'платено',unpaid:'неплат.',absent:'отсуство',off:'слобод.'};
   $('app').innerHTML=header('Евиденција','Избери ден за да го смениш времето или видот на отсуството.')+monthSwitch()+
     '<section class="card"><div class="calendar">'+['ПОН','ВТО','СРЕ','ЧЕТ','ПЕТ','САБ','НЕД'].map(x=>'<div class="weekday">'+x+'</div>').join('')+'<span></span>'.repeat(offset)+days.map(function(r){return '<button class="cal-day '+(r.auto&&r.type==='work'?'auto ':'')+r.type+' '+(r.future?'future ':'')+(r.date===Core.today()?'today ':'')+(!r.auto?'edit':'')+'" data-day="'+r.date+'"><b>'+Number(r.date.slice(8))+'</b><small>'+(!r.covered?'—':r.type==='work'||r.type==='holidayWork'?Core.hh(r.future?r.planWork:r.worked):(typeShort[r.type]||Core.TYPES[r.type]))+'</small></button>';}).join('')+'</div><div class="legend"><span><i class="dot"></i>работа</span><span><i class="dot purple"></i>одмор</span><span><i class="dot orange"></i>боледување</span><span><i class="dot gold"></i>рачна измена</span></div></section>'+
-    '<div class="grid">'+stat('Работени часови',Core.hh(p.worked),p.workDays+' работни дена','accent')+stat('Прекувремено',Core.hh(p.overtime),overtimeFoot(p,p.compDays?'по слободните денови':'во избраниот месец'),'warn')+'</div>'+
+    '<div class="grid">'+stat('Работени часови',Core.hh(p.worked),p.workDays+' работни дена','accent')+stat('Прекувремено',Core.hhSigned(p.overtime),overtimeFoot(p,p.compDays?'по слободните денови':'во избраниот месец'),'warn')+'</div>'+
     '<div class="actions"><button class="btn full" id="rangeButton">'+icon('plus')+'Додади период / исклучок</button></div>'+tripHistoryMarkup(p)+
     '<div class="section-head"><h2>Дневни записи</h2><span class="small muted">'+monthLabel(month)+'</span></div><section class="card">'+(days.filter(r=>r.covered&&(r.scheduled||!r.auto||r.trips.length)).map(dayItem).join('')||'<p class="empty">Нема записи во овој месец.</p>')+'</section>';
   bindMonth();$('rangeButton').onclick=function(){editDay(Core.today(),'vacation',true);};
@@ -360,6 +360,7 @@ function workReportJson(p){
   const details=[
     'Прекувремено пред слободни денови: '+Core.hh(p.grossOvertime),
     'Искористен слободен ден: '+p.compDays+' '+dayWord(p.compDays)+' · '+Core.hh(p.compTime)+' се одземаат од прекувремените.',
+    'Пократки работни денови: −'+Core.hh(p.shortfall)+' од прекувремените, вклучувајќи ги старите записи.',
     'Годишен одмор: '+p.counts.vacation+' '+dayWord(p.counts.vacation)+listDates(p,'vacation'),
     'Неработен ден – празник: '+p.counts.holiday+' '+dayWord(p.counts.holiday)+listDates(p,'holiday'),
     'Работа на празник: '+Core.hh(p.holidayWork)+' · '+p.counts.holidayWork+' '+dayWord(p.counts.holidayWork)+listDates(p,'holidayWork')+'. Сите работени часови на празник се вклучени во прекувремените.',
@@ -368,10 +369,10 @@ function workReportJson(p){
   ];
   return {
     company:state.settings.company,name:state.settings.name,title:'Работно време · '+title,from:p.from,to:p.to,generated:Core.displayDate(Core.today()),
-    summary:[['Работни денови',String(p.workDays)],['Работени часови',Core.hh(p.worked)],['Прекувремено',Core.hh(p.overtime)],['Слободен ден',p.compDays+' дена']],
+    summary:[['Работни денови',String(p.workDays)],['Работени часови',Core.hh(p.worked)],['Прекувремено',Core.hhSigned(p.overtime)],['Слободен ден',p.compDays+' дена']],
     details:details,
     headers:['Датум','Вид / статус','Време','Работа','Редовно','Прекувр.','Пауза','Белешка'],
-    rows:p.rows.filter(r=>r.covered&&(r.scheduled||!r.auto||r.trips.length)).map(r=>[r.date.slice(8)+'.'+r.date.slice(5,7),Core.TYPES[r.type]+(r.future?' · план':''),r.start?r.start+'–'+r.end+(r.overnight?' +1':''):'—',Core.hh(r.worked),Core.hh(r.regular),Core.hh(r.overtime),Core.hh(r.pause),r.note||'']),
+    rows:p.rows.filter(r=>r.covered&&(r.scheduled||!r.auto||r.trips.length)).map(r=>[r.date.slice(8)+'.'+r.date.slice(5,7),Core.TYPES[r.type]+(r.future?' · план':''),r.start?r.start+'–'+r.end+(r.overnight?' +1':''):'—',Core.hh(r.worked),Core.hh(r.regular),Core.hhSigned(r.overtimeNet),Core.hh(r.pause),r.note||'']),
     notes:[]
   };
 }
@@ -385,10 +386,10 @@ function travelReportJson(p){
       'Работа без пат = вкупни работни часови минус часови на пат/возење.',
       'Годишен одмор: '+p.counts.vacation+' дена · Неработен ден – празник: '+p.counts.holiday+' дена.',
       'Работа на празник: '+Core.hh(p.holidayWork)+listDates(p,'holidayWork')+' · вклучено во прекувремените.',
-      'Прекувремено по искористени слободни денови: '+Core.hh(p.overtime)+'.'
+      'Прекувремено по искористени слободни денови: '+Core.hhSigned(p.overtime)+'.'
     ],
     headers:['Датум','Вид / статус','Работен ден','Работа','На пат','Без пат','Прекувр.','Белешка'],
-    rows:p.rows.filter(r=>r.covered&&(r.scheduled||!r.auto||r.trips.length)).map(r=>[r.date.slice(8)+'.'+r.date.slice(5,7),Core.TYPES[r.type]+(r.future?' · план':''),r.start?r.start+'–'+r.end+(r.overnight?' +1':''):'—',Core.hh(r.worked),Core.hh(r.travel),Core.hh(Math.max(0,r.worked-r.travel)),Core.hh(r.overtime),r.note||'']),
+    rows:p.rows.filter(r=>r.covered&&(r.scheduled||!r.auto||r.trips.length)).map(r=>[r.date.slice(8)+'.'+r.date.slice(5,7),Core.TYPES[r.type]+(r.future?' · план':''),r.start?r.start+'–'+r.end+(r.overnight?' +1':''):'—',Core.hh(r.worked),Core.hh(r.travel),Core.hh(Math.max(0,r.worked-r.travel)),Core.hhSigned(r.overtimeNet),r.note||'']),
     tripHeaders:['Датум на поаѓање','Час','Пристигнување','На пат','Дестинација / белешка'],
     tripRows:p.tripRows.map(t=>[Core.displayDate(t.date),t.departure,tripArrivalLabel(t),Core.hh(t.planned?t.plannedMinutes:t.travel)+(t.planned?' (план)':t.pending?' (во тек)':''),(t.workStart?'Работа од '+t.workStart+' · ':'')+(t.note||'')]),
     notes:[]
@@ -406,7 +407,7 @@ function overtimeReportJson(p){
     return [when,time,Core.hh(r.worked),Core.hh(r.overtime),r.reason+note];
   });
   b.deductions.forEach(function(d){
-    rows.push([Core.displayDate(d.date)+' · '+fullDays[Core.weekday(d.date)],'Слободен ден','—','−'+Core.hh(d.applied),d.reason+(d.note?' · '+d.note:'')]);
+    rows.push([Core.displayDate(d.date)+' · '+fullDays[Core.weekday(d.date)],d.kind==='short'?'Пократок работен ден':'Слободен ден',d.kind==='short'?Core.hh(d.worked):'—','−'+Core.hh(d.applied),d.reason+(d.note?' · '+d.note:'')]);
   });
   if(!rows.length)rows.push(['—','—','—','0ч','Нема прекувремени часови во избраниот период.']);
   return {
@@ -415,19 +416,20 @@ function overtimeReportJson(p){
     title:'Само прекувремени · '+periodLabel(p),
     from:p.from,to:p.to,generated:Core.displayDate(Core.today()),
     summary:[
-      ['Нето прекувремено',Core.hh(b.net)],
+      ['Нето прекувремено',Core.hhSigned(b.net)],
       ['Создадено прекувремено',Core.hh(b.gross)],
       ['Работа на празник',Core.hh(b.holiday)],
       ['Други прекувремени',Core.hh(b.other)],
       ['Искористено за слободни',b.compApplied?'−'+Core.hh(b.compApplied):'0ч'],
+      ['Пократки работни денови',b.shortfall?'−'+Core.hh(b.shortfall):'0ч'],
       ['Денови со прекувремено',String(b.earned.length)]
     ],
     details:[
       'Создадено прекувремено = работа на празник + други прекувремени. Празничните часови се бројат еднаш.',
-      'Нето прекувремено = создадено прекувремено − часови искористени за слободни денови.',
+      'Нето прекувремено = создадено прекувремено − кратки работни денови − искористени слободни денови. Минусот се пренесува преку недели и месеци.',
       'Секој ред покажува на кој датум и ден се направени часовите и како се добиени во пресметката.',
       'Работа на празник: '+Core.hh(p.holidayWork)+' · '+p.counts.holidayWork+' '+dayWord(p.counts.holidayWork)+listDates(p,'holidayWork')+'. Сите работени часови се прекувремени, без одземање 8 редовни часа.',
-      'За работен ден: над дневниот фонд од 8 часа оди во прекувремено. За викенд: прво се дополнува неделниот фонд до 40 часа, а остатокот е прекувремен.'
+      'За завршен редовен работен ден: над 8 часа се додава, под 8 часа се одзема од салдото. За викенд: прво се дополнува неделниот фонд до 40 часа, а остатокот е прекувремен.'
     ],
     headers:['Датум / ден','Работно време','Работено','Прекувр.','Како е пресметано'],
     rows:rows,
@@ -456,9 +458,9 @@ function exportTravelPdf(p){
 }
 
 exportRows=function(p){
-  const rows=[['Датум','Вид','Почеток','Крај','Работено (ч)','Редовно (ч)','Прекувремено ден (ч)','На пат (ч)','Работа без пат (ч)','Пауза (ч)','Статус','Белешка','Поаѓање на пат','Пристигнување','Почеток на работа за пат']];
-  p.rows.filter(r=>r.covered).forEach(r=>rows.push([Core.displayDate(r.date),Core.TYPES[r.type],r.start,r.end+(r.overnight?' (+1)':''),r.worked/60,r.regular/60,r.overtime/60,r.travel/60,Math.max(0,r.worked-r.travel)/60,r.pause/60,r.future?'План':r.auto?'Автоматски':'Рачна измена',r.note,r.trips.map(t=>t.departure).join(' | '),r.trips.map(tripArrivalLabel).join(' | '),r.trips.map(t=>t.workStart||state.settings.start).join(' | ')]));
-  rows.push(['ВКУПНО','','','',p.worked/60,p.regular/60,p.overtime/60,p.travel/60,p.workplace/60,p.pause/60,'Нето прекувремено по '+p.compDays+' слободни денови','','','','']);
+  const rows=[['Датум','Вид','Почеток','Крај','Работено (ч)','Редовно (ч)','Биланс на ден (ч)','На пат (ч)','Работа без пат (ч)','Пауза (ч)','Статус','Белешка','Поаѓање на пат','Пристигнување','Почеток на работа за пат']];
+  p.rows.filter(r=>r.covered).forEach(r=>rows.push([Core.displayDate(r.date),Core.TYPES[r.type],r.start,r.end+(r.overnight?' (+1)':''),r.worked/60,r.regular/60,r.overtimeNet/60,r.travel/60,Math.max(0,r.worked-r.travel)/60,r.pause/60,r.future?'План':r.auto?'Автоматски':'Рачна измена',r.note,r.trips.map(t=>t.departure).join(' | '),r.trips.map(tripArrivalLabel).join(' | '),r.trips.map(t=>t.workStart||state.settings.start).join(' | ')]));
+  rows.push(['ВКУПНО','','','',p.worked/60,p.regular/60,p.overtime/60,p.travel/60,p.workplace/60,p.pause/60,'Нето = дополнителни − кратки работни денови − слободни денови','','','','']);
   return rows;
 };
 
@@ -467,9 +469,9 @@ renderReports=function(){
   $('app').innerHTML=header('Извештаи','Три одделни PDF извештаи: работно време, работа/службен пат и само прекувремени.')+
     '<div class="switch-tabs"><button id="monthlyTab" class="'+(reportMode==='month'?'selected':'')+'">Месечен</button><button id="rangeTab" class="'+(reportMode==='range'?'selected':'')+'">Избран период</button></div>'+
     (reportMode==='month'?monthSwitch():'<div class="grid"><label class="field"><span>Од</span><input type="date" id="reportFrom" value="'+reportFrom+'" min="2000-01-01" max="2100-12-31"></label><label class="field"><span>До</span><input type="date" id="reportTo" value="'+reportTo+'" min="2000-01-01" max="2100-12-31"></label></div><button id="applyPeriod" class="btn secondary full">Прикажи го периодот</button>')+
-    '<div class="grid stats">'+stat('Работни денови',String(p.workDays),'со реално работени часови','accent')+stat('Работени часови',Core.hh(p.worked),'реално работени часови')+stat('Прекувремено',Core.hh(p.overtime),overtimeFoot(p,'по слободни денови'),'warn')+stat('На пат / возење',Core.hh(p.travel),p.tripRows.length+' патувања')+'</div>'+
+    '<div class="grid stats">'+stat('Работни денови',String(p.workDays),'со реално работени часови','accent')+stat('Работени часови',Core.hh(p.worked),'реално работени часови')+stat('Прекувремено',Core.hhSigned(p.overtime),overtimeFoot(p,'по слободни денови'),'warn')+stat('На пат / возење',Core.hh(p.travel),p.tripRows.length+' патувања')+'</div>'+
     '<section class="card"><h2>Одмор, празник и прекувремено</h2>'+
-      [['Прекувремено пред слободни',Core.hh(p.grossOvertime)],['Искористен слободен ден',p.compDays+' дена · −'+Core.hh(p.compTime)],['Годишен одмор',p.counts.vacation+' дена'],['Неработен ден – празник',p.counts.holiday+' дена'],['Боледување',p.counts.sick+' дена'],['Прекувремено – работа на празник',Core.hh(p.holidayWork)+' · '+p.counts.holidayWork+' '+dayWord(p.counts.holidayWork)],['Други прекувремени (пред слободни)',Core.hh(Math.max(0,p.grossOvertime-p.holidayWork))]].map(x=>'<div class="mini-row"><span class="muted">'+x[0]+'</span><strong>'+x[1]+'</strong></div>').join('')+
+      [['Прекувремено пред одземање',Core.hh(p.grossOvertime)],['Минус за кратки работни денови','−'+Core.hh(p.shortfall)],['Искористен слободен ден',p.compDays+' дена · −'+Core.hh(p.compTime)],['Годишен одмор',p.counts.vacation+' дена'],['Неработен ден – празник',p.counts.holiday+' дена'],['Боледување',p.counts.sick+' дена'],['Прекувремено – работа на празник',Core.hh(p.holidayWork)+' · '+p.counts.holidayWork+' '+dayWord(p.counts.holidayWork)],['Други прекувремени (пред слободни)',Core.hh(Math.max(0,p.grossOvertime-p.holidayWork))]].map(x=>'<div class="mini-row"><span class="muted">'+x[0]+'</span><strong>'+x[1]+'</strong></div>').join('')+
     '</section>'+tripReportMarkup(p)+
     '<section class="card"><h2>PDF документи</h2><p class="small muted">Се зачувуваат како три посебни документи.</p><button class="btn full" id="exportWorkPdf">'+icon('report')+'PDF 1 · Работно време</button><button class="btn secondary full" id="exportTravelPdf" style="margin-top:10px">'+icon('report')+'PDF 2 · Работа / пат</button><button class="btn secondary full" id="exportOvertimePdf" style="margin-top:10px">'+icon('report')+'PDF 3 · Само прекувремени</button><div class="actions"><button class="btn light" id="exportExcel">'+icon('download')+'Excel</button><button class="btn light" id="exportCsv">CSV</button></div></section>'+
     '<section class="card"><h2>Преглед по ден</h2><div class="table-wrap"><table class="table"><thead><tr><th>Датум</th><th>Вид</th><th>Работено</th><th>Прекувр.</th><th>На пат</th></tr></thead><tbody>'+p.rows.filter(r=>r.covered).map(r=>'<tr><td>'+r.date.slice(8)+'.'+r.date.slice(5,7)+'</td><td>'+Core.TYPES[r.type]+(r.future?' · план':'')+'</td><td>'+Core.hh(r.worked)+'</td><td>'+Core.hh(r.overtime)+'</td><td>'+Core.hh(r.travel)+'</td></tr>').join('')+'</tbody></table></div></section>';
