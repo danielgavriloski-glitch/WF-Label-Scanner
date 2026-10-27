@@ -62,8 +62,8 @@ function trip(s,date,workStart,departure,arrival){
   Core.validate(s);
   const b=Core.overtimeBreakdown(s,'2026-10-05','2026-10-11',new Date('2026-10-12T12:00:00Z'));
   assert.strictEqual(b.gross,180,'overtime-only report must show 3 earned overtime hours');
-  assert.strictEqual(b.compApplied,180,'only available overtime may be deducted by a free day');
-  assert.strictEqual(b.net,0,'net overtime must be zero after the compensatory day');
+  assert.strictEqual(b.compApplied,480,'full free day debit carries across periods');
+  assert.strictEqual(b.net,-300,'unused free day debit remains a negative balance');
   assert.strictEqual(b.earned.length,1,'overtime-only report must identify the exact overtime day');
   assert.strictEqual(b.earned[0].date,'2026-10-07');
   assert.match(b.earned[0].reason,/службен пат/,'report must explain how overtime was created');
