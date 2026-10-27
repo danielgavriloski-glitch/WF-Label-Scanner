@@ -112,6 +112,12 @@ Core.day=function(state,date,now=new Date()){
   });
 };
 
+// Signed overtime is recalculated from original day records on every view.
+// No migration and no persisted adjustment: old and new days use the same rules.
+Core.hhSigned=function(value){
+  return (value<0?'−':value>0?'+':'')+Core.hh(Math.abs(value));
+};
+
 Core.week=function(state,monday,now=new Date()){
   const rows=Core.dates(monday,Core.plus(monday,6)).map(d=>Core.day(state,d,now));
   const s=state.settings;
@@ -138,20 +144,31 @@ Core.week=function(state,monday,now=new Date()){
       normal+=r.regular;
     }
   }
+  const currentDate=Core.today(now);
+  for(const r of rows){
+    // An unedited default day is a full 8h day, not evidence of an absence.
+    // A shift in progress must not be debited before it has actually finished.
+    const shiftEnded=r.date<currentDate ||
+      (r.date===currentDate&&r.type==='work'&&
+        Core.timestamp(r.overnight?Core.plus(r.date,1):r.date,r.end)<=now.getTime());
+    const completedTrip=Array.isArray(r.trips)&&r.trips.some(t=>!t.future&&!t.pending&&t.arrivalAt!==null);
+    const workConfirmed=!r.auto||completedTrip;
+    r.shortfall=r.covered&&r.scheduled&&r.type==='work'&&!r.future&&
+      shiftEnded&&workConfirmed?Math.max(0,s.dayMinutes-r.worked):0;
+    // Existing manually entered compensatory off days keep their old −8h rule.
+    // Holidays, vacation, sick leave, paid leave and holiday work are exempt.
+    r.compDebit=r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off'?s.dayMinutes:0;
+    r.overtimeNet=r.overtime-r.shortfall-r.compDebit;
+  }
   const grossOvertime=rows.reduce((a,r)=>a+r.overtime,0);
-  const compDays=rows.filter(r=>r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off').length;
-  const compTime=compDays*s.dayMinutes;
-  const compApplied=Math.min(grossOvertime,compTime);
+  const shortfall=rows.reduce((a,r)=>a+r.shortfall,0);
+  const compDays=rows.filter(r=>r.compDebit>0).length;
+  const compTime=rows.reduce((a,r)=>a+r.compDebit,0);
+  const net=grossOvertime-shortfall-compTime;
   return {
-    rows:rows,
-    target:target,
-    normal:normal,
-    missing:Math.max(0,target-normal),
-    grossOvertime:grossOvertime,
-    compDays:compDays,
-    compTime:compTime,
-    compApplied:compApplied,
-    overtime:Math.max(0,grossOvertime-compTime),
+    rows:rows,target:target,normal:normal,missing:Math.max(0,target-normal),
+    grossOvertime:grossOvertime,shortfall:shortfall,compDays:compDays,compTime:compTime,
+    compApplied:compTime,overtime:net,
     worked:rows.reduce((a,r)=>a+r.worked,0),
     holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0)
   };
@@ -170,38 +187,29 @@ Core.period=function(state,from,to,now=new Date()){
   const planned={};
   Object.keys(Core.TYPES).forEach(t=>planned[t]=rows.filter(r=>r.covered&&r.future&&r.type===t&&(t!=='vacation'||r.scheduled)).length);
   const closedWeeks=Object.entries(cache).filter(([m])=>m>=from&&Core.plus(m,6)<=to&&Core.plus(m,6)<Core.today(now));
-  const grossOvertime=sum('overtime');
-  const compDays=rows.filter(r=>r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off').length;
-  const compTime=compDays*state.settings.dayMinutes;
-  const compApplied=Math.min(grossOvertime,compTime);
-  const travel=sum('travel');
-  const worked=sum('worked');
+  const grossOvertime=sum('overtime'),shortfall=sum('shortfall'),compTime=sum('compDebit');
+  const compDays=rows.filter(r=>r.compDebit>0).length;
+  const travel=sum('travel'),worked=sum('worked');
   const workplace=rows.reduce((a,r)=>a+Math.max(0,r.worked-r.travel),0);
   const workDays=rows.filter(r=>r.covered&&!r.future&&r.worked>0).length;
   return {
-    from:from,to:to,rows:rows,
-    worked:worked,
-    regular:sum('regular'),
-    grossOvertime:grossOvertime,
-    compDays:compDays,
-    compTime:compTime,
-    compApplied:compApplied,
-    overtime:Math.max(0,grossOvertime-compTime),
-    pause:sum('pause'),
-    credit:sum('credit'),
-    expected:sum('expectedElapsed'),
-    monthPlan:sum('expected'),
-    counts:counts,
-    planned:planned,
+    from:from,to:to,rows:rows,worked:worked,regular:sum('regular'),
+    grossOvertime:grossOvertime,shortfall:shortfall,
+    compDays:compDays,compTime:compTime,compApplied:compTime,
+    overtime:grossOvertime-shortfall-compTime,
+    pause:sum('pause'),credit:sum('credit'),expected:sum('expectedElapsed'),monthPlan:sum('expected'),
+    counts:counts,planned:planned,
     missing:closedWeeks.reduce((a,[m,w])=>a+w.missing,0),
     holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0),
-    travel:travel,
-    workplace:workplace,
-    workDays:workDays,
-    tripRows:rows.flatMap(r=>r.trips)
+    travel:travel,workplace:workplace,workDays:workDays,tripRows:rows.flatMap(r=>r.trips)
   };
 };
 
+// All-time balance from the beginning of the saved records, including past months.
+Core.balance=function(state,now=new Date()){
+  const end=Core.today(now),start=state.settings.trackStart;
+  return start>end?0:Core.period(state,start,end,now).overtime;
+};
 
 function overtimeReason(r){
   if(r.type==='holidayWork'){
@@ -222,42 +230,26 @@ function overtimeReason(r){
 Core.overtimeBreakdown=function(state,from,to,now=new Date()){
   const p=Core.period(state,from,to,now);
   const earned=p.rows.filter(r=>r.covered&&!r.future&&r.overtime>0).map(r=>({
-    date:r.date,
-    type:r.type,
-    scheduled:r.scheduled,
-    start:r.start||'',
-    end:r.end||'',
-    overnight:!!r.overnight,
-    worked:r.worked,
-    regular:r.regular,
-    overtime:r.overtime,
-    travel:r.travel||0,
-    note:r.note||'',
-    reason:overtimeReason(r)
+    date:r.date,type:r.type,scheduled:r.scheduled,start:r.start||'',end:r.end||'',
+    overnight:!!r.overnight,worked:r.worked,regular:r.regular,overtime:r.overtime,
+    travel:r.travel||0,note:r.note||'',reason:overtimeReason(r)
   }));
-  let remaining=p.compApplied;
   const deductions=[];
   for(const r of p.rows){
-    if(remaining<=0)break;
-    if(!(r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off'))continue;
-    const applied=Math.min(state.settings.dayMinutes,remaining);
-    deductions.push({
-      date:r.date,
-      applied:applied,
-      note:r.note||'',
-      reason:'Искористен слободен ден од прекувремени: −'+Core.hh(applied)+'.'
+    if(r.compDebit>0)deductions.push({
+      date:r.date,kind:'off',applied:r.compDebit,note:r.note||'',
+      reason:'Искористен слободен ден од прекувремени: −'+Core.hh(r.compDebit)+'.'
     });
-    remaining-=applied;
+    if(r.shortfall>0)deductions.push({
+      date:r.date,kind:'short',worked:r.worked,applied:r.shortfall,note:r.note||'',
+      reason:'Пократок работен ден: '+Core.hh(r.worked)+' од '+Core.hh(state.settings.dayMinutes)+
+        ' планирани; од прекувремените се одземаат '+Core.hh(r.shortfall)+'.'
+    });
   }
   return {
-    period:p,
-    earned:earned,
-    deductions:deductions,
-    gross:p.grossOvertime,
-    holiday:p.holidayWork,
-    other:Math.max(0,p.grossOvertime-p.holidayWork),
-    compApplied:p.compApplied,
-    net:p.overtime
+    period:p,earned:earned,deductions:deductions,gross:p.grossOvertime,
+    holiday:p.holidayWork,other:Math.max(0,p.grossOvertime-p.holidayWork),
+    shortfall:p.shortfall,compApplied:p.compTime,net:p.overtime
   };
 };
 
