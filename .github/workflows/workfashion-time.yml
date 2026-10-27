@@ -72,7 +72,7 @@ jobs:
           mkdir -p delivery/toolchain
           cp /tmp/wfag-preview.apk delivery/WFAG_v3_2_PREVIEW.apk
           cp app/build/outputs/apk/crafter/app-crafter.apk delivery/WFAG_v3_2_Crafter_TEST.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_1_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='24'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging delivery/WFAG_v3_2_Crafter_TEST.apk | grep "package: name='mk.workfashion.personal.crafter3' versionCode='24'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging /tmp/wfag-preview.apk | grep "package: name='mk.workfashion.personal.preview2'"
           if [ "$WFAG_SIGNING_READY" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk delivery/WFAG_v3_2_OVERTIME_UPDATE.apk
