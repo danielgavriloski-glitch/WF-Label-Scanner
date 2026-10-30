@@ -1,4 +1,4 @@
-/* MarK Booking 6.20 — independent localization and multilingual printable copies.
+/* MarK Booking 6.21 — independent localization and multilingual printable copies.
  * No changes to booking, finance, sync or signature storage.
  * User supplied free-text is NEVER silently machine-translated.
  */
