@@ -139,4 +139,19 @@ for(const key of ['overview','client','extras','expenses','crew']){
  assert(financeTabs.includes("['"+key+"'"),'Finance must preserve '+key+' controls');
 }
 assert(!financeTabs.includes("localStorage.setItem"),'Finance navigation must not modify stored data');
+const selectedDaySource=between('function renderSelectedBookingDay(){','function render(){');
+const hundredTwenty=Array.from({length:120},(_,i)=>({
+ id:'day-'+i,date:'2026-11-20',eventType:i%2?'wedding':'photoshoot',
+ bride:'Клиент '+i,groom:'Партнер '+i,start:String(8+i%12).padStart(2,'0')+':00',package:'custom'
+}));
+const selectedHost={innerHTML:'',querySelectorAll:()=>[]};
+const selectedDay=new Function('document','selectedBookingDay','data','escapeHtml','eventTypeLabel','eventName','packageName',
+ selectedDaySource+';return renderSelectedBookingDay;')(
+ {getElementById:()=>selectedHost},'2026-11-20',hundredTwenty,escapeHtml,
+ t=>typeLabels[t||'wedding'],b=>b.eventType==='wedding'?b.bride+' и '+b.groom:b.bride,
+ ()=> 'Посебен пакет'
+);
+selectedDay();
+assert(selectedHost.innerHTML.includes('120 настани'),'120 events on a single date must be visible');
+assert((selectedHost.innerHTML.match(/data-booking-id=/g)||[]).length===120,'Do not silently cap event lists at 100');
 console.log('PASS: 6 contract displays, 7 signing cases, month rollover, full sync operation and apply round-trip, '+scripts+' inline scripts, JS modules and Calendar title.');
