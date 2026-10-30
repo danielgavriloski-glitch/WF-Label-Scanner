@@ -106,6 +106,26 @@ const nl=s=>esc(s).replace(/\r?\n/g,'<br>');
 const safeDate=s=>esc(s||'—');
 const effective=()=>{let x=localStorage.getItem(K)||'auto';if(x==='auto'){let n=(navigator.language||'mk').split('-')[0].toLowerCase();return LANGS[n]?n:'mk';}return LANGS[x]?x:'mk'};
 let currentDoc=null,uiTimer=null,observer=null;
+
+const PANEL={
+mk:['Јазик на апликацијата','Автоматски — јазик на телефонот','Јазикот на документите се избира посебно при создавање PDF.','Јазик на документот','Дополнителни копии','Создади PDF на избраните јазици','Рачно внесените услуги и посебни услови остануваат на оригиналниот јазик; проверете ги пред потпишување.'],
+en:['App language','Automatic — phone language','Choose the document language separately when creating a PDF.','Document language','Additional language copies','Create PDF in selected languages','Custom services and special terms stay in their original language; verify translations before signing.'],
+sq:['Gjuha e aplikacionit','Automatikisht — gjuha e telefonit','Zgjidh veçmas gjuhën e dokumentit kur krijon PDF.','Gjuha e dokumentit','Kopje shtesë në gjuhë të tjera','Krijo PDF në gjuhët e zgjedhura','Shërbimet dhe kushtet e shkruara nga përdoruesi mbeten në gjuhën origjinale; kontrolloni përkthimin para nënshkrimit.'],
+tr:['Uygulama dili','Otomatik — telefon dili','PDF oluştururken belge dilini ayrıca seçin.','Belge dili','Ek dil kopyaları','Seçilen dillerde PDF oluştur','Kullanıcının yazdığı hizmetler ve özel şartlar orijinal dilde kalır; imzadan önce çevirileri kontrol edin.']
+};
+function setPanelLabels(){
+ const t=PANEL[effective()],setting=$('markLanguagePanel');
+ if(setting){
+ const elements=[setting.querySelector('label'),setting.querySelector('select option[value=auto]'),setting.querySelector('p')];
+ elements.forEach((el,i)=>{if(el&&el.textContent!==t[i])el.textContent=t[i]});
+ }
+ for(const id of ['markContractLanguages','markFinanceLanguages','markReportLanguages']){
+  const pane=$(id);if(!pane)continue;
+  const elements=[pane.querySelector('.mark-primary-label'),pane.querySelector('.mark-extra-title'),pane.querySelector('.mark-generate'),pane.querySelector('.mark-disclaimer')];
+  elements.forEach((el,i)=>{const label=t[i+3];if(el&&el.textContent!==label)el.textContent=label});
+ }
+}
+
 function uiText(node,lang) {
  let raw=node.__markSource;
  if(raw===undefined){raw=node.nodeValue;node.__markSource=raw;}
@@ -126,6 +146,7 @@ function translateUi() {
  document.querySelectorAll('input[placeholder]').forEach(el=>{if(!el.dataset.markOriginalPlaceholder)el.dataset.markOriginalPlaceholder=el.placeholder;let original=el.dataset.markOriginalPlaceholder;el.placeholder=original;});
  const opt=$('markUiLanguage');if(opt)opt.value=localStorage.getItem(K)||'auto';
  const month=$('monthTitle');if(month&&typeof window.month!=='undefined'&&month instanceof HTMLElement){try{month.textContent=window.month.toLocaleDateString(lang+'-'+(lang==='mk'?'MK':lang==='sq'?'AL':lang==='tr'?'TR':'GB'),{month:'long',year:'numeric'})}catch(_e){}}
+ setPanelLabels();
  if(observer)observer.observe(document.body,{childList:true,subtree:true,characterData:true});
 }
 function scheduleUi(){if(uiTimer)clearTimeout(uiTimer);uiTimer=setTimeout(translateUi,80)}
