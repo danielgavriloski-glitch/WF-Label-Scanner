@@ -123,4 +123,13 @@ assert.equal(received.length,1,'One booking should be applied');
 assert.equal(received[0].eventType,'christening','Event category survives phone-to-PC transfer');
 assert.equal(received[0].bride,'Крштевка Марко','Event name survives transfer');
 
+const home = fs.readFileSync(path.join(__dirname,'../src/main/assets/booking_home_v619.js'),'utf8');
+assert.doesNotThrow(()=>new Function(home),'Calendar home enhancement must parse');
+assert(html.includes('<script src="booking_home_v619.js"></script>'),'Calendar-first navigation module must load');
+assert(home.includes("window.navigate('dashboard')"),'Calendar-first initial navigation must run');
+assert(home.includes("view==='dashboard'?'weddings':view"),'Home button must navigate to the calendar');
+assert(!html.includes("let clash=data.find(x=>x.date===b.date"),'Same-date events must not be blocked by repeated conflict confirmations');
+assert(home.includes("booking-day-count"),'Calendar must display numeric per-day event counts');
+assert(html.includes("items=data.filter(b=>b.date===selectedBookingDay)"),'Selected-day event list remains uncapped');
+
 console.log('PASS: 6 contract displays, 7 signing cases, month rollover, full sync operation and apply round-trip, '+scripts+' inline scripts, JS modules and Calendar title.');
