@@ -758,6 +758,36 @@ function financialReport(lang){
  out+=groups.map(g=>'<tr><td>'+esc(g.name)+'</td><td>'+esc(g.events.length)+'</td><td>'+money(g.fee)+'</td><td>'+money(g.paid)+'</td></tr>').join('')+'</tbody></table>';
  return out;
 }
+
+function refreshFinancePreview(){
+ const pane=$('markFinanceLanguages'),original=$('financeDocument');
+ if(!pane||!original||!currentDoc)return;
+ let preview=$('markFinanceTranslatedPreview');
+ if(!preview){
+   preview=document.createElement('div');
+   preview.id='markFinanceTranslatedPreview';
+   preview.className='print-sheet';
+   original.insertAdjacentElement('beforebegin',preview);
+ }
+ const lang=pane.querySelector('select').value;
+ if(lang==='mk'){
+   const moved=preview.querySelector('.signatures');
+   if(moved) {
+     const target=original.querySelector('.signatures');
+     if(target)target.replaceWith(moved);else original.appendChild(moved);
+   }
+   preview.style.display='none';original.style.display='';
+   return;
+ }
+ const sourceSignatures=original.querySelector('.signatures')||preview.querySelector('.signatures');
+ preview.innerHTML=financeDoc(lang)||'';
+ const translationSignatures=preview.querySelector('.mark-signatures');
+ if(sourceSignatures){
+   if(translationSignatures)translationSignatures.replaceWith(sourceSignatures);
+   else preview.appendChild(sourceSignatures);
+ }
+ original.style.display='none';preview.style.display='';
+}
 function printCopies(id){
  const pane=$(id);if(!pane)return;
  const selected=selectedLanguages(pane),parts=[];
@@ -788,6 +818,7 @@ function install(){
  const drawer=$('drawer');const menu=document.createElement('button');menu.className='secondary';menu.textContent='🌐 Јазик / Language';menu.onclick=()=>{if(typeof window.navigate==='function')window.navigate('settings');$('markUiLanguage')?.scrollIntoView({block:'center'})};drawer.insertBefore(menu,drawer.lastElementChild);
  if($('contractText'))languagesPanel('markContractLanguages',$('contractText'));
  if($('financeDocument'))languagesPanel('markFinanceLanguages',$('financeDocument'));
+ const financeSelector=$('markFinanceLanguages')?.querySelector('select');if(financeSelector)financeSelector.addEventListener('change',refreshFinancePreview);
  if($('reportBody'))languagesPanel('markReportLanguages',$('reportBody'));
  const selected=()=>{
   try{const b=typeof selectedWedding==='function'?selectedWedding():null;return b?JSON.parse(JSON.stringify(b)):null}catch(_e){return null}
@@ -795,7 +826,7 @@ function install(){
  const finance=(b)=>{try{return b&&typeof finRecord==='function'?JSON.parse(JSON.stringify(finRecord(b.id))):null}catch(_e){return null}};
  function wrap(name,resolve){const prev=window[name];if(typeof prev!=='function')return;window[name]=function(){const args=[...arguments];const b=selected();const f=finance(b);currentDoc={kind:name==='clientReceipt'?'client':name==='crewReceipt'?'crewReceipt':name==='expressReceipt'?'express':'crewContract',w:b,f};
   if(b&&f){if(name==='clientReceipt')currentDoc.payment=args[0]==='deposit'?{amount:b.deposit,date:b.date,method:'Deposit'}:(f.clientPayments||[]).find(p=>p.id===args[0]);if(name==='crewReceipt'){currentDoc.co=(f.crew||[]).find(c=>c.id===args[0]);currentDoc.payment=currentDoc.co?.payments?.find(p=>p.id===args[1]);}if(name==='expressReceipt')currentDoc.payment=(f.express||[]).find(p=>p.id===args[0]);if(name==='crewContract')currentDoc.co=(f.crew||[]).find(c=>c.id===args[0]);}
-  const result=prev.apply(this,args);const panel=$('markFinanceLanguages');if(panel)panel.querySelector('select').value=effective();if(panel)syncExtra(panel);return result;
+  const result=prev.apply(this,args);const panel=$('markFinanceLanguages');if(panel)panel.querySelector('select').value=effective();if(panel)syncExtra(panel);refreshFinancePreview();return result;
  }}
  ['clientReceipt','crewReceipt','expressReceipt','crewContract'].forEach(w=>wrap(w));
  // All standard PDF/print buttons honour the document's language selection.
