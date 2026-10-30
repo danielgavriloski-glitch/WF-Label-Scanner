@@ -92,4 +92,35 @@ const snap=new Function('saved','BOOK_KEY','FIN_KEY','PKG_KEY','CACHE_KEY','ROST
 assert.equal(snap().bookings.photo1.eventType,'photoshoot','Full sync must carry new event types without dropping fields');
 assert(oldWeddingSync.includes("(!b.eventType||b.eventType==='wedding')"),'Legacy wedding-only sync should exclude other categories');
 
-console.log('PASS: 6 contract displays, 7 signing cases, month rollover, event names, full sync, legacy-only sync, '+scripts+' inline scripts, JS modules and Calendar title.');
+
+const syncOpsCode=allEvents.slice(allEvents.indexOf('function eq(a,b){'),allEvents.indexOf('function setStatus('));
+assert(syncOpsCode.startsWith('function eq(a,b){'),'Cannot locate sync ops');
+const makeOps=new Function('TYPE','PC',syncOpsCode+';return makeOps;')(
+  ['bookings','finance','settings','roster'],false
+);
+const emptyReplica={version:2,records:{bookings:{},finance:{},settings:{},roster:{}}};
+const phoneRecord={id:'camera1',eventType:'christening',bride:'Крштевка Марко',
+  groom:'',date:'2026-12-13',phone:'070111222',locked:false,price:'250'};
+const outbound=makeOps({bookings:{camera1:phoneRecord},finance:{},settings:{global:[]},roster:{global:{}}},emptyReplica);
+const bookingOp=outbound.find(op=>op.kind==='bookings'&&op.id==='camera1');
+assert(bookingOp,'Full sync must send a booking operation');
+assert.equal(bookingOp.data.eventType,'christening','Full sync must preserve eventType in outgoing operations');
+const receivedRecords={bookings:{camera1:{rev:1,data:bookingOp.data}}};
+const mem={};
+const storage={setItem:(key,value)=>mem[key]=value};
+const applySource=allEvents.slice(allEvents.indexOf('function applyLocal('),allEvents.indexOf('async function transport('));
+assert(applySource.startsWith('function applyLocal('),'Cannot locate sync applyLocal');
+const applyLocal=new Function('TYPE','PC','eq','localStorage','BOOK_KEY','FIN_KEY','PKG_KEY','BASE_KEY',
+  applySource+';return applyLocal;')(
+  ['bookings','finance','settings','roster'],false,
+  (a,b)=>JSON.stringify(a)===JSON.stringify(b),storage,'tdBookingsV1','tdBookingFinanceV1','tdPackageSettings','replicaBase'
+);
+const applied=applyLocal(receivedRecords,emptyReplica,
+  {bookings:{},finance:{},settings:{global:[]},roster:{global:{}}},[],new Set());
+assert(applied,'Incoming booking should apply');
+const received=JSON.parse(mem.tdBookingsV1);
+assert.equal(received.length,1,'One booking should be applied');
+assert.equal(received[0].eventType,'christening','Event category survives phone-to-PC transfer');
+assert.equal(received[0].bride,'Крштевка Марко','Event name survives transfer');
+
+console.log('PASS: 6 contract displays, 7 signing cases, month rollover, full sync operation and apply round-trip, '+scripts+' inline scripts, JS modules and Calendar title.');
