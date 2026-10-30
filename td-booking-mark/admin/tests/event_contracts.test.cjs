@@ -132,4 +132,11 @@ assert(!html.includes("let clash=data.find(x=>x.date===b.date"),'Same-date event
 assert(home.includes("booking-day-count"),'Calendar must display numeric per-day event counts');
 assert(html.includes("items=data.filter(b=>b.date===selectedBookingDay)"),'Selected-day event list remains uncapped');
 
+const financeTabs=fs.readFileSync(path.join(__dirname,'../src/main/assets/booking_finance_tabs_v619.js'),'utf8');
+assert.doesNotThrow(()=>new Function(financeTabs),'Finance navigation should have valid JavaScript');
+assert(html.includes('<script src="booking_finance_tabs_v619.js"></script>'),'Finance tab module must load');
+for(const key of ['overview','client','extras','expenses','crew']){
+ assert(financeTabs.includes("['"+key+"'"),'Finance must preserve '+key+' controls');
+}
+assert(!financeTabs.includes("localStorage.setItem"),'Finance navigation must not modify stored data');
 console.log('PASS: 6 contract displays, 7 signing cases, month rollover, full sync operation and apply round-trip, '+scripts+' inline scripts, JS modules and Calendar title.');
