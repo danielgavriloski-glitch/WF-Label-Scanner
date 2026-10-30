@@ -1,4 +1,4 @@
-name: MarK Booking 6.20 multilingual QA
+name: MarK Booking 6.21 multilingual QA
 
 on:
   push:
@@ -29,6 +29,7 @@ jobs:
         run: |
           node --check td-booking-mark/admin/src/main/assets/booking_i18n_v620.js
           node td-booking-mark/admin/tests/event_contracts.test.cjs
+          node td-booking-mark/admin/tests/i18n_contracts.test.cjs
       - name: Ensure SDK 35
         shell: bash
         run: |
@@ -45,10 +46,10 @@ jobs:
           gradle-version: '8.7'
       - name: Android compile and unit tests
         working-directory: td-booking-mark
-        run: gradle :admin:testDebugUnitTest :admin:assembleDebug --no-daemon --stacktrace
+        run: gradle :admin:testDebugUnitTest :admin:assembleDebug :admin:assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: MarK-Booking-6.20-QA-DEBUG-NOT-FOR-UPGRADE
+          name: MarK-Booking-6.21-QA-DEBUG-NOT-FOR-UPGRADE
           path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
           if-no-files-found: error
           retention-days: 7
