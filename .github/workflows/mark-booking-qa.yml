@@ -39,8 +39,18 @@ jobs:
       - name: Validate event contracts and JavaScript
         run: node td-booking-mark/admin/tests/event_contracts.test.cjs
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Ensure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)
+          fi
+          test -x "$SDKMANAGER"
+          echo "Android SDK location: $ANDROID_HOME"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
