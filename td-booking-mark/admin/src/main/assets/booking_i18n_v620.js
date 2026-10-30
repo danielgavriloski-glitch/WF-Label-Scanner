@@ -536,6 +536,7 @@ function uiText(node,lang) {
 function translateUi() {
   const lang=effective();
   document.documentElement.lang=lang;
+  if(window.TDNative&&typeof window.TDNative.setAppLanguage==='function')try{window.TDNative.setAppLanguage(lang)}catch(_e){}
   if(observer)observer.disconnect();
   // <option> without explicit value uses its display text as its data value.
   // Fix it once in the original language before translating the display.
@@ -679,14 +680,38 @@ function financeDoc(lang) {
  }
  return x;
 }
+const REPORT_LABELS={
+mk:{weddings:'Свадби',financial:'Финансиски извештај',package:'Пакет + доплати',received:'Наплатено од клиенти',express:'Експрес (+)',crewPaid:'Исплатено екипа',crewAgreed:'Договорено',expenses:'Други трошоци',profit:'Очекувана добивка',staff:'Екипа',engagements:'Ангажмани',name:'Име',total:'Вкупно',outstanding:'За наплата'},
+en:{weddings:'Weddings',financial:'Financial report',package:'Package + extras',received:'Client payments received',express:'Express (+)',crewPaid:'Team payouts',crewAgreed:'Agreed fees',expenses:'Other expenses',profit:'Expected profit',staff:'Team',engagements:'Engagements',name:'Name',total:'Total',outstanding:'Outstanding'},
+sq:{weddings:'Dasmat',financial:'Raporti financiar',package:'Paketa + shtesat',received:'Pagesat nga klientët',express:'Express (+)',crewPaid:'Pagesa për ekipin',crewAgreed:'Honorarët e dakorduar',expenses:'Shpenzime të tjera',profit:'Fitimi i pritshëm',staff:'Ekipi',engagements:'Angazhime',name:'Emri',total:'Gjithsej',outstanding:'Për arkëtim'},
+tr:{weddings:'Düğünler',financial:'Mali rapor',package:'Paket + ek hizmetler',received:'Müşteri tahsilatları',express:'Ekspres (+)',crewPaid:'Ekip ödemeleri',crewAgreed:'Anlaşılan ücretler',expenses:'Diğer giderler',profit:'Beklenen kâr',staff:'Ekip',engagements:'Görevler',name:'Ad',total:'Toplam',outstanding:'Tahsil edilecek'}
+};
 function financialReport(lang){
- const d=DOC[lang],a=$('rangeFrom')?.value||'',z=$('rangeTo')?.value||'';
+ const d=DOC[lang],t=REPORT_LABELS[lang],a=$('rangeFrom')?.value||'',z=$('rangeTo')?.value||'';
  const items=(typeof data!=='undefined'?data:[]).filter(b=>(!a||b.date>=a)&&(!z||b.date<=z)).sort((x,y)=>x.date.localeCompare(y.date));
- const th=[d.date,d.event,d.total,d.received,d.owed];
- let out='<div class="pdf-brand"><strong>TD Production</strong></div><h2>'+esc(d.report)+'</h2><p>'+esc(d.period)+': '+safeDate(a)+' – '+safeDate(z)+'</p><table class="mark-report-table"><thead><tr>'+th.map(t=>'<th>'+esc(t)+'</th>').join('')+'</tr></thead><tbody>';
- items.forEach(b=>{const f=(typeof finRecord==='function'?finRecord(b.id):{})||{},received=typeof totalClient==='function'?totalClient(b,f):0,base=typeof totalContracted==='function'?totalContracted(b,f):Number(b.price||0);
- out+='<tr><td>'+esc(b.date)+'</td><td>'+esc(b.bride||'')+' '+esc(b.groom||'')+'</td><td>'+money(base)+'</td><td>'+money(received)+'</td><td>'+money(Math.max(0,base-received))+'</td></tr>'});
- return out+'</tbody></table>';
+ let contracted=0,received=0,express=0,crewAgreed=0,crewOut=0,expenses=0,outstanding=0;
+ let out='<div class="pdf-brand"><strong>TD Production</strong></div><h2>'+esc(t.financial)+'</h2><p>'+esc(d.period)+': '+safeDate(a)+' – '+safeDate(z)+'</p>';
+ const records=[];
+ items.forEach(b=>{
+  const f=typeof finRecord==='function'?finRecord(b.id):{};
+  const c=typeof totalContracted==='function'?totalContracted(b,f):Number(b.price||0);
+  const r=typeof totalClient==='function'?totalClient(b,f):Number(b.deposit||0);
+  const e=typeof expressReceived==='function'?expressReceived(f):0;
+  const cp=(f.crew||[]).reduce((v,co)=>v+(typeof crewPaid==='function'?crewPaid(co):Number(co.payments?.reduce((sum,p)=>sum+Number(p.amount||0),0)||0)),0);
+  const ca=(f.crew||[]).reduce((v,co)=>v+Number(co.fee||0),0);
+  const cost=typeof expenseTotal==='function'?expenseTotal(f):0;
+  contracted+=c;received+=r;express+=e;crewAgreed+=ca;crewOut+=cp;expenses+=cost;
+  outstanding+=typeof totalDue==='function'?totalDue(b,f):Math.max(0,c-r);
+  records.push([b.date+' · '+(b.bride||'')+(b.groom?' & '+b.groom:''),money(c),money(r),money(e),money(cp)]);
+ });
+ const totals=[[t.weddings,items.length],[t.package,money(contracted)],[t.received,money(received)],[t.express,money(express)],[t.outstanding,money(outstanding)],[t.crewAgreed,money(crewAgreed)],[t.crewPaid,money(crewOut)],[t.expenses,money(expenses)],[t.profit,money(contracted+express-crewAgreed-expenses)]];
+ out+='<table class="mark-report-table"><tbody>'+totals.map(([k,v])=>'<tr><th>'+esc(k)+'</th><td>'+esc(v)+'</td></tr>').join('')+'</tbody></table>';
+ out+='<h3>'+esc(t.weddings)+'</h3><table class="mark-report-table"><thead><tr>'+[d.event,t.package,t.received,t.express,t.crewPaid].map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>';
+ out+=records.map(row=>'<tr>'+row.map(v=>'<td>'+esc(v)+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+ const groups=typeof staffGroups==='function'?staffGroups(items):[];
+ out+='<h3>'+esc(t.staff)+'</h3><table class="mark-report-table"><thead><tr>'+[t.name,t.engagements,t.crewAgreed,t.crewPaid].map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>';
+ out+=groups.map(g=>'<tr><td>'+esc(g.name)+'</td><td>'+esc(g.events.length)+'</td><td>'+money(g.fee)+'</td><td>'+money(g.paid)+'</td></tr>').join('')+'</tbody></table>';
+ return out;
 }
 function printCopies(id){
  const pane=$(id);if(!pane)return;
@@ -729,5 +754,5 @@ function install(){
  translateUi();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
-window.MarKBookingLanguages={languages:LANGS,language:effective,contract:bookingContract,financialReport};
+window.MarKBookingLanguages={languages:LANGS,language:effective,contract:bookingContract,financialReport,ui:UI,translateMessage:localMessage};
 })();
