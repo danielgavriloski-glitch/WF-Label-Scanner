@@ -30,6 +30,14 @@ class MainActivity : Activity() {
     private val FILE_PICKER_CODE = 8614
     private val BACKUP_EXPORT_CODE = 8615
     private var pendingBackupJson: String? = null
+    @Volatile private var appLanguage: String = "mk"
+    private fun l(mk: String, en: String, sq: String, tr: String): String = when(appLanguage) {
+        "en" -> en
+        "sq" -> sq
+        "tr" -> tr
+        else -> mk
+    }
+
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,7 +63,7 @@ class MainActivity : Activity() {
                         type = "image/*"
                     }
                     @Suppress("DEPRECATION")
-                    startActivityForResult(Intent.createChooser(pick, "Избери бренд лого"), FILE_PICKER_CODE)
+                    startActivityForResult(Intent.createChooser(pick, l("Избери бренд лого", "Choose brand logo", "Zgjidh logon e studios", "Stüdyo logosunu seç")), FILE_PICKER_CODE)
                     true
                 } catch (_: Exception) {
                     pendingFilePicker?.onReceiveValue(null)
@@ -73,6 +81,7 @@ class MainActivity : Activity() {
     }
 
     inner class Bridge {
+        @JavascriptInterface fun setAppLanguage(lang: String) { appLanguage = if(lang in listOf("mk", "en", "sq", "tr")) lang else "mk" }
         @JavascriptInterface fun marKInfo(): String = markSync.info()
         @JavascriptInterface fun marKPair(endpoint: String, fingerprint: String) = markSync.requestPair(endpoint, fingerprint)
         @JavascriptInterface fun marKConfirm() = markSync.finishPair()
@@ -84,13 +93,13 @@ class MainActivity : Activity() {
         @JavascriptInterface fun saveBackupJson(raw: String) = runOnUiThread {
             try {
                 if (raw.toByteArray(Charsets.UTF_8).size > 16 * 1024 * 1024)
-                    throw IllegalArgumentException("Резервната копија е преголема")
+                    throw IllegalArgumentException(l("Резервната копија е преголема", "Backup is too large", "Kopja rezervë është shumë e madhe", "Yedek çok büyük"))
                 val obj = JSONObject(raw)
                 val format = obj.optString("format")
                 if (format != "TD-Booking-backup" && format != "TD-Booking-FULL-backup")
-                    throw IllegalArgumentException("Непознат Backup формат")
+                    throw IllegalArgumentException(l("Непознат Backup формат", "Unknown backup format", "Format i panjohur i kopjes rezervë", "Bilinmeyen yedek biçimi"))
                 if (obj.optJSONArray("bookings") == null || obj.optJSONObject("finance") == null)
-                    throw IllegalArgumentException("Недостасуваат свадбите или финансиите")
+                    throw IllegalArgumentException(l("Недостасуваат свадбите или финансиите", "Bookings or finances missing", "Mungojnë rezervimet ose financat", "Rezervasyonlar veya finans verileri eksik"))
                 pendingBackupJson = raw
                 val date = java.time.LocalDate.now().toString()
                 val fileName = "TD_Booking_" + date + "_backup.json"
@@ -101,7 +110,7 @@ class MainActivity : Activity() {
                 }
                 startActivityForResult(intent, BACKUP_EXPORT_CODE)
             } catch (e: Exception) {
-                backupResult(false, "Грешка при подготовка: " + (e.message ?: "непозната"))
+                backupResult(false, l("Грешка при подготовка: ", "Preparation error: ", "Gabim gjatë përgatitjes: ", "Hazırlık hatası: ") + (e.message ?: l("непозната", "unknown", "i panjohur", "bilinmiyor")))
             }
         }
 
@@ -135,7 +144,7 @@ class MainActivity : Activity() {
     private fun syncNow(raw: String) {
         try {
             val o = JSONObject(raw)
-            val calId = o.optLong("calendarId", -1L).takeIf { it > 0 } ?: writableCalendar() ?: throw IllegalStateException("Нема календар со дозвола за запишување.")
+            val calId = o.optLong("calendarId", -1L).takeIf { it > 0 } ?: writableCalendar() ?: throw IllegalStateException(l("Нема календар со дозвола за запишување.", "No writable calendar available.", "Nuk ka kalendar me leje shkrimi.", "Yazılabilir takvim yok."))
             val date = LocalDate.parse(o.getString("date"))
             val time = runCatching { LocalTime.parse(o.optString("start").takeIf { it.isNotBlank() } ?: "12:00") }.getOrDefault(LocalTime.NOON)
             val zone = ZoneId.systemDefault()
@@ -143,14 +152,14 @@ class MainActivity : Activity() {
             val end = start + 8 * 60 * 60 * 1000L
             val eventType = o.optString("eventType", "wedding")
             val eventLabel = when (eventType) {
-                "christening" -> "Крштевка"
-                "sunet" -> "Сунет"
-                "photoshoot" -> "Фотосесија"
-                "other" -> "Друг настан"
-                else -> "Свадба"
+                "christening" -> l("Крштевка", "Baptism", "Pagëzim", "Vaftiz")
+                "sunet" -> l("Сунет", "Circumcision celebration", "Synet", "Sünnet")
+                "photoshoot" -> l("Фотосесија", "Photo session", "Fotosesion", "Fotoğraf çekimi")
+                "other" -> l("Друг настан", "Other event", "Ngjarje tjetër", "Diğer etkinlik")
+                else -> l("Свадба", "Wedding", "Dasmë", "Düğün")
             }
             val eventName = if (eventType.isBlank() || eventType == "wedding") {
-                "${o.optString("bride")} и ${o.optString("groom")}"
+                "${o.optString("bride")} ${l("и", "and", "dhe", "ve")} ${o.optString("groom")}"
             } else o.optString("bride")
             val values = ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)
@@ -166,11 +175,11 @@ class MainActivity : Activity() {
                 val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
                 if (contentResolver.update(uri, values, null, null) <= 0) eventId = -1
             }
-            if (eventId <= 0) eventId = contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)?.lastPathSegment?.toLongOrNull() ?: throw IllegalStateException("Не успеа запишувањето во Calendar.")
+            if (eventId <= 0) eventId = contentResolver.insert(CalendarContract.Events.CONTENT_URI, values)?.lastPathSegment?.toLongOrNull() ?: throw IllegalStateException(l("Не успеа запишувањето во Calendar.", "Could not save to calendar.", "Nuk u ruajt në kalendar.", "Takvime kaydedilemedi."))
             val js = "onCalendarSynced(${JSONObject.quote(o.getString("id"))},${JSONObject.quote(eventId.toString())},${JSONObject.quote(calId.toString())})"
             web.evaluateJavascript(js, null)
         } catch (e: Exception) {
-            web.evaluateJavascript("alert(${JSONObject.quote("Calendar: ${e.message ?: "грешка"}")})", null)
+            web.evaluateJavascript("alert(${JSONObject.quote("Calendar: ${e.message ?: l("грешка", "error", "gabim", "hata")}")})", null)
         }
     }
 
@@ -203,18 +212,18 @@ class MainActivity : Activity() {
             val payload = pendingBackupJson
             pendingBackupJson = null
             if (resultCode != Activity.RESULT_OK || data?.data == null) {
-                backupResult(false, "Зачувувањето е откажано. Нема изменети записи.")
+                backupResult(false, l("Зачувувањето е откажано. Нема изменети записи.", "Save cancelled. No records changed.", "Ruajtja u anulua. Nuk ka ndryshime.", "Kaydetme iptal edildi. Kayıtlar değişmedi."))
             } else if (payload == null) {
-                backupResult(false, "Податоците за Backup не се достапни — обиди се повторно.")
+                backupResult(false, l("Податоците за Backup не се достапни — обиди се повторно.", "Backup data unavailable. Try again.", "Të dhënat e kopjes rezervë nuk janë të disponueshme. Provoni sërish.", "Yedek verileri kullanılamıyor. Tekrar deneyin."))
             } else {
                 try {
                     contentResolver.openOutputStream(data.data!!, "w")?.use { stream ->
                         stream.write(payload.toByteArray(Charsets.UTF_8))
                         stream.flush()
-                    } ?: throw java.io.IOException("Не може да се отвори избраната датотека")
-                    backupResult(true, "✓ Backup.json е зачуван на избраното место.")
+                    } ?: throw java.io.IOException(l("Не може да се отвори избраната датотека", "Cannot open selected file", "Nuk mund të hapet skedari i zgjedhur", "Seçilen dosya açılamıyor"))
+                    backupResult(true, l("✓ Backup.json е зачуван на избраното место.", "✓ Backup.json saved to the selected location.", "✓ Backup.json u ruajt në vendin e zgjedhur.", "✓ Backup.json seçilen konuma kaydedildi."))
                 } catch (e: Exception) {
-                    backupResult(false, "Не успеа зачувувањето: " + (e.message ?: "грешка"))
+                    backupResult(false, l("Не успеа зачувувањето: ", "Save failed: ", "Ruajtja dështoi: ", "Kaydetme başarısız: ") + (e.message ?: l("грешка", "error", "gabim", "hata")))
                 }
             }
         }
