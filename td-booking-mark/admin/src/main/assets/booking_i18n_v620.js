@@ -281,7 +281,7 @@ const UI={
 "Нова исплата":["New payout","Pagesë e re","Yeni ödeme"],
 "Нема активирани вработени.":["No employees activated.","Nuk ka punonjës të aktivizuar.","Etkinleştirilmiş çalışan yok."],
 "Нема испратени покани.":["No invitations sent.","Nuk ka ftesa të dërguara.","Gönderilen davet yok."],
-"TD Production · верзија 6.20 · Резервации и екипа":["TD Production · version 6.21 · Bookings and team","TD Production · versioni 6.21 · Rezervimet dhe ekipi","TD Production · sürüm 6.21 · Rezervasyonlar ve ekip"],
+"TD Production · верзија 6.21 · Резервации и екипа":["TD Production · version 6.21 · Bookings and team","TD Production · versioni 6.21 · Rezervimet dhe ekipi","TD Production · sürüm 6.21 · Rezervasyonlar ve ekip"],
 "Следен →":["Next →","Tjetër →","Sonraki →"],
 "Невеста *":["Bride *","Nusja *","Gelin *"],
 "Младоженец *":["Groom *","Dhëndri *","Damat *"],
@@ -738,9 +738,14 @@ function printCopies(id){
  }
  let area=$('markMultiPrintArea');if(!area){area=document.createElement('div');area.id='markMultiPrintArea';document.body.appendChild(area)}
  area.innerHTML=parts.join('');document.body.classList.add('mark-multiprint');
- if(window.TDNative&&typeof window.TDNative.printContract==='function')window.TDNative.printContract();else window.print();
+ if(window.TDNative&&typeof window.TDNative.printContract==='function'){
+   window.TDNative.printContract();
+   // Android print preview may not dispatch afterprint. Restore interactive UI afterwards.
+   setTimeout(()=>document.body.classList.remove('mark-multiprint'),4000);
+ }else window.print();
 }
 window.addEventListener('afterprint',()=>{document.body.classList.remove('mark-multiprint')});
+window.addEventListener('focus',()=>{if(document.body?.classList.contains('mark-multiprint'))document.body.classList.remove('mark-multiprint')});
 function install(){
  if(!document.body||!$('drawer'))return;
  installMessages();
