@@ -66,4 +66,30 @@ for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
 assert(scripts >= 5, 'Expected main inline scripts');
 new Function(backup);
 assert(kotlin.includes('put(CalendarContract.Events.TITLE, "$eventLabel · $eventName")'), 'Android Calendar must use actual event type');
-console.log('PASS: 6 contract displays, 7 signing cases, '+scripts+' inline scripts, backup JS and Calendar title.');
+
+const allEvents = fs.readFileSync(path.join(__dirname, '../src/main/assets/booking_full_replica.js'), 'utf8');
+const manualCrew = fs.readFileSync(path.join(__dirname, '../src/main/assets/td_manual_crew.js'), 'utf8');
+const oldWeddingSync = fs.readFileSync(path.join(__dirname, '../src/main/assets/td_mark_ui_v612.js'), 'utf8');
+for (const [name, code] of [['full sync',allEvents],['manual crew',manualCrew],['legacy wedding sync',oldWeddingSync]]) {
+  assert.doesNotThrow(() => new Function(code), name + ' must have valid JavaScript');
+}
+const eventNameCode=between('function eventName(b){','function updateEventTypeFields(){');
+const eventName=new Function(eventNameCode + ';return eventName;')();
+assert.equal(eventName({bride:'Ана',groom:'Петар'}),'Ана и Петар','Legacy weddings remain compatible');
+assert.equal(eventName({eventType:'photoshoot',bride:'Фото сесија'}),'Фото сесија','Other event name');
+const shiftSource=between('function shiftMonth(n){','let selectedBookingDay=null;');
+const shiftResult=new Function('render',
+  "let month=new Date(2027,0,31),selectedBookingDay='2027-01-31';"+shiftSource+
+  ";shiftMonth(1);return {year:month.getFullYear(),month:month.getMonth(),day:month.getDate(),selectedBookingDay};"
+)(()=>{});
+assert.deepEqual(shiftResult,{year:2027,month:1,day:1,selectedBookingDay:null},'Do not skip February when current date is January 31');
+const fullSyncSnap=allEvents.slice(allEvents.indexOf('function snap(){'),allEvents.indexOf('function base(){'));
+assert(fullSyncSnap.startsWith('function snap(){'),'Cannot locate full sync snapshot');
+const snap=new Function('saved','BOOK_KEY','FIN_KEY','PKG_KEY','CACHE_KEY','ROSTER_KEY','PC',
+  fullSyncSnap+';return snap;')(
+  key=>key==='bookings'?[{id:'photo1',eventType:'photoshoot',bride:'Фото сесија'}]:[],
+  'bookings','finance','settings','cache','roster',false);
+assert.equal(snap().bookings.photo1.eventType,'photoshoot','Full sync must carry new event types without dropping fields');
+assert(oldWeddingSync.includes("(!b.eventType||b.eventType==='wedding')"),'Legacy wedding-only sync should exclude other categories');
+
+console.log('PASS: 6 contract displays, 7 signing cases, month rollover, event names, full sync, legacy-only sync, '+scripts+' inline scripts, JS modules and Calendar title.');
