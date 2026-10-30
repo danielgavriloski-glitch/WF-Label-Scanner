@@ -29,7 +29,10 @@ function putVisit(log,input){const out=copy(log||fresh());let v=input.id?out.vis
  const docs=v.documents;Object.assign(v,input,{id:v.id,documents:docs,updatedAt:new Date().toISOString()});validate(out);return {log:out,visit:v};
 }
 function filter(log,{query='',from='',to='',warehouseId='',action='',deleted=false}={}){if(from&&!Core.dateValid(from)||to&&!Core.dateValid(to)||from&&to&&from>to)throw Error('Провери го периодот.');const q=query.trim().toLocaleLowerCase('mk');return log.visits.filter(v=>!!v.deleted===!!deleted&&(!from||v.date>=from)&&(!to||v.date<=to)&&(!warehouseId||v.warehouseId===warehouseId)&&(!action||v.action===action)&&(!q||[v.warehouseName,(log.warehouses.find(w=>w.id===v.warehouseId)||{}).name,v.note,actions[v.action],...v.documents.map(d=>d.name)].join(' ').toLocaleLowerCase('mk').includes(q))).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));}
-const api={actions,fresh,validate,putWarehouse,putVisit,filter,id};
+function removeDocument(log,visitId,documentId){const out=copy(log);const visit=out.visits.find(v=>v.id===visitId);if(!visit)throw Error('Записот не е пронајден.');const before=visit.documents.length;visit.documents=visit.documents.filter(d=>d.id!==documentId);if(before===visit.documents.length)throw Error('Документот не е пронајден.');validate(out);return out;}
+function replaceDocument(log,visitId,documentId,replacement){const out=copy(log);const visit=out.visits.find(v=>v.id===visitId);const index=visit&&visit.documents.findIndex(d=>d.id===documentId);if(index===undefined||index<0)throw Error('Документот не е пронајден.');visit.documents[index]={...replacement,id:documentId};validate(out);return out;}
+function removeWarehouse(log,warehouseId){const out=copy(log);if(out.visits.some(v=>v.warehouseId===warehouseId))throw Error('Магацинот има поврзани записи.');const before=out.warehouses.length;out.warehouses=out.warehouses.filter(w=>w.id!==warehouseId);if(before===out.warehouses.length)throw Error('Магацинот не е пронајден.');validate(out);return out;}
+const api={actions,fresh,validate,putWarehouse,putVisit,filter,removeDocument,replaceDocument,removeWarehouse,id};
 if(Core&&!Core.__warehouseV1){const previous=Core.validate;Core.validate=raw=>{previous(raw);if(raw.warehouseLog!==undefined)validate(raw.warehouseLog);return raw;};Core.__warehouseV1=true;}
 return api;
 });
