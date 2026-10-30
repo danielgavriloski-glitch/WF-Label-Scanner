@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="MarK Booking" android:icon="@drawable/ic_td_launcher" android:allowBackup="true" android:usesCleartextTraffic="false">
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="${appLabel}" android:icon="@drawable/ic_td_launcher" android:allowBackup="true" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
