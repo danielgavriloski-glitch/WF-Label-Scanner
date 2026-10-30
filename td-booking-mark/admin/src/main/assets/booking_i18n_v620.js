@@ -651,6 +651,17 @@ function bookingContract(b,lang){
  const knownPackage=typeof PACKAGES!=='undefined'&&PACKAGES[Number(b.package)]&&String(b.services||'').trim()===String(PACKAGES[Number(b.package)][2]||'').trim();
  if(lang!=='mk'&&(!knownPackage||(!isGeneral&&!isWeddingDefault)||!!b.notes||!!b.giftNotes))x+='<p class="mark-translation-warning">'+esc(d.custom)+'</p>';
  x+='<h3>'+esc(d.notes)+'</h3><p>'+nl(b.notes||'—')+'</p><p>'+esc(d.accept)+'</p>';
+ const fullFin=typeof finRecord==='function'?finRecord(b.id):null;
+ const extras=fullFin?.extras||[];
+ if(extras.length){
+  const ix=['en','sq','tr'].indexOf(lang);
+  const head=UI['Евиденција на дополнителни услуги']?.[ix]||'Евиденција на дополнителни услуги';
+  const serviceHead=UI['Услуга']?.[ix]||'Услуга';
+  const dueHead=REPORT_LABELS[lang]?.outstanding||'За наплата';
+  x+='<h3>'+esc(head)+'</h3><table class="mark-report-table"><tr><th>'+esc(serviceHead)+'</th><th>'+esc(dueHead)+'</th></tr>';
+  extras.forEach(e=>{x+='<tr><td>'+esc(e.name)+'</td><td>'+money(e.price)+'</td></tr>'});
+  x+='</table>';
+ }
  if(b.locked){x+='<p><b>'+esc(d.signed)+':</b> '+safeDate(b.signedAt)+'</p><div class="mark-signatures">';
  const sigs=[[d.provider,b.providerSigner,b.sigProvider],[w?d.bride:d.client,b.bride,b.sigClient1]];
  if(w)sigs.push([d.groom,b.groom,b.sigClient2]);
@@ -786,7 +797,20 @@ function install(){
    return nativeReportPrint.apply(this,arguments);
  };
  const originalShow=window.showContract;
- if(typeof originalShow==='function')window.showContract=function(b){const r=originalShow.apply(this,arguments);const pane=$('markContractLanguages');if(pane){pane.querySelector('select').value=effective();syncExtra(pane)}scheduleUi();return r};
+ if(typeof originalShow==='function')window.showContract=function(b){
+  const result=originalShow.apply(this,arguments);
+  const lang=effective(),pane=$('markContractLanguages');
+  if(pane){pane.querySelector('select').value=lang;syncExtra(pane);}
+  // Only presentation is translated; stored signed records remain unmodified.
+  if(lang!=='mk'){
+    const target=$('contractText');
+    if(target)target.innerHTML=bookingContract(b,lang);
+    const oldSignatures=$('signaturePrint');
+    if(oldSignatures)oldSignatures.innerHTML='';
+  }
+  scheduleUi();
+  return result;
+ };
  observer=new MutationObserver(scheduleUi);observer.observe(document.body,{childList:true,subtree:true,characterData:true});
  translateUi();
 }
