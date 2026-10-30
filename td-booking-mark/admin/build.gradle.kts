@@ -9,7 +9,17 @@ android {
         versionCode = 81
         versionName = "6.21"
     }
-    buildTypes { getByName("release") { isMinifyEnabled = false } }
+    buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-QA"
+            manifestPlaceholders["appLabel"] = "MarK Booking QA"
+        }
+        getByName("release") {
+            isMinifyEnabled = false
+            manifestPlaceholders["appLabel"] = "MarK Booking"
+        }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
