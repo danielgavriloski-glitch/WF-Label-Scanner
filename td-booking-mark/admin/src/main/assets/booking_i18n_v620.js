@@ -373,27 +373,72 @@ function setPanelLabels(){
 }
 
 function uiText(node,lang) {
- let raw=node.__markSource;
- if(raw===undefined){raw=node.nodeValue;node.__markSource=raw;}
- const cleaned=raw.trim(),idx=['en','sq','tr'].indexOf(lang);
- let lead=cleaned.replace(/^[^\p{L}]*/u,'').trim(),prefix=cleaned.slice(0,cleaned.indexOf(lead));
- let phrase=UI[cleaned]||UI[lead];
- if(phrase)node.nodeValue=raw.replace(cleaned,prefix+(idx<0?lead:phrase[idx]));
- else if(node.nodeValue!==raw)node.nodeValue=raw;
+  const previous=node.__markI18n;
+  const current=node.nodeValue;
+  const original=previous && (current===previous.translated || current===previous.original)
+    ?previous.original:current;
+  const stripped=original.trim();
+  if(!stripped)return;
+  const ix=['en','sq','tr'].indexOf(lang);
+  const prefix=(stripped.match(/^[^\p{L}]*/u)||[''])[0];
+  const core=stripped.slice(prefix.length);
+  let out=stripped,match=UI[stripped];
+  if(match)out=ix<0?stripped:match[ix];
+  else if(UI[core])out=prefix+(ix<0?core:UI[core][ix]);
+  else if(ix>=0) {
+    // Translate a fixed UI label even when followed by a dynamic amount or name.
+    const label=stripped.match(/^([\p{L}\p{M}\s\/.+-]{2,65})(:\s*)([\s\S]*)$/u);
+    if(label && UI[label[1].trim()])out=UI[label[1].trim()][ix]+label[2]+label[3];
+  }
+  const leadSpace=(original.match(/^\s*/)||[''])[0];
+  const trailingSpace=(original.match(/\s*$/)||[''])[0];
+  const translated=leadSpace+out+trailingSpace;
+  node.__markI18n={original,translated};
+  if(current!==translated)node.nodeValue=translated;
 }
 function translateUi() {
- const lang=effective();document.documentElement.lang=lang;
- if(observer)observer.disconnect();
- const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
- let node;while((node=walker.nextNode())){
-  const par=node.parentElement;if(!par||par.closest('script,style,textarea,[contenteditable],#contractText,#financeDocument,#reportDocument,#markMultiPrintArea,#markLanguagePanel,#markContractLanguages,#markFinanceLanguages,#markReportLanguages'))continue;
-  if(node.nodeValue.trim())uiText(node,lang);
- }
- document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el=>{for(const attr of ['placeholder','aria-label','title']){if(!el.hasAttribute(attr))continue;const dataKey='markSource'+attr;const current=el.getAttribute(attr);const saved=el.dataset[dataKey];const original=(saved&&current===(saved===current?saved:UI[saved]?.[['en','sq','tr'].indexOf(lang)]||saved))?saved:current;if(!saved||(!UI[saved]&&current!==saved))el.dataset[dataKey]=original;const base=el.dataset[dataKey];const values=UI[base];const ix=['en','sq','tr'].indexOf(lang);const translated=values&&ix>=0?values[ix]:base;if(el.getAttribute(attr)!==translated)el.setAttribute(attr,translated)}});
- const opt=$('markUiLanguage');if(opt)opt.value=localStorage.getItem(K)||'auto';
- const month=$('monthTitle');if(month&&typeof month!=='undefined'&&month instanceof Date){try{month.textContent=window.month.toLocaleDateString(lang+'-'+(lang==='mk'?'MK':lang==='sq'?'AL':lang==='tr'?'TR':'GB'),{month:'long',year:'numeric'})}catch(_e){}}
- setPanelLabels();
- if(observer)observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+  const lang=effective();
+  document.documentElement.lang=lang;
+  if(observer)observer.disconnect();
+  // <option> without explicit value uses its display text as its data value.
+  // Fix it once in the original language before translating the display.
+  document.querySelectorAll('select option:not([value])').forEach(o=>{
+    if(!o.dataset.markOptionValue) {
+      const previous=o.firstChild?.__markI18n?.original;
+      const original=(previous||o.textContent||'').trim();
+      o.dataset.markOptionValue=original;
+      o.value=original;
+    }
+  });
+  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+  let node;
+  while((node=walker.nextNode())){
+    const parent=node.parentElement;
+    if(!parent||parent.closest('script,style,textarea,[contenteditable],#contractText,#financeDocument,#reportDocument,#markMultiPrintArea,#markLanguagePanel,#markContractLanguages,#markFinanceLanguages,#markReportLanguages'))continue;
+    if(node.nodeValue.trim())uiText(node,lang);
+  }
+  document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el=>{
+    for(const attr of ['placeholder','aria-label','title']){
+      if(!el.hasAttribute(attr))continue;
+      const key='markOriginal'+attr,prev=el.dataset[key],shown=el.dataset['markRendered'+attr],present=el.getAttribute(attr);
+      const original=(prev && (present===prev||present===shown))?prev:present;
+      el.dataset[key]=original;
+      const translated=UI[original]?.[['en','sq','tr'].indexOf(lang)]||original;
+      el.dataset['markRendered'+attr]=translated;
+      if(present!==translated)el.setAttribute(attr,translated);
+    }
+  });
+  const opt=$('markUiLanguage');
+  if(opt)opt.value=localStorage.getItem(K)||'auto';
+  const monthLabel=$('monthTitle');
+  if(monthLabel&&typeof month!=='undefined'&&month instanceof Date){
+    try{monthLabel.textContent=month.toLocaleDateString(
+      lang==='mk'?'mk-MK':lang==='sq'?'sq-AL':lang==='tr'?'tr-TR':'en-GB',
+      {month:'long',year:'numeric'}
+    )}catch(_e){}
+  }
+  setPanelLabels();
+  if(observer)observer.observe(document.body,{childList:true,subtree:true,characterData:true});
 }
 function scheduleUi(){if(uiTimer)clearTimeout(uiTimer);uiTimer=setTimeout(translateUi,80)}
 function languagesPanel(id,target){
