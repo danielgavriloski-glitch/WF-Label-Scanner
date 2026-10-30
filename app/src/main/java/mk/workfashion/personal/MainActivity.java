@@ -183,7 +183,7 @@ public class MainActivity extends Activity {
                 visit.put("updatedAt",new java.util.Date().toInstant().toString());
                 if(!writeState(state.toString()))throw new Exception("Замената не се зачува.");
                 boolean used=false;JSONArray all=Documents.documentList(state);for(int k=0;k<all.length();k++)if(oldFile.equals(all.getJSONObject(k).optString("fileId")))used=true;
-                if(!used)Documents.file(this,oldFile).delete();return;
+                if(!used)try{Documents.file(this,oldFile).delete();}catch(Exception ignored){}return;
             }
         }
         throw new Exception("Документот за замена не е пронајден.");
