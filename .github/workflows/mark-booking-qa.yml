@@ -1,0 +1,70 @@
+name: MarK Booking 6.19 QA
+
+on:
+  push:
+    branches:
+      - feature/td-booking-calendar-navigation-redesign
+    paths:
+      - 'td-booking-mark/**'
+      - '.github/workflows/mark-booking-qa.yml'
+  pull_request:
+    paths:
+      - 'td-booking-mark/**'
+      - '.github/workflows/mark-booking-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    name: Test contracts and assemble Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate event contracts and JavaScript
+        run: node td-booking-mark/admin/tests/event_contracts.test.cjs
+
+      - name: Ensure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)
+          fi
+          test -x "$SDKMANAGER"
+          echo "Android SDK location: $ANDROID_HOME"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Test and build MarK Booking Android APK
+        working-directory: td-booking-mark
+        run: gradle :admin:testDebugUnitTest :admin:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload QA-only APK (not an installed-app upgrade)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarK-Booking-6.19-QA-DEBUG-NOT-FOR-UPGRADE
+          path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
+          if-no-files-found: error
+          retention-days: 7

@@ -36,7 +36,7 @@ if(drawer){
 $m('tdMarkClose').onclick=()=>wrap.style.display='none';
 $m('tdMarkStatus').textContent='Не е поврзано';
 function update(text){status=text;$m('tdMarkStatus').textContent=text}
-function metadata(){return (Array.isArray(data)?data:[]).filter(b=>b&&b.id&&b.date).map(b=>{
+function metadata(){return (Array.isArray(data)?data:[]).filter(b=>b&&b.id&&b.date&&(!b.eventType||b.eventType==='wedding')).map(b=>{
  const pkg=Array.isArray(PACKAGES)?PACKAGES[Number(b.package)]:null;
  const pkgName=pkg?String(pkg[0]):(b.package==='custom'?'Посебен пакет':'');
  const text=String(b.services||'')+' '+String(b.giftNotes||'')+' '+pkgName;

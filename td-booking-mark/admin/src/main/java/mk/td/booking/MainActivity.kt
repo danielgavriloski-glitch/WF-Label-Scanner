@@ -141,9 +141,20 @@ class MainActivity : Activity() {
             val zone = ZoneId.systemDefault()
             val start = date.atTime(time).atZone(zone).toInstant().toEpochMilli()
             val end = start + 8 * 60 * 60 * 1000L
+            val eventType = o.optString("eventType", "wedding")
+            val eventLabel = when (eventType) {
+                "christening" -> "Крштевка"
+                "sunet" -> "Сунет"
+                "photoshoot" -> "Фотосесија"
+                "other" -> "Друг настан"
+                else -> "Свадба"
+            }
+            val eventName = if (eventType.isBlank() || eventType == "wedding") {
+                "${o.optString("bride")} и ${o.optString("groom")}"
+            } else o.optString("bride")
             val values = ContentValues().apply {
                 put(CalendarContract.Events.CALENDAR_ID, calId)
-                put(CalendarContract.Events.TITLE, "Свадба · ${o.optString("bride")} и ${o.optString("groom")}")
+                put(CalendarContract.Events.TITLE, "$eventLabel · $eventName")
                 put(CalendarContract.Events.EVENT_LOCATION, o.optString("venue"))
                 put(CalendarContract.Events.DTSTART, start)
                 put(CalendarContract.Events.DTEND, end)

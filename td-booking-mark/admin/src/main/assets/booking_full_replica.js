@@ -38,7 +38,7 @@ function renderLink(){
  const top=document.createElement('section');top.id='marKFullSyncPanel';top.className='card no-print';
  top.style.cssText='padding:13px 16px;border:2px solid #b49756;background:#fffdf7;margin:10px auto;max-width:860px;'
  top.innerHTML='<h2 style="margin:0 0 7px">🔁 MarK · TD Booking — целосна синхронизација</h2>'+
- '<p class="muted" style="margin:0 0 9px">'+(PC?'MarK PC ↔ TD Booking Android':'Телефон ↔ MarK PC')+' · свадби, договори, финансии и исплати. Само на локална поврзана мрежа. Ако истиот запис е сменет на двата уреди, синхронизацијата запира за тој запис наместо да избрише податоци.</p>'+
+ '<p class="muted" style="margin:0 0 9px">'+(PC?'MarK PC ↔ TD Booking Android':'Телефон ↔ MarK PC')+' · настани, договори, финансии и исплати. Само на локална поврзана мрежа. Ако истиот запис е сменет на двата уреди, синхронизацијата запира за тој запис наместо да избрише податоци.</p>'+
  '<button id="marKFullSyncNow" type="button">↻ Синхронизирај сè</button> <span id="markReplicaStatus" style="font-size:12px">Подготвено.</span><div id="markReplicaConflicts" style="display:none;white-space:pre-wrap;border:1px solid #be8b45;border-radius:8px;padding:10px;margin-top:9px"></div>';
  if(PC){const crew=document.createElement('div');crew.id='markReplicaRosterList';crew.style.cssText='font-size:13px;color:#41645c;padding:9px 0';top.append(crew)}
  const header=document.querySelector('header');header?.insertAdjacentElement('afterend',top);
@@ -111,7 +111,7 @@ function drawRoster(){
    const fee=Number(c.fee)||0;
    const paid=(Array.isArray(c.payments)?c.payments:[]).reduce((s,x)=>s+(Number(x?.amount)||0),0);
    const g=groups.get(key)||{name,role:String(c.role||''),fee:0,paid:0,weddings:new Set(),entries:0};
-   g.fee+=fee;g.paid+=paid;g.entries++;g.weddings.add(String(w.bride||'')+' и '+String(w.groom||''));
+   g.fee+=fee;g.paid+=paid;g.entries++;g.weddings.add(w.eventType&&w.eventType!=='wedding'?String(w.bride||'Настан'):String(w.bride||'')+' и '+String(w.groom||''));
    groups.set(key,g);engagements++;
   }
  }
@@ -169,7 +169,7 @@ async function sync(manual=false){if(busy||(!PC&&!NATIVE))return;const el=docume
  setStatus((conflicts.length?'⚠ Потребна проверка: '+conflicts.length+' конфликти. ':'✓ Поврзано. ')+
    'Последно: '+when+' · '+(response.applied||[]).length+' прифатени измени'+
    (changed?', преземени нови податоци':'')+
-   ' · На MarK сервер: '+Object.keys(response.snapshot?.bookings||{}).length+' свадби / '+Object.keys(response.snapshot?.finance||{}).length+' финансии',!!conflicts.length);
+   ' · На MarK сервер: '+Object.keys(response.snapshot?.bookings||{}).length+' настани / '+Object.keys(response.snapshot?.finance||{}).length+' финансии',!!conflicts.length);
  if(PC){const cache=Object.keys(window.marKTeamRoster||{}).length;const ex=document.getElementById('markReplicaRoster');if(ex)ex.textContent='Профили на екипа (информативно): '+cache}
  stamp=Date.now();}
  catch(error){setStatus('Нема синхронизација: '+error.message+'. Локалните податоци се зачувани.',true)}

@@ -31,7 +31,7 @@ area.innerHTML=`
 <div id="mcEditor" hidden>
 <form id="mcForm">
  <div class="mc-grid">
-  <label>Свадба / ангажман<select id="mcWedding" required></select></label>
+  <label>Настан / ангажман<select id="mcWedding" required></select></label>
   <label>Име и презиме *<input id="mcName" maxlength="140" required autocomplete="name"></label>
   <label>Телефон (по желба)<input id="mcPhone" maxlength="50" type="tel"></label>
   <label>Улога *<select id="mcRole" required>
@@ -62,7 +62,7 @@ area.innerHTML=`
 </form></div>
 <h3>Рачно внесени ангажмани</h3>
 <div id="mcTotals" class="mc-muted"></div><div id="mcEntries"></div>
-<p class="mc-muted">Другите ангажмани внесени преку Финансии се прикажани подолу. „Општ ангажман“ се следи одделно од сметката на конкретна свадба.</p>
+<p class="mc-muted">Другите ангажмани внесени преку Финансии се прикажани подолу. „Општ ангажман“ се следи одделно од сметката на конкретен настан.</p>
 `;
 host.insertBefore(area,oldList);
 const el=id=>document.getElementById(id);
@@ -73,10 +73,10 @@ const money=v=>(Number(v)||0).toFixed(2)+' €';
 const numeric=v=>{const s=String(v??'').trim().replace(',','.');return s===''?NaN:Number(s)};
 const day=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const paid=c=>(Array.isArray(c.payments)?c.payments:[]).reduce((sum,p)=>sum+(Number(p.amount)||0),0);
-function wedLabel(id){const w=allBookings().find(x=>String(x.id)===String(id));return id===GENERAL?'Општ ангажман':w?String(w.date||'')+' · '+String(w.bride||'')+' и '+String(w.groom||''):'Свадба (архивирана)'}
+function wedLabel(id){const w=allBookings().find(x=>String(x.id)===String(id));return id===GENERAL?'Општ ангажман':w?String(w.date||'')+' · '+((w.eventType&&w.eventType!=='wedding')?String(w.bride||'Настан'):String(w.bride||'')+' и '+String(w.groom||'')):'Настан (архивиран)'}
 function options(wanted){
  const sel=el('mcWedding');sel.replaceChildren();
- const general=document.createElement('option');general.value=GENERAL;general.textContent='Општ ангажман (без свадба)';sel.append(general);
+ const general=document.createElement('option');general.value=GENERAL;general.textContent='Општ ангажман (без настан)';sel.append(general);
  for(const w of allBookings().slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))){
   if(!w||!w.id)continue;const opt=document.createElement('option');opt.value=String(w.id);opt.textContent=wedLabel(w.id);sel.append(opt);
  }

@@ -19,19 +19,19 @@
    const bookings=typeof data!=='undefined'&&Array.isArray(data)?data:read('tdBookingsV1',[]);
    const accounts=typeof finance!=='undefined'&&finance&&typeof finance==='object'?finance:read('tdBookingFinanceV1',{});
    if(!Array.isArray(bookings)||!accounts||Array.isArray(accounts)||typeof accounts!=='object')
-     throw Error('Неправилни свадби или финансиски податоци — ништо не е извезено');
+     throw Error('Неправилни настани или финансиски податоци — ништо не е извезено');
    const packages=read('tdPackageSettings',[]);
    const obj={format:'TD-Booking-backup',version:3,exported:new Date().toISOString(),
       bookings,finance:accounts,packageSettings:packages};
    const output=JSON.stringify(obj,null,2);
    if(output.length>16*1024*1024)throw Error('Копијата е преголема за овој извоз');
-   if(!bookings.length)throw Error('Не се пронајдени свадби. Нема да извезам празна копија без твоја потврда.');
+   if(!bookings.length)throw Error('Не се пронајдени настани. Нема да извезам празна копија без твоја потврда.');
    return {output,count:bookings.length,finCount:Object.keys(accounts).length};
  };
  btn.addEventListener('click',()=>{
    try{
      const data=pack();if(target)target.value=data.output;
-     text('Подготвени: '+data.count+' свадби и '+data.finCount+' финансиски записи. Избери место за зачувување…');
+     text('Подготвени: '+data.count+' настани и '+data.finCount+' финансиски записи. Избери место за зачувување…');
      if(window.TDNative&&typeof window.TDNative.saveBackupJson==='function'){
        window.TDNative.saveBackupJson(data.output);
      }else{
