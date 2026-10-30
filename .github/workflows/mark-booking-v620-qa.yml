@@ -53,3 +53,11 @@ jobs:
           path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload unsigned release for original-key signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarK-Booking-6.21-RELEASE-UNSIGNED-NEEDS-ORIGINAL-KEY
+          path: td-booking-mark/admin/build/outputs/apk/release/admin-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
