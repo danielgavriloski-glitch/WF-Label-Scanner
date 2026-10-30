@@ -147,24 +147,58 @@ en:'1. The provider will deliver the agreed photo and video services on the stat
 sq:'1. Ofruesi siguron shërbimet e dakorduara të fotografimit dhe videos në datën dhe vendin e shënuar.\n2. Klienti siguron qasje në kohë dhe konfirmon orarin para ngjarjes.\n3. Çmimi, parapagimi, pagesat dhe afati i dorëzimit përcaktohen në këtë kontratë.\n4. Ndryshimet në datë, shërbime ose çmim kërkojnë marrëveshje me shkrim nga të dyja palët.\n5. Kushtet dhe kërkesat shtesë regjistrohen para nënshkrimit.',
 tr:'1. Hizmet sağlayıcı, belirtilen tarihte ve yerde kararlaştırılan fotoğraf ve video hizmetlerini sunacaktır.\n2. Müşteri etkinlikten önce zamanında erişim sağlayacak ve programı onaylayacaktır.\n3. Fiyat, kapora, ödeme düzeni ve teslim tarihi bu sözleşmede belirtilmiştir.\n4. Tarih, hizmet veya fiyat değişiklikleri için iki tarafın yazılı anlaşması gerekir.\n5. Ek koşullar ve talepler imzalamadan önce kaydedilir.'
 };
+
+const WEDDING_TERMS={
+mk:'1. Изведувачот ги обезбедува услугите наведени во овој договор за датумот и локациите наведени погоре.\n2. Клиентите обезбедуваат навремен пристап до договорените локации и го потврдуваат распоредот пред свадбата.\n3. Цената, капарот, рокот за остатокот и рокот за испорака се наведени во договорот.\n4. Секоја промена во пакетот, датумот, локацијата, цената или рокот се потврдува писмено од двете страни.\n5. Условите за откажување, користење на фотографиите и видеото и сите посебни барања се внесуваат во „Дополнителни договори и измени“ пред потпис.',
+en:'1. The provider delivers the agreed services on the specified date and at the specified locations.\n2. The clients ensure timely access to the agreed locations and confirm the schedule before the wedding.\n3. The price, deposit, balance deadline and delivery deadline are stated in this agreement.\n4. Changes to the package, date, venue, price or deadline must be confirmed in writing by both parties.\n5. Cancellation terms, use of photos and video, and special requests must be recorded under Additional agreements and changes before signing.',
+sq:'1. Ofruesi siguron shërbimet e dakorduara në datën dhe vendet e përcaktuara më sipër.\n2. Klientët sigurojnë qasje në kohë në vendet e dakorduara dhe konfirmojnë orarin para dasmës.\n3. Çmimi, parapagimi, afati i pagesës së mbetur dhe afati i dorëzimit janë shënuar në këtë kontratë.\n4. Çdo ndryshim i paketës, datës, vendit, çmimit ose afatit konfirmohet me shkrim nga të dyja palët.\n5. Kushtet e anulimit, përdorimi i fotove dhe videos dhe kërkesat e veçanta shënohen te Marrëveshje dhe ndryshime shtesë para nënshkrimit.',
+tr:'1. Hizmet sağlayıcı, yukarıda belirtilen tarih ve yerlerde kararlaştırılan hizmetleri sunar.\n2. Müşteriler kararlaştırılan yerlere zamanında erişim sağlar ve düğün programını önceden onaylar.\n3. Fiyat, kapora, kalan ödeme tarihi ve teslim tarihi bu sözleşmede belirtilir.\n4. Paket, tarih, mekân, fiyat veya süre değişiklikleri her iki tarafça yazılı olarak onaylanır.\n5. İptal şartları, fotoğraf ve videoların kullanımı ile özel talepler imza öncesinde Ek anlaşmalar ve değişiklikler bölümüne yazılır.'
+};
+const SERVICE_DESCS={
+en:[
+'One Full HD camera; photography coverage; on-day photo session; 50 printed 13 × 18 cm photos; digital delivery.',
+'One Full HD camera; two photographers (the second starts at the bride); photo session; 50 printed 13 × 18 cm photos; digital delivery.',
+'Main Full HD camera; second camera with crane at the hotel; drone where conditions permit; two photographers; photo session; 50 printed 13 × 18 cm photos; digital delivery.',
+'Main Full HD camera; second camera with crane; drone where conditions permit; two photographers; photo session; 2–3 minute Best Moments video; 50 printed 13 × 18 cm photos; digital delivery.',
+'Main Full HD camera; second camera with crane; drone where conditions permit; two photographers; photo session; Love Story on a separate day with at least two hours with the couple; 2–3 minute film; 50 printed 13 × 18 cm photos; digital delivery.',
+'Main and crane cameras in 4K UHD; drone where conditions permit; two photographers; photo session; 2–3 minute Best Moments 4K video; 50 printed 13 × 18 cm photos; digital delivery.',
+'4K UHD video; crane camera; drone where conditions permit; two photographers; photo session; custom Love Story on a separate day with at least two hours with the couple; 2–3 minute film; 50 printed 13 × 18 cm photos; digital delivery.'],
+sq:[
+'Një kamerë Full HD; mbulim fotografik; fotosesion ditën e ngjarjes; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Një kamerë Full HD; dy fotografë (i dyti fillon te nusja); fotosesion; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Kamera kryesore Full HD; kamera e dytë me kran në hotel; dron kur kushtet e lejojnë; dy fotografë; fotosesion; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Kamera kryesore Full HD; kamera e dytë me kran; dron kur kushtet e lejojnë; dy fotografë; fotosesion; video Best Moments 2–3 minuta; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Kamera kryesore Full HD; kamera e dytë me kran; dron kur kushtet e lejojnë; dy fotografë; fotosesion; Love Story në ditë të veçantë, së paku dy orë me çiftin; film 2–3 minuta; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Kamera kryesore dhe kamera me kran në 4K UHD; dron kur kushtet e lejojnë; dy fotografë; fotosesion; video Best Moments 4K 2–3 minuta; 50 foto të printuara 13 × 18 cm; dorëzim digjital.',
+'Video 4K UHD; kamerë me kran; dron kur kushtet e lejojnë; dy fotografë; fotosesion; Love Story e personalizuar në ditë të veçantë, së paku dy orë me çiftin; film 2–3 minuta; 50 foto të printuara 13 × 18 cm; dorëzim digjital.'],
+tr:[
+'Bir Full HD kamera; fotoğraf çekimi; etkinlik günü fotoğraf oturumu; 50 adet 13 × 18 cm baskı fotoğraf; dijital teslimat.',
+'Bir Full HD kamera; iki fotoğrafçı (ikinci fotoğrafçı gelinin yanında başlar); fotoğraf oturumu; 50 adet 13 × 18 cm baskı; dijital teslimat.',
+'Ana Full HD kamera; otelde vinçli ikinci kamera; koşullar uygunsa drone; iki fotoğrafçı; fotoğraf oturumu; 50 adet 13 × 18 cm baskı; dijital teslimat.',
+'Ana Full HD kamera; vinçli ikinci kamera; koşullar uygunsa drone; iki fotoğrafçı; fotoğraf oturumu; 2–3 dakikalık Best Moments videosu; 50 adet 13 × 18 cm baskı; dijital teslimat.',
+'Ana Full HD kamera; vinçli ikinci kamera; koşullar uygunsa drone; iki fotoğrafçı; fotoğraf oturumu; çiftle ayrı bir günde en az iki saat Love Story çekimi; 2–3 dakikalık film; 50 adet 13 × 18 cm baskı; dijital teslimat.',
+'4K UHD ana ve vinçli kameralar; koşullar uygunsa drone; iki fotoğrafçı; fotoğraf oturumu; 2–3 dakikalık Best Moments 4K videosu; 50 adet 13 × 18 cm baskı; dijital teslimat.',
+'4K UHD video; vinçli kamera; koşullar uygunsa drone; iki fotoğrafçı; fotoğraf oturumu; çiftle ayrı bir günde en az iki saat kişiselleştirilmiş Love Story; 2–3 dakikalık film; 50 adet 13 × 18 cm baskı; dijital teslimat.']
+};
 function bookingContract(b,lang){
  const d=DOC[lang],w=!b.eventType||b.eventType==='wedding',rest=(Number(b.price)||0)-(Number(b.deposit)||0);
  const terms=String(b.terms||''),isGeneral=terms.trim()===TERMS.mk.trim();
- const humanTerms=isGeneral?nl(TERMS[lang]):nl(terms);
+ const isWeddingDefault=terms.trim()===WEDDING_TERMS.mk.trim();
+ const humanTerms=isGeneral?nl(TERMS[lang]):isWeddingDefault?nl(WEDDING_TERMS[lang]):nl(terms);
  let x='<div class="pdf-brand"><strong>'+esc(b.provider||'TD Production')+'</strong><br>'+esc(d.title)+'</div>';
  x+=labelRow(d.no,esc(String(b.id||'').slice(0,8).toUpperCase()))+labelRow(d.date,esc(b.signedAt?new Date(b.signedAt).toLocaleDateString(lang):new Date().toLocaleDateString(lang)));
  x+=labelRow(d.provider,esc(b.provider)+' · '+esc(b.providerSigner));
  x+=labelRow(d.clients,esc(w?(b.bride||'')+' & '+(b.groom||''):b.bride));
  x+=labelRow(d.contact,esc(b.phone));
  x+=labelRow(d.event,safeDate(b.date)) +labelRow(d.start,safeDate(b.start))+labelRow(d.venue,safeDate(b.venue));
- x+='<h3>'+esc(d.subject)+'</h3>'+labelRow(esc(typeof packageName==='function'?packageName(b.package):'Package'),nl(b.services));
+ x+='<h3>'+esc(d.subject)+'</h3>'+labelRow(esc(typeof packageName==='function'?packageName(b.package):'Package'),nl((lang!=='mk'&&typeof PACKAGES!=='undefined'&&PACKAGES[Number(b.package)]&&String(b.services||'').trim()===String(PACKAGES[Number(b.package)][2]||'').trim())?SERVICE_DESCS[lang][Number(b.package)]:b.services));
  if(b.giftNotes)x+=labelRow(d.gift,nl(b.giftNotes));
  x+='<h3>'+esc(d.price)+'</h3>';
  if(b.basePrice!==undefined)x+=labelRow(d.base,safeDate(b.basePrice)+' €')+labelRow(d.discount,esc(b.discountValue||0)+(b.discountType==='amount'?' €':' %'));
  x+=labelRow(d.total,safeDate(b.price)+' €')+labelRow(d.deposit,safeDate(b.deposit||0)+' €')+labelRow(d.balance,esc(rest.toFixed(2))+' €');
  x+=labelRow(d.due,safeDate(b.due))+labelRow(d.delivery,safeDate(b.delivery));
  x+='<h3>'+esc(d.terms)+'</h3><p>'+humanTerms+'</p>';
- if(lang!=='mk'&&!isGeneral)x+='<p class="mark-translation-warning">'+esc(d.custom)+'</p>';
+ if(lang!=='mk'&&!isGeneral&&!isWeddingDefault)x+='<p class="mark-translation-warning">'+esc(d.custom)+'</p>';
  x+='<h3>'+esc(d.notes)+'</h3><p>'+nl(b.notes||'—')+'</p><p>'+esc(d.accept)+'</p>';
  if(b.locked){x+='<p><b>'+esc(d.signed)+':</b> '+safeDate(b.signedAt)+'</p><div class="mark-signatures">';
  const sigs=[[d.provider,b.providerSigner,b.sigProvider],[w?d.bride:d.client,b.bride,b.sigClient1]];
@@ -182,7 +216,7 @@ function financeDoc(lang) {
  x+=labelRow(d.event,esc(b.bride||'')+(b.groom?' & '+esc(b.groom):'')+' · '+safeDate(b.date));
  x+=labelRow(d.provider,esc(b.provider||'TD Production'));
  if(kind==='client'){if(!p)return null;x+=labelRow(d.amount,money(p.amount))+labelRow(d.paymentDate,safeDate(p.date))+labelRow(d.method,esc(p.method||'—'));
-  x+=labelRow(d.total,money(b.price))+labelRow(d.services,money((f.extras||[]).reduce((v,e)=>v+Number(e.price||0),0)))+labelRow(d.received,money(Number(b.deposit||0)+(f.clientPayments||[]).reduce((v,e)=>v+Number(e.amount||0),0)));
+  x+=labelRow(d.total,money(b.price))+labelRow(d.services,money(typeof extraBilled==='function'?extraBilled(f):0))+labelRow(d.received,money(typeof totalClient==='function'?totalClient(b,f):0));
  }else if(kind==='crewReceipt'){if(!p||!co)return null;x+=labelRow(d.employee,esc(co.name))+labelRow(d.role,esc(co.role))+labelRow(d.amount,money(p.amount))+labelRow(d.paymentDate,safeDate(p.date))+labelRow(d.method,esc(p.method||'—'))+labelRow(d.fee,money(co.fee));
  }else if(kind==='express'){if(!p)return null;x+=labelRow(d.amount,money(p.amount))+labelRow(d.paymentDate,safeDate(p.date))+labelRow(d.services,esc(p.note||'—'));
  }else if(kind==='crewContract'){if(!co)return null;x+=labelRow(d.employee,esc(co.name))+labelRow(d.role,esc(co.role))+labelRow(d.fee,money(co.fee))+labelRow(d.start,safeDate(co.start))+labelRow(d.due,safeDate(co.due))+labelRow(d.tasks,nl(co.tasks||'—'))+labelRow(d.handoff,nl(co.handoff||'—'))+labelRow(d.conditions,nl(co.notes||'—'));if(lang!=='mk')x+='<p class="mark-translation-warning">'+esc(d.custom)+'</p>';
@@ -200,7 +234,7 @@ function financialReport(lang){
  const items=(typeof data!=='undefined'?data:[]).filter(b=>(!a||b.date>=a)&&(!z||b.date<=z)).sort((x,y)=>x.date.localeCompare(y.date));
  const th=[d.date,d.event,d.total,d.received,d.owed];
  let out='<div class="pdf-brand"><strong>TD Production</strong></div><h2>'+esc(d.report)+'</h2><p>'+esc(d.period)+': '+safeDate(a)+' – '+safeDate(z)+'</p><table class="mark-report-table"><thead><tr>'+th.map(t=>'<th>'+esc(t)+'</th>').join('')+'</tr></thead><tbody>';
- items.forEach(b=>{const f=(typeof finRecord==='function'?finRecord(b.id):{})||{},received=Number(b.deposit||0)+(f.clientPayments||[]).reduce((s,p)=>s+Number(p.amount||0),0),base=Number(b.price||0);
+ items.forEach(b=>{const f=(typeof finRecord==='function'?finRecord(b.id):{})||{},received=typeof totalClient==='function'?totalClient(b,f):0,base=typeof totalContracted==='function'?totalContracted(b,f):Number(b.price||0);
  out+='<tr><td>'+esc(b.date)+'</td><td>'+esc(b.bride||'')+' '+esc(b.groom||'')+'</td><td>'+money(base)+'</td><td>'+money(received)+'</td><td>'+money(Math.max(0,base-received))+'</td></tr>'});
  return out+'</tbody></table>';
 }
