@@ -58,8 +58,8 @@ for (const [type, third, expectedLock] of [
   if (expectedLock && type !== 'wedding') assert.equal(b.sigClient2, undefined, 'Unneeded third signature '+type);
 }
 let scripts=0;
-for(const match of html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)) {
-  if (/\\bsrc\\s*=/.test(match[1])) continue;
+for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+  if (/\bsrc\s*=/.test(match[1])) continue;
   new Function(match[2]);
   scripts++;
 }
