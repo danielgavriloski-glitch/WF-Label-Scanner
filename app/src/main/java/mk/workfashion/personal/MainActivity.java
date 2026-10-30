@@ -127,6 +127,15 @@ public class MainActivity extends Activity {
         });
     }
     public class LocalBridge {
+        @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
+            try{
+                File target=Documents.file(MainActivity.this,fileId);
+                JSONObject current=new JSONObject(readState());
+                JSONArray docs=Documents.documentList(current);
+                for(int i=0;i<docs.length();i++)if(fileId.equals(docs.getJSONObject(i).optString("fileId")))return false;
+                return !target.exists()||target.delete();
+            }catch(Exception e){return false;}
+        }
         @JavascriptInterface public void attachDocument(String visitId,String mode){runOnUiThread(()->chooseDocument(visitId,mode));}
         @JavascriptInterface public void openDocument(String fileId){runOnUiThread(()->{try{File f=Documents.file(MainActivity.this,fileId);if(!f.isFile())throw new Exception();Uri uri=Uri.parse("content://"+getPackageName()+".documents/documents/"+fileId);Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,Documents.mime(fileId));i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){error("Документот не се отвори. За PDF, Word или Excel избери соодветна апликација.");}});}
         @JavascriptInterface public void exportFullBackup(){runOnUiThread(()->{if(!archiveState.isEmpty()){error("Прво заврши го претходниот бекап.");return;}archiveState=readState();archiveGps=RouteTrackingService.stateJson(MainActivity.this);try{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");i.putExtra(Intent.EXTRA_TITLE,"WFAG_full_backup_"+new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.ROOT).format(new java.util.Date())+".zip");startActivityForResult(i,CREATE_ARCHIVE);}catch(Exception e){archiveState="";archiveGps="";error("Бекапот не се отвори.");}});}
