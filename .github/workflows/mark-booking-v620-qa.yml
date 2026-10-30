@@ -1,0 +1,54 @@
+name: MarK Booking 6.20 multilingual QA
+
+on:
+  push:
+    branches:
+      - feature/mark-booking-v6-20-languages-documents
+    paths:
+      - 'td-booking-mark/**'
+      - '.github/workflows/mark-booking-v620-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript and existing event contracts
+        run: |
+          node --check td-booking-mark/admin/src/main/assets/booking_i18n_v620.js
+          node td-booking-mark/admin/tests/event_contracts.test.cjs
+      - name: Ensure SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Android compile and unit tests
+        working-directory: td-booking-mark
+        run: gradle :admin:testDebugUnitTest :admin:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarK-Booking-6.20-QA-DEBUG-NOT-FOR-UPGRADE
+          path: td-booking-mark/admin/build/outputs/apk/debug/admin-debug.apk
+          if-no-files-found: error
+          retention-days: 7
