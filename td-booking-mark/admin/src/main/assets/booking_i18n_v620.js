@@ -675,6 +675,18 @@ function financeDoc(lang) {
  if(p&&p.note)x+=labelRow(d.notes,nl(p.note));
  const signs=[b.providerSigner||b.provider||'TD Production',co?co.name:(kind==='client'?b.bride:'')];
  x+='<div class="mark-signatures">'+signs.map(v=>'<div><p><b>'+esc(v)+'</b><br>'+esc(d.signature)+'</p></div>').join('')+'</div>';
+ if(!co?.signedContract) {
+   // Transplant existing unsigned canvas strokes into each translated copy.
+   for(const [i,canvas] of ['docSig0','docSig1'].entries()){
+     const el=$(canvas);
+     if(!el)continue;
+     try{
+       if(typeof hasInk==='function'&&hasInk(el)){
+         x+='<p>'+esc(signs[i]||d.signature)+'</p><img style="max-width:220px;max-height:90px" src="'+esc(el.toDataURL('image/png'))+'" alt="'+esc(d.signature)+'">';
+       }
+     }catch(_e){}
+   }
+ }
  if(co&&co.signedContract){x+='<p>'+esc(d.signed)+': '+safeDate(co.signedContract.signedAt)+'</p>';
  const sig=co.signedContract;if(sig.provider&&sig.crew)x+='<div class="mark-signatures"><img src="'+esc(sig.provider)+'" alt="Signature"><img src="'+esc(sig.crew)+'" alt="Signature"></div>';
  }
@@ -748,6 +760,26 @@ function install(){
   const result=prev.apply(this,args);const panel=$('markFinanceLanguages');if(panel)panel.querySelector('select').value=effective();if(panel)syncExtra(panel);return result;
  }}
  ['clientReceipt','crewReceipt','expressReceipt','crewContract'].forEach(w=>wrap(w));
+ // All standard PDF/print buttons honour the document's language selection.
+ const nativeContractPrint=window.printContract;
+ if(typeof nativeContractPrint==='function')window.printContract=function(){
+   const card=$('printCard');
+   if(card && !card.classList.contains('hidden') && !card.classList.contains('viewhidden') &&
+      !document.body.classList.contains('finance-print') && !document.body.classList.contains('report-print')) {
+     return printCopies('markContractLanguages');
+   }
+   return nativeContractPrint.apply(this,arguments);
+ };
+ const nativeFinancePrint=window.printFinance;
+ if(typeof nativeFinancePrint==='function')window.printFinance=function(){
+   if(currentDoc&&$('markFinanceLanguages'))return printCopies('markFinanceLanguages');
+   return nativeFinancePrint.apply(this,arguments);
+ };
+ const nativeReportPrint=window.printReport;
+ if(typeof nativeReportPrint==='function')window.printReport=function(){
+   if($('markReportLanguages'))return printCopies('markReportLanguages');
+   return nativeReportPrint.apply(this,arguments);
+ };
  const originalShow=window.showContract;
  if(typeof originalShow==='function')window.showContract=function(b){const r=originalShow.apply(this,arguments);const pane=$('markContractLanguages');if(pane){pane.querySelector('select').value=effective();syncExtra(pane)}scheduleUi();return r};
  observer=new MutationObserver(scheduleUi);observer.observe(document.body,{childList:true,subtree:true,characterData:true});
