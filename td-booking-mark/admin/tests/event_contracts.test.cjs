@@ -154,4 +154,43 @@ const selectedDay=new Function('document','selectedBookingDay','data','escapeHtm
 selectedDay();
 assert(selectedHost.innerHTML.includes('120 настани'),'120 events on a single date must be visible');
 assert((selectedHost.innerHTML.match(/data-booking-id=/g)||[]).length===120,'Do not silently cap event lists at 100');
+
+// Synchronization UI regression: both existing controllers live on a separate drawer-only page.
+const syncNav=fs.readFileSync(path.join(__dirname,'../src/main/assets/booking_sync_navigation_v619.js'),'utf8');
+assert.doesNotThrow(()=>new Function(syncNav),'Sync-navigation module must parse');
+assert(html.includes('<script src="booking_sync_navigation_v619.js"></script>'),'Sync drawer module is loaded');
+const fakeClassList=()=>({items:new Set(),add(x){this.items.add(x)},remove(x){this.items.delete(x)},contains(x){return this.items.has(x)}});
+const fakeElement=(id)=>({
+ id,style:{},classList:fakeClassList(),children:[],textContent:'',tagName:'SECTION',
+ setAttribute(){},scrollIntoView(){},appendChild(child){this.children.push(child);child.parent=this;return child}
+});
+const fakeMain=fakeElement('main'),fakeCalendar=fakeElement('overview'),fakeSearch=fakeElement('listCard');
+fakeMain.appendChild(fakeCalendar);fakeMain.appendChild(fakeSearch);
+fakeMain.querySelectorAll=selector=>selector===':scope > section'?fakeMain.children:[];
+const fakeFull=fakeElement('marKFullSyncPanel');
+const fakePair=fakeElement('tdMarKPanel');
+const fakeClose=fakeElement('tdMarkClose');
+const fakeEntry=fakeElement('drawerLink');
+fakeEntry.tagName='BUTTON';fakeEntry.textContent='🔗 MarK поврзување';
+const fakeDrawer={querySelectorAll:()=>[fakeEntry]};
+const mockEls={drawer:fakeDrawer,marKFullSyncPanel:fakeFull,tdMarKPanel:fakePair,tdMarkClose:fakeClose};
+const navCalls=[];
+const mockWindow={navigate:view=>navCalls.push(view),toggleDrawer:()=>{}};
+const mockDocument={querySelector:selector=>selector==='main'?fakeMain:null,getElementById:id=>mockEls[id],createElement:()=>fakeElement('newSection')};
+new Function('document','window',syncNav)(mockDocument,mockWindow);
+const syncPage=fakeMain.children.find(x=>x.id==='bookingSyncView');
+assert(syncPage,'Menu-only sync page created');
+assert.equal(fakeFull.parent,syncPage,'Full sync panel moved without rebuilding or losing listeners');
+assert.equal(fakePair.parent,syncPage,'MarK pairing panel moved without rebuilding');
+assert.equal(fakePair.style.display,'block','Pairing panel displayed only inside hidden sync page');
+assert(syncPage.classList.contains('viewhidden'),'Sync page hidden on initial calendar home');
+assert.equal(fakeEntry.textContent,'↻ Синхронизација со MarK','Existing drawer entry reused, not duplicated');
+fakeEntry.onclick();
+assert(syncPage.classList.contains('viewhidden')===false,'Drawer opens synchronization page');
+assert(fakeCalendar.classList.contains('viewhidden'),'Calendar hidden while viewing sync page');
+fakeClose.onclick();
+assert(syncPage.classList.contains('viewhidden'),'Closing pairing returns to the calendar');
+assert.deepEqual(navCalls,['weddings','dashboard']);
+assert(!syncNav.includes('localStorage.setItem'),'Moving sync panels must not change stored bookings or credentials');
+
 console.log('PASS: 6 contract displays, 7 signing cases, month rollover, full sync operation and apply round-trip, '+scripts+' inline scripts, JS modules and Calendar title.');
