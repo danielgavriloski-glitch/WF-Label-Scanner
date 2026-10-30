@@ -7,6 +7,72 @@
 const LANGS={mk:'Македонски',en:'English',sq:'Shqip',tr:'Türkçe'};
 const K='markBookingLocale_v620';
 const UI={
+"Календарот е достапен во APK апликацијата.":["The calendar is available in the Android app.","Kalendari është i disponueshëm në aplikacionin Android.","Takvim Android uygulamasında kullanılabilir."],
+"Настанот е синхронизиран со Google Calendar.":["The event has been synced with Google Calendar.","Ngjarja u sinkronizua me Google Calendar.","Etkinlik Google Takvim ile eşitlendi."],
+"Пополнете ги полињата означени со *.":["Fill in the fields marked *.","Plotësoni fushat e shënuara me *.","* ile işaretli alanları doldurun."],
+"Капарот не може да е поголем од цената.":["The deposit cannot exceed the total price.","Parapagimi nuk mund të tejkalojë çmimin.","Kapora toplam fiyatı aşamaz."],
+"Потпишан договор е заклучен. Направете нова резервација за измените.":["This signed agreement is locked. Create a new booking for changes.","Kontrata e nënshkruar është bllokuar. Krijoni rezervim të ri për ndryshimet.","İmzalı sözleşme kilitlidir. Değişiklikler için yeni rezervasyon oluşturun."],
+"Нацртот е зачуван на овој уред.":["Draft saved on this device.","Drafti u ruajt në këtë pajisje.","Taslak bu cihaza kaydedildi."],
+"Проверете го целиот договор. По потврда се заклучува и повеќе не може да се менува.":["Review the entire agreement. Once confirmed, it will be locked and cannot be changed.","Kontrolloni të gjithë kontratën. Pas konfirmimit ajo bllokohet dhe nuk ndryshohet më.","Sözleşmenin tamamını kontrol edin. Onaylandıktan sonra kilitlenir ve değiştirilemez."],
+"Договорот е зачуван. Користете „Печати / зачувај PDF“ за копија надвор од апликацијата.":["Agreement saved. Use Print / Save PDF for an external copy.","Kontrata u ruajt. Përdorni Printo / Ruaj PDF për një kopje jashtë aplikacionit.","Sözleşme kaydedildi. Uygulama dışında kopya için Yazdır / PDF kaydet kullanın."],
+"Внеси износ и датум.":["Enter the amount and date.","Shkruani shumën dhe datën.","Tutarı ve tarihi girin."],
+"Провери ја цената и попустот.":["Check the price and discount.","Kontrolloni çmimin dhe zbritjen.","Fiyatı ve indirimi kontrol edin."],
+"Внеси назив, цена, датум и наплатен износ од 0 до цената.":["Enter name, price, date and received amount between zero and the price.","Shkruani emrin, çmimin, datën dhe shumën e marrë nga zero deri te çmimi.","Ad, fiyat, tarih ve sıfır ile fiyat arasında alınan tutarı girin."],
+"Внеси износ поголем од нула и не поголем од остатокот.":["Enter an amount above zero and no more than the remaining balance.","Shkruani shumë më të madhe se zero dhe jo më të madhe se mbetja.","Sıfırdan büyük ve kalan bakiyeyi aşmayan bir tutar girin."],
+"Да ја избришам оваа ставка?":["Delete this entry?","Të fshihet ky regjistrim?","Bu kayıt silinsin mi?"],
+"Избери свадба, износ и датум.":["Select a wedding, amount and date.","Zgjidhni dasmën, shumën dhe datën.","Düğün, tutar ve tarih seçin."],
+"Прво избери свадба.":["Select a wedding first.","Së pari zgjidhni dasmën.","Önce bir düğün seçin."],
+"Пополнете име, улога и хонорар.":["Enter name, role and fee.","Shkruani emrin, rolin dhe honorarin.","Ad, görev ve ücret girin."],
+"Исплатата е поголема од договорениот хонорар. Продолжи?":["The payout exceeds the agreed fee. Continue?","Pagesa tejkalon honorarin e dakorduar. Të vazhdohet?","Ödeme anlaşılan ücreti aşıyor. Devam edilsin mi?"],
+"Да ја избришам оваа евиденција за уплата?":["Delete this payment record?","Të fshihet ky regjistrim pagese?","Bu ödeme kaydı silinsin mi?"],
+"Да го избришам ангажманот и сите негови исплати?":["Delete the engagement and all its payouts?","Të fshihet angazhimi dhe të gjitha pagesat e tij?","Görev ve tüm ödemeleri silinsin mi?"],
+"Потребни се двата потписа: TD Production и соработникот.":["Both signatures are required: TD Production and team member.","Kërkohen të dy nënshkrimet: TD Production dhe bashkëpunëtori.","İki imza gereklidir: TD Production ve ekip üyesi."],
+"Зачувај го потпишаниот договор? Оваа верзија ќе остане сочувана.":["Save this signed agreement? This version will be preserved.","Të ruhet kontrata e nënshkruar? Ky version do të ruhet.","İmzalı sözleşme kaydedilsin mi? Bu sürüm korunacak."],
+"Потпишаниот договор е зачуван.":["Signed agreement saved.","Kontrata e nënshkruar u ruajt.","İmzalı sözleşme kaydedildi."],
+"Резервната копија е копирана.":["Backup copied.","Kopja rezervë u kopjua.","Yedek kopyalandı."],
+"Текстот е означен. Провери дали е копиран.":["Text selected. Check that it was copied.","Teksti u përzgjodh. Kontrolloni nëse u kopjua.","Metin seçildi. Kopyalandığını kontrol edin."],
+"Текстот не е исправна резервна копија.":["This text is not a valid backup.","Teksti nuk është kopje rezervë e vlefshme.","Bu metin geçerli bir yedek değil."],
+"Ова не е TD Booking резервна копија.":["This is not a TD Booking backup.","Kjo nuk është kopje rezervë TD Booking.","Bu TD Booking yedeği değil."],
+"Ова ќе ги замени сите тековни свадби и финансиски податоци на овој уред. Продолжи?":["This replaces all current weddings and financial records on this device. Continue?","Kjo zëvendëson të gjitha dasmat dhe të dhënat financiare në pajisje. Të vazhdohet?","Bu cihazdaki tüm düğün ve finans kayıtları değiştirilecek. Devam edilsin mi?"],
+"Податоците се вратени.":["Data restored.","Të dhënat u rikthyen.","Veriler geri yüklendi."],
+"Нема доволно простор или внесот не успеа. Тековните податоци се задржани.":["Insufficient storage or import failed. Existing data was retained.","Hapësirë e pamjaftueshme ose importi dështoi. Të dhënat ekzistuese u ruajtën.","Yeterli alan yok veya içe aktarma başarısız. Mevcut veriler korundu."],
+"Внеси исправни цени.":["Enter valid prices.","Shkruani çmime të vlefshme.","Geçerli fiyatlar girin."],
+"Ценовникот е зачуван. Старите свадби ја задржуваат договорената цена.":["Price list saved. Previous weddings keep their agreed price.","Lista e çmimeve u ruajt. Dasmat e mëparshme ruajnë çmimin e dakorduar.","Fiyat listesi kaydedildi. Eski düğünler anlaşılan fiyatları korur."],
+"Внеси опис, износ и датум.":["Enter a description, amount and date.","Shkruani përshkrimin, shumën dhe datën.","Açıklama, tutar ve tarih girin."],
+"Избриши трошок?":["Delete this expense?","Të fshihet ky shpenzim?","Bu gider silinsin mi?"],
+"Внеси API key и исправен HTTPS Database URL.":["Enter an API key and a valid HTTPS Database URL.","Vendosni çelësin API dhe një URL të vlefshme HTTPS të bazës së të dhënave.","API anahtarı ve geçerli bir HTTPS veritabanı adresi girin."],
+"TD Cloud е поврзан.":["TD Cloud connected.","TD Cloud u lidh.","TD Cloud bağlandı."],
+"Кодот е копиран.":["Code copied.","Kodi u kopjua.","Kod kopyalandı."],
+"Кодот е означен. Избери Copy.":["Code selected. Choose Copy.","Kodi u përzgjodh. Zgjidhni Copy.","Kod seçildi. Kopyala'yı seçin."],
+"Вработениот не е пронајден.":["Employee not found.","Punonjësi nuk u gjet.","Çalışan bulunamadı."],
+"Внеси име и презиме.":["Enter a full name.","Shkruani emrin dhe mbiemrin.","Ad ve soyad girin."],
+"Измените се зачувани. Сите претходни податоци остануваат.":["Changes saved. All previous records remain intact.","Ndryshimet u ruajtën. Të gjitha të dhënat e mëparshme mbeten.","Değişiklikler kaydedildi. Önceki tüm kayıtlar korundu."],
+"Reset PIN е испратен. На следното отворање Екипа ќе побара нов PIN.":["PIN reset sent. The Team app will request a new PIN when next opened.","Rivendosja e PIN u dërgua. Aplikacioni Ekipi do të kërkojë PIN të ri në hapjen tjetër.","PIN sıfırlama gönderildi. Ekip uygulaması sonraki açılışta yeni PIN isteyecek."],
+"Cloud профилот не е подготвен.":["Cloud profile is not ready.","Profili Cloud nuk është gati.","Cloud profili hazır değil."],
+"Кодот уште не е подготвен. Нека вработениот ја ажурира и отвори апликацијата „Екипа“ еднаш, па притисни Освежи.":["The code is not ready yet. Ask the employee to update and open the Team app once, then tap Refresh.","Kodi nuk është ende gati. Punonjësi duhet të përditësojë dhe hapë aplikacionin Ekipi një herë, pastaj shtypni Rifresko.","Kod henüz hazır değil. Çalışanın Ekip uygulamasını güncelleyip bir kez açmasını sağlayın, sonra Yenile'ye dokunun."],
+"Кодот за враќање е копиран.":["Recovery code copied.","Kodi i rikuperimit u kopjua.","Kurtarma kodu kopyalandı."],
+"Прво активирај барем еден вработен.":["Activate at least one employee first.","Së pari aktivizoni të paktën një punonjës.","Önce en az bir çalışanı etkinleştirin."],
+"Избери свадба, најмалку еден вработен и барем една улога.":["Choose a wedding, at least one employee and one role.","Zgjidhni një dasmë, të paktën një punonjës dhe një rol.","Bir düğün, en az bir çalışan ve bir görev seçin."],
+"Поканата е испратена.":["Invitation sent.","Ftesa u dërgua.","Davet gönderildi."],
+"Овој ангажман веќе има конечна одлука.":["This engagement already has a final decision.","Ky angazhim tashmë ka vendim përfundimtar.","Bu görev için nihai karar zaten verildi."],
+"Внеси исправна цена.":["Enter a valid price.","Shkruani çmim të vlefshëm.","Geçerli bir fiyat girin."],
+"Нема избрани улоги за ангажманот.":["No roles selected for this engagement.","Nuk janë zgjedhur role për këtë angazhim.","Bu görev için rol seçilmedi."],
+"Целосно да го одбиеш ангажманот без нова цена?":["Decline the engagement without a counter-offer?","Ta refuzoni plotësisht angazhimin pa çmim të ri?","Yeni fiyat önermeden görevi tamamen reddetmek istiyor musunuz?"],
+"Договорот сѐ уште не е подготвен.":["The agreement is not ready yet.","Kontrata nuk është ende gati.","Sözleşme henüz hazır değil."],
+"Нема активни вработени.":["No active employees.","Nuk ka punonjës aktivë.","Aktif çalışan yok."],
+"Избери примател и внеси наслов и порака.":["Select a recipient and enter a title and message.","Zgjidhni marrësin dhe shkruani titullin dhe mesazhin.","Alıcı seçin, başlık ve mesaj girin."],
+"Информацијата е испратена.":["Notice sent.","Njoftimi u dërgua.","Duyuru gönderildi."],
+"Овој телефон нема Web Crypto поддршка. Користи ја обичната копија.":["This phone does not support Web Crypto. Use the standard backup.","Ky telefon nuk mbështet Web Crypto. Përdorni kopjen e zakonshme.","Bu telefon Web Crypto desteklemiyor. Standart yedeklemeyi kullanın."],
+"Лозинката треба да има најмалку 6 знаци.":["The password must have at least 6 characters.","Fjalëkalimi duhet të ketë të paktën 6 karaktere.","Parola en az 6 karakter olmalıdır."],
+"Повтори ја лозинката:":["Repeat password:","Përsëritni fjalëkalimin:","Parolayı tekrar girin:"],
+"Лозинките не се исти. Обиди се повторно.":["Passwords do not match. Try again.","Fjalëkalimet nuk përputhen. Provoni sërish.","Parolalar eşleşmiyor. Tekrar deneyin."],
+"Залепи резервна копија.":["Paste a backup.","Ngjitni kopjen rezervë.","Yedeği yapıştırın."],
+"Текстот не е исправна JSON резервна копија.":["This is not a valid JSON backup.","Teksti nuk është kopje rezervë JSON e vlefshme.","Bu metin geçerli bir JSON yedeği değil."],
+"Целосната копија е оштетена или нецелосна.":["Full backup is corrupted or incomplete.","Kopja e plotë është e dëmtuar ose e paplotë.","Tam yedek bozuk veya eksik."],
+"Ова ќе ги замени тековните TD Booking податоци на овој уред со податоците од целосната копија. Продолжи?":["This will replace the current TD Booking data on this device with the full backup. Continue?","Kjo do të zëvendësojë të dhënat TD Booking me kopjen e plotë. Të vazhdohet?","Bu işlem mevcut TD Booking verilerini tam yedekle değiştirecek. Devam edilsin mi?"],
+"Внеси ја лозинката од ЦЕЛОСНАТА копија:":["Enter the password for the FULL backup:","Shkruani fjalëkalimin e kopjes së PLOTË:","TAM yedeğin parolasını girin:"],
+"Погрешна лозинка или оштетена шифрирана Cloud копија. Ништо не е сменето.":["Wrong password or damaged encrypted Cloud backup. Nothing was changed.","Fjalëkalim i gabuar ose kopje e koduar Cloud e dëmtuar. Asgjë nuk u ndryshua.","Yanlış parola veya bozuk şifreli Cloud yedeği. Hiçbir şey değiştirilmedi."],
+"Целосната копија е вратена. TD Booking ќе се рестартира.":["Full backup restored. TD Booking will restart.","Kopja e plotë u rikthye. TD Booking do të riniset.","Tam yedek geri yüklendi. TD Booking yeniden başlayacak."],
 "Детали за настан":["Event details","Detajet e ngjarjes","Etkinlik ayrıntıları"],
 "Притисни датум на календарот.":["Tap a date on the calendar.","Prek një datë në kalendar.","Takvimden bir tarihe dokunun."],
 "Нема закажани настани на овој датум.":["No events scheduled on this date.","Nuk ka ngjarje të planifikuara për këtë datë.","Bu tarihte planlanmış etkinlik yok."],
@@ -372,6 +438,26 @@ function setPanelLabels(){
  }
 }
 
+
+function localMessage(value) {
+ const original=String(value??''),lang=effective(),idx=['en','sq','tr'].indexOf(lang);
+ if(idx<0)return original;
+ const exact=UI[original]||UI[original.trim()];
+ if(exact)return exact[idx];
+ // Keep amounts, names, error identifiers and other user data as-is.
+ const text=original.replace(/^([^\p{L}]*)([\p{L}\p{M}\s\/.+-]{2,85})(:\s*)/u,(whole,prefix,label,colon)=>{
+    return UI[label.trim()] ? prefix+UI[label.trim()][idx]+colon : whole;
+ });
+ return text;
+}
+function installMessages() {
+ for(const fn of ['alert','confirm','prompt']){
+  const native=window[fn];
+  if(typeof native!=='function')continue;
+  window[fn]=function(message,...rest){return native.call(window,localMessage(message),...rest)};
+ }
+}
+
 function uiText(node,lang) {
   const previous=node.__markI18n;
   const current=node.nodeValue;
@@ -569,6 +655,7 @@ function printCopies(id){
 window.addEventListener('afterprint',()=>{document.body.classList.remove('mark-multiprint')});
 function install(){
  if(!document.body||!$('drawer'))return;
+ installMessages();
  const css=document.createElement('style');css.textContent='.mark-languages{background:#eef5f2;border:1px solid #b4d1c7;border-radius:12px;padding:12px;margin:12px 0;color:#23423d}.mark-languages select{max-width:300px}.mark-extra{display:flex;flex-wrap:wrap;gap:8px}.mark-check{display:flex;align-items:center;gap:6px;margin:6px}.mark-check input{width:20px;min-height:20px}.mark-extra-title{font-weight:700;margin-top:8px}.mark-translation-warning{font-size:12px;border-left:3px solid #b78a4e;padding:7px;background:#fff9ec}.mark-signatures{display:flex;gap:20px;justify-content:space-between;margin-top:24px;page-break-inside:avoid}.mark-signatures>div{min-width:26%;border-top:1px solid #789;padding-top:8px}.mark-signatures img{max-width:140px;max-height:70px}.mark-report-table{width:100%;border-collapse:collapse}.mark-report-table th,.mark-report-table td{border:1px solid #aaa;padding:6px}.mark-page{padding:10mm;background:#fff;color:#222;page-break-after:always}.mark-page-label{font-size:11px;color:#444;margin:0 0 16px}@media print{body.mark-multiprint>*:not(#markMultiPrintArea){display:none!important}body.mark-multiprint #markMultiPrintArea{display:block!important;position:static!important}body.mark-multiprint .mark-page{page-break-after:always}body.mark-multiprint{background:white}#markMultiPrintArea{display:none}}';
  document.head.appendChild(css);
  const settings=$('settingsView');if(settings){const panel=document.createElement('div');panel.id='markLanguagePanel';panel.className='pricebox';panel.innerHTML='<h3>Јазик / Language / Gjuha / Dil</h3><label for="markUiLanguage">Јазик на апликацијата</label><select id="markUiLanguage"><option value="auto">Автоматски — јазик на телефонот</option><option value="mk">Македонски</option><option value="en">English</option><option value="sq">Shqip</option><option value="tr">Türkçe</option></select><p class="muted">Јазикот на документите се избира посебно при создавање PDF.</p>';settings.insertBefore(panel,settings.firstChild);$('markUiLanguage').value=localStorage.getItem(K)||'auto';$('markUiLanguage').onchange=e=>{localStorage.setItem(K,e.target.value);translateUi()};}
