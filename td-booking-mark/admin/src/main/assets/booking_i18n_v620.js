@@ -7,6 +7,17 @@
 const LANGS={mk:'Македонски',en:'English',sq:'Shqip',tr:'Türkçe'};
 const K='markBookingLocale_v620';
 const UI={
+"Колку е доплатено за ":["How much was additionally paid for ","Sa është paguar shtesë për ","Şunun için ne kadar ek ödeme alındı: "],
+"Не можам да се поврзам. Провери Anonymous Auth, Database URL и Rules.\n\n":["Cannot connect. Check Anonymous Auth, Database URL and Rules.\n\n","Nuk mund të lidhet. Kontrolloni Anonymous Auth, Database URL dhe Rules.\n\n","Bağlanılamıyor. Anonymous Auth, Database URL ve Rules ayarlarını kontrol edin.\n\n"],
+"Не успеа измената.\n\n":["Update failed.\n\n","Ndryshimi dështoi.\n\n","Değişiklik başarısız.\n\n"],
+"Reset PIN не успеа.\n\n":["PIN reset failed.\n\n","Rivendosja e PIN dështoi.\n\n","PIN sıfırlama başarısız.\n\n"],
+"Промената не успеа.\n\n":["Change failed.\n\n","Ndryshimi dështoi.\n\n","Değişiklik başarısız.\n\n"],
+"Неуспешно испраќање: ":["Send failed: ","Dërgimi dështoi: ","Gönderim başarısız: "],
+"Твојата цена ":["Your price ","Çmimi yt ","Fiyatınız "],
+"Cloud синхронизацијата не успеа. Податоците на телефонот се задржани.\n\n":["Cloud sync failed. Phone data remains intact.\n\n","Sinkronizimi Cloud dështoi. Të dhënat në telefon u ruajtën.\n\n","Cloud eşitlemesi başarısız. Telefondaki veriler korundu.\n\n"],
+"Внеси лозинка за ЦЕЛОСНАТА копија (минимум 6 знаци).\n\nЗапиши ја лозинката на сигурно место. Без неа Cloud пристапот не може да се врати.":["Enter a password for the FULL backup (at least 6 characters).\n\nStore it securely. Cloud access cannot be recovered without this password.","Shkruani fjalëkalimin për kopjen e PLOTË (të paktën 6 karaktere).\n\nRuajeni mirë. Pa të, hyrja në Cloud nuk rikthehet.","TAM yedek için parola girin (en az 6 karakter).\n\nParolayı güvenle saklayın. Bu parola olmadan Cloud erişimi geri yüklenemez."],
+"Не успеа креирањето на целосна копија.\n":["Full backup creation failed.\n","Krijimi i kopjes së plotë dështoi.\n","Tam yedek oluşturulamadı.\n"],
+"Враќањето не успеа. Старите податоци се задржани.\n":["Restore failed. Existing data was preserved.\n","Rikthimi dështoi. Të dhënat ekzistuese u ruajtën.\n","Geri yükleme başarısız. Mevcut veriler korundu.\n"],
 "Со потписите, страните го прифаќаат текстот прикажан погоре.":["By signing, the parties accept the text above.","Me nënshkrim, palët pranojnë tekstin e mësipërm.","Taraflar imzalayarak yukarıdaki metni kabul ederler."],
 "Охрид":["Ohrid","Ohër","Ohri"],
 "Исплатено екипа":["Team payments","Pagesat e ekipit","Ekip ödemeleri"],
@@ -513,8 +524,8 @@ function uiText(node,lang) {
   else if(UI[core])out=prefix+(ix<0?core:UI[core][ix]);
   else if(ix>=0) {
     // Translate a fixed UI label even when followed by a dynamic amount or name.
-    const label=stripped.match(/^([\p{L}\p{M}\s\/.+-]{2,65})(:\s*)([\s\S]*)$/u);
-    if(label && UI[label[1].trim()])out=UI[label[1].trim()][ix]+label[2]+label[3];
+    const label=stripped.match(/^([^\p{L}]*)([\p{L}\p{M}\s\/.+-]{2,65})(:\s*)([\s\S]*)$/u);
+    if(label && UI[label[2].trim()])out=label[1]+UI[label[2].trim()][ix]+label[3]+label[4];
   }
   const leadSpace=(original.match(/^\s*/)||[''])[0];
   const trailingSpace=(original.match(/\s*$/)||[''])[0];
@@ -558,10 +569,10 @@ function translateUi() {
   if(opt)opt.value=localStorage.getItem(K)||'auto';
   const monthLabel=$('monthTitle');
   if(monthLabel&&typeof month!=='undefined'&&month instanceof Date){
-    try{monthLabel.textContent=month.toLocaleDateString(
+    try{const label=month.toLocaleDateString(
       lang==='mk'?'mk-MK':lang==='sq'?'sq-AL':lang==='tr'?'tr-TR':'en-GB',
       {month:'long',year:'numeric'}
-    )}catch(_e){}
+    );if(monthLabel.textContent!==label)monthLabel.textContent=label;}catch(_e){}
   }
   setPanelLabels();
   if(observer)observer.observe(document.body,{childList:true,subtree:true,characterData:true});
