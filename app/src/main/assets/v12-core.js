@@ -135,13 +135,12 @@ Core.week=function(state,monday,now=new Date()){
       normal+=Math.min(s.dayMinutes,r.regular+r.credit);
     }
   }
-  let gap=Math.max(0,target-normal);
+  // Non-scheduled work, including Saturdays and Sundays, is always overtime.
+  // Missing weekday hours remain a separate negative balance.
   for(const r of rows){
     if(!r.scheduled&&r.type!=='holidayWork'){
-      r.regular=Math.min(r.worked,gap);
-      gap-=r.regular;
-      r.overtime=r.worked-r.regular;
-      normal+=r.regular;
+      r.regular=0;
+      r.overtime=r.worked;
     }
   }
   const currentDate=Core.today(now);
