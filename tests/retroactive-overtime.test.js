@@ -70,4 +70,32 @@ function work(start,end){
   assert.strictEqual(p.grossOvertime,240,'four hours of holiday work credit');
   assert.strictEqual(p.overtime,-240,'negative carry should be visible rather than silently erased');
 }
-console.log('WFAG v3.2 retrospective overtime tests OK');
+
+{
+  const s=fresh();
+  const dateNow=new Date('2026-11-02T10:00:00Z');
+  s.records['2026-10-26']=work('08:00','23:17'); // +7:17
+  s.records['2026-10-27']=work('08:00','15:00'); // -1:00
+  s.records['2026-10-28']={type:'off',pause:0,note:'слободен ден'}; // -8:00
+  s.records['2026-10-29']=work('08:00','16:00');
+  s.records['2026-10-30']=work('08:00','22:00'); // +6:00
+  s.records['2026-10-31']=work('08:00','14:10'); // Saturday: +6:10
+  const before=JSON.stringify(s);
+  const w=Core.week(s,'2026-10-26',dateNow);
+  const saturday=w.rows.find(r=>r.date==='2026-10-31');
+  assert.strictEqual(saturday.worked,370,'October 31 recorded 6h10m');
+  assert.strictEqual(saturday.regular,0,'Saturday must never fill the weekday 40h fund');
+  assert.strictEqual(saturday.overtime,370,'Saturday must show +6:10');
+  assert.strictEqual(w.overtime,627,'weekly net balance must be +10:27 after -1:00 and -8:00');
+  const p=Core.period(s,'2026-10-26','2026-11-01',dateNow);
+  assert.strictEqual(p.overtime,627,'week-spanning period must show the same +10:27');
+  const b=Core.overtimeBreakdown(s,'2026-10-26','2026-11-01',dateNow);
+  assert.ok(b.earned.some(r=>r.date==='2026-10-31'&&r.overtime===370));
+  assert.strictEqual(JSON.stringify(s),before,'recalculating archived records must not rewrite stored data');
+  s.records['2026-11-01']=work('08:00','10:30'); // Sunday: +2:30
+  const sunday=Core.week(s,'2026-10-26',dateNow).rows[6];
+  assert.strictEqual(sunday.overtime,150,'Sunday must be full overtime');
+  assert.strictEqual(Core.week(s,'2026-10-26',dateNow).overtime,777,'Sunday adds +2:30 to existing +10:27');
+}
+
+console.log('WFAG v3.4 retrospective overtime tests OK');
