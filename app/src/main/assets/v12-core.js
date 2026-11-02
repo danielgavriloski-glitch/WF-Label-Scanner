@@ -215,10 +215,7 @@ function overtimeReason(r){
     return 'Работа на празник (неработен ден): сите '+Core.hh(r.worked)+' работени часови се пресметани како прекувремени.';
   }
   if(!r.scheduled){
-    if(r.regular>0){
-      return 'Викенд / неработен ден: '+Core.hh(r.regular)+' го дополнуваат неделниот фонд, а остатокот '+Core.hh(r.overtime)+' е прекувремено.';
-    }
-    return 'Работа во викенд / неработен ден: '+Core.hh(r.overtime)+' се прекувремени.';
+    return 'Работа во викенд / неработен ден: сите '+Core.hh(r.overtime)+' работени часови се прекувремени, без дополнување на редовниот неделен фонд.';
   }
   if(r.trips&&r.trips.length){
     return 'Продолжен работен ден со службен пат: '+Core.hh(r.worked)+' работено − '+Core.hh(r.regular)+' редовно = '+Core.hh(r.overtime)+' прекувремено.';
