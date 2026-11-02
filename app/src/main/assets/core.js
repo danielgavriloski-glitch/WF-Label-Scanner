@@ -110,8 +110,9 @@ function week(state,monday,now=new Date()){
    r.regular=Math.min(r.worked,s.dayMinutes);r.overtime=Math.max(0,r.worked-s.dayMinutes);normal+=Math.min(s.dayMinutes,r.regular+r.credit);
   }
  }
- let gap=Math.max(0,target-normal);
- for(const r of rows){if(!r.scheduled&&r.type!=='holidayWork'){r.regular=Math.min(r.worked,gap);gap-=r.regular;r.overtime=r.worked-r.regular;normal+=r.regular;}}
+ // Saturday, Sunday and other non-scheduled days are always overtime.
+ // They never fill missing hours in the weekday 40-hour fund.
+ for(const r of rows){if(!r.scheduled&&r.type!=='holidayWork'){r.regular=0;r.overtime=r.worked;}}
  return {rows,target,normal,missing:Math.max(0,target-normal),overtime:rows.reduce((a,r)=>a+r.overtime,0),worked:rows.reduce((a,r)=>a+r.worked,0),holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0)};
 }
 function period(state,from,to,now=new Date()){
