@@ -31,6 +31,14 @@ android {
     }
 
     buildTypes {
+        // Side-by-side performance test; never overwrites installed WFAG or its data.
+        gpsfix {
+            initWith debug
+            applicationIdSuffix '.gpsfix'
+            versionNameSuffix '-gpsfix-test'
+            manifestPlaceholders = [appLabel: 'WFAG GPS FIX TEST']
+            matchingFallbacks = ['debug']
+        }
         crafter {
             initWith debug
             if (signingPropsFile.exists()) signingConfig signingConfigs.wfagRelease

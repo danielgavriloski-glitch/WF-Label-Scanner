@@ -121,11 +121,14 @@ public class MainActivity extends Activity {
         });
     }
     private void stopRouteService(){
-        runOnUiThread(()->{
-            RouteTrackingService.finishSession(this);
-            stopService(new Intent(this,RouteTrackingService.class));
-            if(ready&&webView!=null)webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);
-        });
+        // The route archive can be large; finalize it without freezing the visible UI.
+        new Thread(()->{
+            RouteTrackingService.finishSession(getApplicationContext());
+            runOnUiThread(()->{
+                stopService(new Intent(this,RouteTrackingService.class));
+                if(ready&&webView!=null)webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);
+            });
+        },"wfag-route-stop").start();
     }
     public class LocalBridge {
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
@@ -255,7 +258,7 @@ public class MainActivity extends Activity {
         if(!ready){super.onBackPressed();return;}
         webView.evaluateJavascript("window.onNativeBack?onNativeBack():false",value->{if(!"true".equals(value))super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render();window.onRouteNativeChanged&&onRouteNativeChanged()",null);}
+    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(window.WFRoute&&window.WFRoute.invalidateCache)window.WFRoute.invalidateCache();if(typeof render==='function'&&document.getElementById('modal').hidden)render();",null);}
     @Override protected void onDestroy(){if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();}super.onDestroy();}
 
     static class PdfReport {

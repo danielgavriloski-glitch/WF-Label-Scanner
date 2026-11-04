@@ -4,12 +4,18 @@
 
 let routeHistoryCount=30;
 let routeMode='list',routePromptStopId='';
-function routeNativeState(){
+let routeStateCache=null,routeStateCacheAt=0;
+function invalidateRouteCache(){routeStateCache=null;routeStateCacheAt=0;}
+function routeNativeState(force){
+  // One WebView render requests GPS data repeatedly. Share a short-lived snapshot.
+  const now=Date.now(),maxAge=routeStateCache&&routeStateCache.tracking?15000:30000;
+  if(!force&&routeStateCache&&now-routeStateCacheAt<maxAge)return routeStateCache;
   try{
     if(typeof Android==='undefined'||!Android.getRouteLog)return {tracking:false,sessions:[],savedPlaces:[]};
     const x=JSON.parse(Android.getRouteLog()||'{}');
-    x.sessions=Array.isArray(x.sessions)?x.sessions:[];x.savedPlaces=Array.isArray(x.savedPlaces)?x.savedPlaces:[];return x;
-  }catch(e){return {tracking:false,sessions:[],savedPlaces:[]};}
+    x.sessions=Array.isArray(x.sessions)?x.sessions:[];x.savedPlaces=Array.isArray(x.savedPlaces)?x.savedPlaces:[];
+    routeStateCache=x;routeStateCacheAt=now;return x;
+  }catch(e){return routeStateCache||{tracking:false,sessions:[],savedPlaces:[]};}
 }
 function routeDate(ms){const d=new Date(Number(ms)||0),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
 function routeClock(ms){if(!ms)return '—';const d=new Date(Number(ms)),p=n=>String(n).padStart(2,'0');return p(d.getHours())+':'+p(d.getMinutes());}
@@ -183,10 +189,11 @@ function bindRouteButtons(){
   const km=$('routeMileage');if(km)km.onclick=function(){const host=$('routePanel');openRouteMileage(host?host.dataset.from:'',host?host.dataset.to:'');};
   const toggle=$('routeToggle');if(toggle)toggle.onclick=function(){
     if(typeof Android==='undefined')return;
-    const d=routeNativeState();
+    const d=routeNativeState(true);
     if(d.tracking&&Android.stopRouteTracking)Android.stopRouteTracking();
     else if(Android.startRouteTracking)Android.startRouteTracking('manual_'+Date.now());
-    setTimeout(refreshRoutePanel,800);
+    invalidateRouteCache();
+    setTimeout(function(){invalidateRouteCache();refreshRoutePanel();},800);
   };
 }
 function checkRoutePrompt(){
@@ -200,8 +207,8 @@ function checkRoutePrompt(){
   const lat=Number(stop.lat),lon=Number(stop.lon);
   showModal('Застанување над 5 минути','<p>Се задржа тука повеќе од 5 минути. Дали е ова стандардно место?</p><div class="route-prompt-place"><strong>Локација</strong><span>'+lat.toFixed(5)+', '+lon.toFixed(5)+'</span><button class="link-btn" id="promptOpenMap">Отвори офлајн мапа</button></div><label class="field"><span>Име на местото (по желба)</span><input id="routeStopName" maxlength="80" placeholder="На пример: Магацин Скопје"></label><label class="check"><input id="rememberRoutePlace" type="checkbox" checked><span>Запамети го ова име и препознај го следниот пат.</span></label><button class="btn full" id="saveRoutePlace">Зачувај</button><button class="btn light full" id="leaveRouteLocation" style="margin-top:10px">Остави како „Локација“</button>');
   $('promptOpenMap').onclick=function(){if(Android.openRouteMap)Android.openRouteMap(lat,lon);};
-  $('saveRoutePlace').onclick=function(){const name=$('routeStopName').value.trim();Android.setRouteStop(stop.id,name,!!$('rememberRoutePlace').checked&&!!name);routePromptStopId='';closeModal();refreshRoutePanel();toast(name?'Местото е зачувано како '+name+'.':'Зачувано е како „Локација“.');};
-  $('leaveRouteLocation').onclick=function(){Android.setRouteStop(stop.id,'',false);routePromptStopId='';closeModal();refreshRoutePanel();toast('Застанувањето остана како „Локација“.');};
+  $('saveRoutePlace').onclick=function(){const name=$('routeStopName').value.trim();Android.setRouteStop(stop.id,name,!!$('rememberRoutePlace').checked&&!!name);routePromptStopId='';closeModal();invalidateRouteCache();refreshRoutePanel();toast(name?'Местото е зачувано како '+name+'.':'Зачувано е како „Локација“.');};
+  $('leaveRouteLocation').onclick=function(){Android.setRouteStop(stop.id,'',false);routePromptStopId='';closeModal();invalidateRouteCache();refreshRoutePanel();toast('Застанувањето остана како „Локација“.');};
 }
 const bindTripButtonsRouteBase=bindTripButtons;
 bindTripButtons=function(){bindTripButtonsRouteBase();bindRouteButtons();setTimeout(checkRoutePrompt,100);};
@@ -551,7 +558,8 @@ function routeDayCardMarkup(compact) {
     content+='<div class="gps-stop-heading">Евидентирани службени патувања</div>'+travel.map(t=>
       '<div class="mini-row"><span>'+esc(t.departure||'—')+' → '+esc(t.arrival||'во тек')+'</span><strong>'+esc(t.note||'Службен пат')+'</strong></div>').join('');
   }
-  return '<section class="card gps-day-card" id="gpsDayCard"><div class="row"><div><h2>Мапа и историја</h2><p class="small muted" style="margin:3px 0 7px">Листај денови со прст налево/надесно или со стрелките</p></div><span class="route-live '+(routeNativeState().tracking?'on':'')+'">'+(routeNativeState().tracking?'GPS':'OFF')+'</span></div>'+
+  const tracking=routeNativeState().tracking;
+  return '<section class="card gps-day-card" id="gpsDayCard"><div class="row"><div><h2>Мапа и историја</h2><p class="small muted" style="margin:3px 0 7px">Листај денови со прст налево/надесно или со стрелките</p></div><span class="route-live '+(tracking?'on':'')+'">'+(tracking?'GPS':'OFF')+'</span></div>'+
     nav+content+(compact?'<button type="button" id="gpsSeeAll" class="btn light full">Сите поминати денови →</button>':'')+
     '</section>';
 }
@@ -639,6 +647,7 @@ function renderRoutes(){
 }
 window.renderRoutes=renderRoutes;
 window.onRouteNativeChanged=function(){
+  invalidateRouteCache();
   refreshRoutePanel();checkRoutePrompt();
   const host=$('gpsDayHost');
   if(host){host.innerHTML=routeDayCardMarkup(view==='home');bindGPSDayControls();}
@@ -699,7 +708,10 @@ document.addEventListener('click',function(event){
   toast('Името е ажурирано во поврзаните патувања.');
 });
 
-setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
+// GPS recording runs in Android's background service. Do not redraw the route panel on a timer:
+// a render can traverse years of GPS history and cause WebView jank. Keep the stop prompt
+// responsive without refreshing the map or the rest of the screen.
+setInterval(function(){if(document.visibilityState==='visible')checkRoutePrompt();},10000);
 if(state)render();
-window.WFRoute={state:routeNativeState,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
+window.WFRoute={state:routeNativeState,invalidateCache:invalidateRouteCache,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
 })();
