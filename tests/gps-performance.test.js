@@ -30,4 +30,7 @@ assert.equal(nativeReads,2,'Forced lookup should fetch current GPS state');
 vm.runInContext('invalidateRouteCache();routeNativeState()',ctx);
 assert.equal(nativeReads,3,'GPS events must invalidate cached data');
 new vm.Script(ui);
+assert.ok(ui.includes('tracking?15000:30000'), 'Active route cache should last 15 seconds');
+assert.ok(!ui.includes("if(view!=='home')refreshRoutePanel();checkRoutePrompt();"), 'Avoid automatic GPS panel redraw');
+assert.ok(ui.includes("document.visibilityState==='visible')checkRoutePrompt();"), 'Stop prompts remain active');
 console.log('WFAG_GPS_PERFORMANCE_OK');
