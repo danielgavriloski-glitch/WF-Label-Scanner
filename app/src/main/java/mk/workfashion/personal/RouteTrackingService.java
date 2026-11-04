@@ -11,6 +11,8 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.util.AtomicFile;
 import org.json.JSONArray;
@@ -49,10 +51,16 @@ public class RouteTrackingService extends Service implements LocationListener {
     private static final Object LOCK=new Object();
     private static final Set<String> COMPACTIONS=Collections.synchronizedSet(new HashSet<>());
     private LocationManager locationManager;
+    private HandlerThread locationThread;
+    private Handler locationWorker;
     private long lastGpsFixAt=0L;
 
     @Override public void onCreate(){
         super.onCreate();
+        // GPS callbacks and archive I/O must never run on the UI/main thread.
+        locationThread=new HandlerThread("wfag-gps-location");
+        locationThread.start();
+        locationWorker=new Handler(locationThread.getLooper());
         NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"WFAG · Патувања",NotificationManager.IMPORTANCE_LOW);
         ch.setDescription("Следење рута додека трае службен пат");
@@ -61,12 +69,16 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         startForeground(NOTIFICATION_ID,notification("Патувањето се следи","GPS следењето е активно."));
-        String action=intent==null?null:intent.getAction();
-        if(intent!=null&&ACTION_START.equals(action))beginSession(this,intent.getStringExtra("tripId"));
-        JSONObject state=readState(this);
-        if(!state.optBoolean("tracking",false)){stopSelf();return START_NOT_STICKY;}
-        startUpdates();
-        resumePendingCompactions(this);
+        final String action=intent==null?null:intent.getAction();
+        final String tripId=intent==null?null:intent.getStringExtra("tripId");
+        // Starting a session can read/write years of route history; do not block Android's main looper.
+        locationWorker.post(()->{
+            if(ACTION_START.equals(action))beginSession(this,tripId);
+            JSONObject state=readState(this);
+            if(!state.optBoolean("tracking",false)){stopSelfResult(startId);return;}
+            startUpdates();
+            resumePendingCompactions(this);
+        });
         return START_STICKY;
     }
 
@@ -75,9 +87,9 @@ public class RouteTrackingService extends Service implements LocationListener {
         try{
             try{locationManager.removeUpdates(this);}catch(Exception ignored){}
             if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,GPS_MIN_TIME_MS,GPS_MIN_DISTANCE_M,this);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,GPS_MIN_TIME_MS,GPS_MIN_DISTANCE_M,this,locationThread.getLooper());
             if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,NETWORK_MIN_TIME_MS,NETWORK_MIN_DISTANCE_M,this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,NETWORK_MIN_TIME_MS,NETWORK_MIN_DISTANCE_M,this,locationThread.getLooper());
         }catch(SecurityException e){
             finishSession(this);stopSelf();
         }
@@ -85,6 +97,7 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public void onDestroy(){
         if(locationManager!=null)try{locationManager.removeUpdates(this);}catch(Exception ignored){}
+        if(locationThread!=null)locationThread.quitSafely();
         super.onDestroy();
     }
     @Override public IBinder onBind(Intent intent){return null;}
