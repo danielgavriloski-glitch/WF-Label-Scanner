@@ -8,7 +8,7 @@ let routeStateCache=null,routeStateCacheAt=0;
 function invalidateRouteCache(){routeStateCache=null;routeStateCacheAt=0;}
 function routeNativeState(force){
   // One WebView render requests GPS data repeatedly. Share a short-lived snapshot.
-  const now=Date.now(),maxAge=routeStateCache&&routeStateCache.tracking?5000:15000;
+  const now=Date.now(),maxAge=routeStateCache&&routeStateCache.tracking?15000:30000;
   if(!force&&routeStateCache&&now-routeStateCacheAt<maxAge)return routeStateCache;
   try{
     if(typeof Android==='undefined'||!Android.getRouteLog)return {tracking:false,sessions:[],savedPlaces:[]};
@@ -708,8 +708,10 @@ document.addEventListener('click',function(event){
   toast('Името е ажурирано во поврзаните патувања.');
 });
 
-// The home clock already redraws the GPS panel every 30 s; avoid a second full redraw.
-setInterval(function(){if(view!=='home')refreshRoutePanel();checkRoutePrompt();},30000);
+// GPS recording runs in Android's background service. Do not redraw the route panel on a timer:
+// a render can traverse years of GPS history and cause WebView jank. Keep the stop prompt
+// responsive without refreshing the map or the rest of the screen.
+setInterval(function(){if(document.visibilityState==='visible')checkRoutePrompt();},10000);
 if(state)render();
 window.WFRoute={state:routeNativeState,invalidateCache:invalidateRouteCache,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
 })();
