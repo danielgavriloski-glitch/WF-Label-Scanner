@@ -34,5 +34,6 @@ function pickup(log,shipmentId,count){
  validate(next);return next;
 }
 function due(log,today){return validate(log).shipments.filter(s=>['pending','partial'].includes(s.status)&&(!s.dueDate||s.dueDate<=today)).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));}
+if(typeof module!=='object'&&typeof Core!=='undefined'&&!Core.__cargoV1){const previous=Core.validate;Core.validate=raw=>{previous(raw);if(raw.cargoLog!==undefined)validate(raw.cargoLog);return raw;};Core.__cargoV1=true;}
 return {fresh,validate,put,pickup,due,statuses};
 });
