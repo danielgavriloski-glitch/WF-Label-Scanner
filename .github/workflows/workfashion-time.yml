@@ -1,7 +1,7 @@
 name: Build Workfashion Time
 on:
   push:
-    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log, feature/wfag-v3-1-warehouse-documents, feature/wfag-v3-2-retroactive-overtime-balance, feature/wfag-v3-3-document-management, feature/wfag-v3-4-weekend-overtime-always]
+    branches: [workfashion-personal-time, workfashion-travel-time, wfag-route-history-map-export-v2-7, wfag-v2-8-day-map-history, feature/wfag-v2-9-clean-from-v2-8, feature/wfag-v3-0-crafter-vehicle-log, feature/wfag-v3-1-warehouse-documents, feature/wfag-v3-2-retroactive-overtime-balance, feature/wfag-v3-3-document-management, feature/wfag-v3-4-weekend-overtime-always, feature/wfag-v3-5-service-reminders]
   pull_request:
     branches: [workfashion-travel-time]
   workflow_dispatch:
