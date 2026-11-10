@@ -47,6 +47,8 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
+        CargoReminderReceiver.schedule(this);
+        if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 98);
         documentVisit=getPreferences(0).getString("documentVisit","");
         scanOutput=getPreferences(0).getString("scanOutput","");
         replaceDocumentId=getPreferences(0).getString("replaceDocumentId","");
