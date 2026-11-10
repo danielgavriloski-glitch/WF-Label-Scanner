@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 let tab='overview',from=Core.monthBounds(Core.today().slice(0,7))[0],to=Core.today(),shown=40;
-const labels={readings:'Километража',fills:'Гориво',tireSets:'Комплет гуми',tireChanges:'Промена на гуми',trips:'Патување',averages:'Зададен просек'};
+const labels={readings:'Километража',fills:'Гориво',tireSets:'Комплет гуми',tireChanges:'Промена на гуми',trips:'Патување',averages:'Зададен просек',services:'Сервис'};
 const getLog=()=>state&&state.vehicleLog?state.vehicleLog:Vehicle.fresh();
 const fmt=(n,d=1)=>n===null||n===undefined?'—':Number(n).toLocaleString('mk-MK',{minimumFractionDigits:0,maximumFractionDigits:d});
 const stamp=at=>Core.displayDate(at.slice(0,10))+' · '+at.slice(11);
@@ -31,6 +31,7 @@ function edit(kind,rowId,seed){
   const row=rowId?getLog()[kind].find(r=>r.id===rowId&&!r.deleted):null;
   if(rowId&&!row){toast('Записот не е пронајден.');return;}
   const r=row||seed||{};let body='';
+  if(kind==='services')body=atField(r)+input('vanTitle','Вид сервис (масло, филтри, кочници...)',r.title||'','text','maxlength="100" required')+input('vanOdo','Километража при сервис (km)',r.odo??currentOdo(),'number','min="0"')+input('vanNextOdo','Следен сервис на km',r.nextOdo??'','number','min="0"')+input('vanNextDate','Следен сервис до датум',r.nextDate||'','date')+input('vanCost','Цена во денари',r.cost??'','number','min="0"')+noteField(r);
   if(kind==='readings')body=atField(row)+odoField(row)+noteField(row);
   if(kind==='fills')body=atField(row)+odoField(row)+input('vanLitres','Наточени литри',r.litres??'','text','inputmode="decimal" required')+'<label class="check"><input id="vanFull" type="checkbox" '+(r.full?'checked':'')+'><span>Наполнето до полн резервоар</span></label>'+input('vanCost','Вкупно платено (денари, по желба)',r.cost??'','text','inputmode="decimal"')+noteField(row)+'<p class="small muted">Делумните точења се собираат до следното полнење до полно. Првото полно е почетна референца.</p>';
   if(kind==='averages')body=atField(row)+input('vanL100','Зададен просек (L/100 km)',r.l100??'','text','inputmode="decimal" required')+noteField(row)+'<p class="small muted">Важи од овој датум. Измената ги прерачунува проценките, а измерените резултати остануваат според точењата.</p>';
@@ -41,6 +42,7 @@ function edit(kind,rowId,seed){
     const data={id:row&&row.id,note:$('vanNote')?$('vanNote').value:''};
     if(kind!=='tireSets')data.at=$('vanAt').value;
     if(['readings','fills','tireChanges'].includes(kind))data.odo=$('vanOdo').value;
+    if(kind==='services')Object.assign(data,{title:$('vanTitle').value,odo:$('vanOdo').value,nextOdo:$('vanNextOdo').value,nextDate:$('vanNextDate').value,cost:$('vanCost').value});
     if(kind==='fills')Object.assign(data,{litres:$('vanLitres').value,full:$('vanFull').checked,cost:$('vanCost').value});
     if(kind==='averages')data.l100=$('vanL100').value;
     if(kind==='tireSets')Object.assign(data,{name:$('vanSetName').value,season:$('vanSeason').value});
@@ -105,6 +107,15 @@ function analysisMarkup(){
   return '<section class="card"><div class="grid">'+input('vanFromDate','Од',from,'date','required')+input('vanToDate','До',to,'date','required')+'</div><button id="vanApplyRange" class="btn secondary full" type="button">Прикажи период</button></section><div class="grid stats">'+
     stat('Патувања',s.tripCount,fmt(s.tripKm,2)+' km во заведени патувања','accent')+stat('Наточено',fmt(s.fuelAdded,2)+' L',s.fuel.length+' точења')+stat('Измерено',s.measuredL100===null?'—':fmt(s.measuredL100,2)+' L/100',fmt(s.measuredLitres,2)+' L за '+fmt(s.measuredKm,2)+' km')+stat('Платено',fmt(s.fuelCost,2)+' ден.',s.costCount+' точења со внесен износ')+'</div><section class="card"><h3>Километри и проценка</h3><p>'+fmt(s.tripKm,2)+' km · '+s.tripCount+' заведени патувања</p><p class="small muted">'+(s.first&&s.last?'Разлика меѓу потврдените состојби во периодот: '+fmt(s.odoKm,2)+' km<br>'+stamp(s.first.at)+' → '+stamp(s.last.at):'Нема потврдени состојби од таблата во овој период.')+'</p><p class="small muted">'+(s.estimatedOdoLitres===null?'Нема проценка по табла. ':'Проценка по табла: '+fmt(s.estimatedOdoLitres,2)+' L за '+fmt(s.estimatedOdoKm,2)+' km. ')+(s.estimatedTripLitres===null?'Внеси просек за проценка на горивото во патувањата.':'Проценето гориво: '+fmt(s.estimatedTripLitres,2)+' L за '+fmt(s.estimatedTripKm,2)+' km со зададен просек.')+'</p></section><section class="card"><h3>Покриеност на измерената потрошувачка</h3><p class="small muted">Се собираат затворените полно → полно интервали што завршуваат во избраниот период. Датумите подолу ја покажуваат точната покриеност.</p>'+(s.cycles.map(c=>'<div class="van-interval">'+stamp(c.from)+' → '+stamp(c.to)+'<br>'+fmt(c.litres,2)+' L / '+fmt(c.km,2)+' km · <strong>'+fmt(c.l100,2)+' L/100 km</strong></div>').join('')||empty('Нема затворен полно → полно интервал.'))+'</section><section class="card"><h3>Гуми вкупно до '+Core.displayDate(to)+'</h3>'+Vehicle.tires(log,to+'T23:59').map(s=>'<div class="mini-row"><span>'+esc(s.name)+'</span><strong>'+fmt(s.totalKm,2)+' km</strong></div>').join('')+'</section><div class="actions"><button class="btn" id="vanExportPdf">PDF</button><button class="btn secondary" id="vanExportCsv">CSV</button></div>';
 }
+function servicesMarkup(){
+ const log=getLog(),odo=Vehicle.latest(log)?.odo??null,today=Core.today();
+ const rows=Vehicle.live(log.services||[]).slice().sort((a,b)=>b.at.localeCompare(a.at));
+ return '<button class="btn full" data-van-add="services">Додај сервис</button><section class="card">'+(rows.map(r=>{
+ const due=(r.nextDate&&r.nextDate<=today)||(r.nextOdo!==null&&odo!==null&&odo>=r.nextOdo);
+ const soon=(r.nextDate&&r.nextDate<=new Date(Date.now()+14*86400000).toISOString().slice(0,10))||(r.nextOdo!==null&&odo!==null&&odo>=r.nextOdo-1000);
+ return entry(esc(r.title)+(due?' · СЕРВИС ДОСПЕАН':soon?' · НАСКОРО':''),stamp(r.at)+(r.odo===null?'':' · '+fmt(r.odo)+' km')+(r.nextOdo===null?'':'<br>Следен на '+fmt(r.nextOdo)+' km')+(r.nextDate?'<br>До '+Core.displayDate(r.nextDate):'')+(r.cost===null?'':'<br>'+fmt(r.cost)+' ден.')+(r.note?'<br>'+esc(r.note):''),editButton('services',r));
+ }).join('')||empty('Нема заведено сервиси.'))+'</section><p class="small muted">Потсетувањата се прикажуваат при отворање на Комбе. За предупредување по km внесувај ја точната километража од таблата.</p>';
+}
 function historyMarkup(){
   const log=getLog();let removed=[];
   for(const kind of Object.keys(labels))for(const r of log[kind]||[])if(r.deleted)removed.push({kind,r});
@@ -112,11 +123,11 @@ function historyMarkup(){
 }
 function renderVehicle(){
   const log=getLog();
-  const tabs=[['overview','Преглед'],['fuel','Гориво'],['tires','Гуми'],['trips','Патувања'],['analysis','Анализа'],['history','Историја']];
+  const tabs=[['overview','Преглед'],['fuel','Гориво'],['tires','Гуми'],['trips','Патувања'],['analysis','Анализа'],['services','Сервис'],['history','Историја']];
   $('app').innerHTML=header(esc(log.name),'Комбе · километража, гориво, гуми и патувања')+'<div class="van-tabs" role="group" aria-label="Евиденција за комбето">'+tabs.map(([key,title])=>'<button type="button" data-van-tab="'+key+'" aria-pressed="'+(tab===key)+'">'+title+'</button>').join('')+'</div>'+
     (!state.vehicleLog?'<section class="card"><h2>Постави почетна километража</h2><p class="small muted">Внеси ја точната состојба од таблата. Потоа додавај гориво, гуми и патувања.</p><button id="vanSetup" class="btn full">Постави го комбето</button></section>':
-    tab==='overview'?overview():tab==='fuel'?'<button class="btn full" data-van-add="fills">Додај точење</button><section class="card">'+fuelMarkup()+'</section>':tab==='tires'?tiresMarkup():tab==='trips'?tripMarkup():tab==='analysis'?analysisMarkup():historyMarkup())+
-    (state.vehicleLog&&['fuel','tires','trips','history'].includes(tab)?'<button type="button" class="btn light full" id="vanMore">Прикажи повеќе записи</button>':'');
+    tab==='overview'?overview():tab==='fuel'?'<button class="btn full" data-van-add="fills">Додај точење</button><section class="card">'+fuelMarkup()+'</section>':tab==='tires'?tiresMarkup():tab==='trips'?tripMarkup():tab==='analysis'?analysisMarkup():tab==='services'?servicesMarkup():historyMarkup())+
+    (state.vehicleLog&&['fuel','tires','trips','services','history'].includes(tab)?'<button type="button" class="btn light full" id="vanMore">Прикажи повеќе записи</button>':'');
   document.querySelectorAll('[data-van-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.vanTab;shown=40;render();});
   document.querySelectorAll('[data-van-add]').forEach(b=>b.onclick=()=>state.vehicleLog?edit(b.dataset.vanAdd):setup());
   document.querySelectorAll('[data-van-kind]').forEach(b=>b.onclick=()=>edit(b.dataset.vanKind,b.dataset.vanId));
@@ -147,7 +158,7 @@ function exportVehicleCsv(){
   exportText('WFAG_Crafter_'+from+'_'+to+'.csv','\ufeff'+rows.map(r=>r.map(cell).join(';')).join('\r\n'),'text/csv');
 }
 window.renderVehicle=renderVehicle;
-window.WFVehicle={getLog:()=>JSON.parse(JSON.stringify(getLog())),setup,edit,linkCandidates,vehicleReport,setTab:value=>{if(['overview','fuel','tires','trips','analysis','history'].includes(value))tab=value;view='vehicle';render();}};
+window.WFVehicle={getLog:()=>JSON.parse(JSON.stringify(getLog())),setup,edit,linkCandidates,vehicleReport,setTab:value=>{if(['overview','fuel','tires','trips','analysis','services','history'].includes(value))tab=value;view='vehicle';render();}};
 function syncNewTrips(){
   if(!state||!state.vehicleLog||!state.vehicleLog.autoLinkFrom||!$('modal').hidden||typeof Android==='undefined'||!Android.getRouteLog)return;
   try{const native=JSON.parse(Android.getRouteLog()||'{}'),result=Vehicle.autoLink(getLog(),native.sessions||[]);if(result.added){const next=JSON.parse(JSON.stringify(state));next.vehicleLog=result.log;commit(next,'Комбе: автоматски поврзани GPS патувања · '+result.added);toast('Поврзани '+result.added+' нови GPS патувања.');}}catch(error){toast('Патувањата не се поврзаа: '+error.message);}
