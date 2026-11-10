@@ -5,7 +5,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application android:label="${appLabel}" android:icon="@drawable/wf_icon" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
+<receiver android:name=".CargoReminderReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter></receiver>
 <activity android:name=".RouteMapActivity" android:exported="false" />
         <activity android:name=".ScanActivity" android:exported="false" android:configChanges="orientation|screenSize" />
         <provider android:name=".DocumentProvider" android:authorities="${applicationId}.documents" android:exported="false" android:grantUriPermissions="true" />
