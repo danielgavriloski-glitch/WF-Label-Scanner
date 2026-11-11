@@ -1,6 +1,10 @@
 package mk.workfashion.personal;
 
 import android.Manifest;
+import android.location.Location;
+import android.location.LocationManager;
+import android.location.LocationListener;
+import android.os.SystemClock;
 import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.content.Intent;
@@ -132,7 +136,46 @@ public class MainActivity extends Activity {
             });
         },"wfag-route-stop").start();
     }
+    private void requestWorkdayPosition(){
+        runOnUiThread(()->{
+            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION}, 96);
+                workdayLocationResult(null,"Дозволи прецизна GPS локација и обиди се повторно.");
+                return;
+            }
+            try{
+                LocationManager lm=(LocationManager)getSystemService(LOCATION_SERVICE);
+                if(lm==null||!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+                    workdayLocationResult(null,"Вклучи GPS локација.");return;
+                }
+                final LocationListener[] listener=new LocationListener[1];
+                listener[0]=location->{
+                    lm.removeUpdates(listener[0]);
+                    long age=SystemClock.elapsedRealtimeNanos()-location.getElapsedRealtimeNanos();
+                    if(age<0||age>30000000000L)workdayLocationResult(null,"GPS позицијата е застарена.");
+                    else workdayLocationResult(location,null);
+                };
+                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,0,0,listener[0],getMainLooper());
+                new android.os.Handler(getMainLooper()).postDelayed(()->{
+                    lm.removeUpdates(listener[0]);
+                    workdayLocationResult(null,"GPS не одговори навреме. Обиди се повторно.");
+                },15000);
+            }catch(Exception e){workdayLocationResult(null,"GPS не е достапен.");}
+        });
+    }
+    private void workdayLocationResult(Location location,String error){
+        if(webView==null)return;
+        String result;
+        try{
+            JSONObject obj=new JSONObject();
+            if(location!=null){obj.put("lat",location.getLatitude());obj.put("lon",location.getLongitude());obj.put("accuracy",location.getAccuracy());}
+            if(error!=null)obj.put("error",error);
+            result=obj.toString();
+        }catch(Exception e){return;}
+        webView.evaluateJavascript("window.onWFAGWorkdayLocation&&window.onWFAGWorkdayLocation("+JSONObject.quote(result)+")",null);
+    }
     public class LocalBridge {
+        @JavascriptInterface public void requestWorkdayLocation(){requestWorkdayPosition();}
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
             try{
                 File target=Documents.file(MainActivity.this,fileId);
