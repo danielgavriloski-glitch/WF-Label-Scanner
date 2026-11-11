@@ -6,7 +6,13 @@ Core.__wfagWorkdayIntegration=true;
 const previous=Core.day;
 Core.day=function(state,date,now=new Date()){
  const r=previous(state,date,now),session=state.workdaySessions&&state.workdaySessions[date];
- if(!session||session.startAt===null||!r.covered||!['work','holidayWork'].includes(r.type))return r;
+ if(!r.covered||!['work','holidayWork'].includes(r.type))return r;
+ const cfg=state.workdaySettings;
+ if((!session||session.startAt===null)&&cfg&&cfg.activatedOn&&date>=cfg.activatedOn&&
+    r.auto&&(!r.trips||r.trips.length===0)){
+   return Object.assign({},r,{worked:0,travel:0,planWork:0,workdayPending:true});
+ }
+ if(!session||session.startAt===null)return r;
  const t=W.totals(session,now.getTime(),state.settings.dayMinutes);
  const start=Core.parts(new Date(session.startAt)),end=Core.parts(new Date(session.endAt===null?now.getTime():session.endAt));
  return Object.assign({},r,{
