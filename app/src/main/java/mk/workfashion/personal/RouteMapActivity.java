@@ -227,7 +227,7 @@ public class RouteMapActivity extends Activity {
             base.setXmlRenderTheme(MapsforgeThemes.DEFAULT);
             mapView.getLayerManager().getLayers().add(base);
 
-            JSONObject routeState = new JSONObject(RouteTrackingService.stateJson(this));
+            JSONObject routeState = new JSONObject(RouteTrackingService.displayStateJson(this));
             rawRouteLayers.clear();
             RouteBounds routeBounds = addRouteLayers(routeState);
 
