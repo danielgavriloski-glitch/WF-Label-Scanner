@@ -108,7 +108,8 @@ public class MainActivity extends Activity {
         if(x==null||y==null)return x==null&&y==null;
         if(!x.optString("mode","fixed").equals(y.optString("mode","fixed"))
            ||!x.optString("start","08:00").equals(y.optString("start","08:00"))
-           ||x.optInt("radiusM",100)!=y.optInt("radiusM",100))return false;
+           ||x.optInt("radiusM",100)!=y.optInt("radiusM",100)
+           ||!x.optString("activatedOn","").equals(y.optString("activatedOn","")))return false;
         JSONObject u=x.optJSONObject("workplace"),v=y.optJSONObject("workplace");
         if(u==null||v==null)return u==null&&v==null;
         return Double.compare(u.optDouble("lat",Double.NaN),v.optDouble("lat",Double.NaN))==0 &&
