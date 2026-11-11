@@ -93,7 +93,7 @@ function draw(){
  if(d.status==='not-started')actions=button(config().mode==='geofence'?'Провери GPS и започни':'Започни работен ден','start','primary');
  else if(d.status==='travel')actions=button('Пристигнав','arrive')+button('Заврши работен ден','finish','danger');
  else if(d.status==='working')actions=button('На пат','depart')+button('Заврши работен ден','finish','danger');
- panel.innerHTML='<h3>Работен ден · контрола</h3><p class="small muted">Статус: '+({ 'not-started':'Не е започнат',working:'Работа',travel:'На пат',finished:'Завршен'}[d.status]||d.status)+'</p><div class="mini-row"><span>Од почеток</span><strong>'+Core.hh(t.workedMinutes)+'</strong></div><div class="mini-row"><span>Време на пат</span><strong>'+Core.hh(t.travelMinutes)+'</strong></div>'+(d.endAt!==null?'<div class="mini-row"><span>Разлика од 8 часа</span><strong>'+Core.hhSigned(t.overtimeDelta)+'</strong></div>':'')+'<div class="actions">'+actions+'</div><p class="small muted">Ова е пробна евиденција. Евиденцијата е поврзана со дневниот фонд и пресметката на прекувремени часови.</p>';
+ panel.innerHTML='<h3>Работен ден · контрола</h3><p class="small muted">Статус: '+({ 'not-started':'Не е започнат',working:'Работа',travel:'На пат',finished:'Завршен'}[d.status]||d.status)+'</p><div class="mini-row"><span>Од почеток</span><strong>'+Core.hh(t.workedMinutes)+'</strong></div><div class="mini-row"><span>Време на пат</span><strong>'+Core.hh(t.travelMinutes)+'</strong></div>'+(d.endAt!==null?'<div class="mini-row"><span>Разлика од 8 часа</span><strong>'+Core.hhSigned(t.overtimeDelta)+'</strong></div>':'')+'<div class="actions">'+actions+'</div><p class="small muted">Евиденцијата е поврзана со дневниот фонд и пресметката на прекувремени часови.</p>';
  host.querySelector('.hero').insertAdjacentElement('afterend',panel);
  panel.querySelectorAll('[data-workday]').forEach(b=>b.addEventListener('click',async()=>{
   try{
@@ -103,6 +103,27 @@ function draw(){
   }catch(e){alert(e.message);}
  }));
 }
+let automaticInProgress=false;
+async function autoStart(){
+ if(automaticInProgress||!document.querySelector('.hero')||getDay().status!=='not-started')return;
+ const cfg=config();
+ if(cfg.mode==='manual')return;
+ if(cfg.mode==='fixed'&&now()<Core.timestamp(date(),cfg.start))return;
+ if(cfg.mode==='geofence'){
+  if(!cfg.workplace)return;
+  if(typeof Android!=='undefined'&&typeof Android.hasWorkdayLocationPermission==='function'&&!Android.hasWorkdayLocationPermission())return;
+ }
+ automaticInProgress=true;
+ try{
+  const updated=await authorisedStart(getDay());
+  if(updated.startAt!==null&&getDay().status==='not-started')saveDay(updated,'Автоматски започнат работен ден ('+cfg.mode+')');
+ }catch(e){/* Retry on next foreground check; do not display repeated alerts. */}
+ finally{automaticInProgress=false;}
+}
+window.WFAGWorkdayAutoStart=autoStart;
+setTimeout(autoStart,1200);
+setInterval(autoStart,60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoStart();});
 const previous=window.WFApp.setView;
 window.WFApp.setView=function(v){previous(v);if(v==='home')draw();if(v==='settings')drawSettings();};
 draw();
