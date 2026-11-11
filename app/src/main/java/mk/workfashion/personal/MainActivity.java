@@ -297,6 +297,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean setupAdminPassword(String password){return setupAdmin(password);}
         @JavascriptInterface public boolean verifyAdminPassword(String password){return verifyAdmin(password);}
         @JavascriptInterface public void requestWorkdayLocation(){requestWorkdayPosition();}
+        @JavascriptInterface public boolean hasWorkdayLocationPermission(){
+            return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED;
+        }
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
             try{
                 File target=Documents.file(MainActivity.this,fileId);
