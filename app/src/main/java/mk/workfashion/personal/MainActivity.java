@@ -220,6 +220,25 @@ public class MainActivity extends Activity {
             });
         },"wfag-route-stop").start();
     }
+    private void configureWorkdayMonitor(boolean mayRequestPermission){
+        runOnUiThread(()->{
+            try{
+                JSONObject state=new JSONObject(readState());
+                JSONObject cfg=state.optJSONObject("workdaySettings");
+                boolean selected=cfg!=null&&"geofence".equals(cfg.optString("mode"))&&
+                    cfg.optJSONObject("workplace")!=null&&!cfg.optString("activatedOn","").isEmpty();
+                Intent monitor=new Intent(this,WorkdayArrivalService.class);
+                if(!selected){stopService(monitor);return;}
+                if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
+                    if(mayRequestPermission)requestPermissions(
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},97);
+                    return;
+                }
+                if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(monitor);
+                else startService(monitor);
+            }catch(Exception e){error("GPS следењето во позадина не можеше да се активира.");}
+        });
+    }
     private void requestWorkdayPosition(){
         runOnUiThread(()->{
             if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
@@ -297,6 +316,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean setupAdminPassword(String password){return setupAdmin(password);}
         @JavascriptInterface public boolean verifyAdminPassword(String password){return verifyAdmin(password);}
         @JavascriptInterface public void requestWorkdayLocation(){requestWorkdayPosition();}
+        @JavascriptInterface public void refreshWorkdayMonitor(){configureWorkdayMonitor(true);}
         @JavascriptInterface public boolean hasWorkdayLocationPermission(){
             return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED;
         }
@@ -417,6 +437,11 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==97){
+            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)
+                configureWorkdayMonitor(false);
+            else error("За автоматски почеток во позадина е потребна прецизна GPS дозвола.");
+        }
         if(requestCode==ROUTE_PERMISSION){
             boolean locationGranted=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||
                 checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
