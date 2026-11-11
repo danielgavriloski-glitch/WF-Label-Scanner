@@ -30,12 +30,7 @@ function saveDay(d,label){
  const s=WFApp.getState();
  s.workdaySessions=s.workdaySessions||{};
  s.workdaySessions[d.date]=d;
- Core.validate(s);
- s.audit.push({at:new Date().toISOString(),text:label});
- if(typeof Android!=='undefined'){if(!Android.saveState(JSON.stringify(s)))throw Error('Неуспешно зачувување');}
- else localStorage.setItem(Core.APP_ID,JSON.stringify(s));
- // Synchronise the existing app's in-memory state by reloading its saved state.
- location.reload();
+ WFApp.commit(s,label);
 }
 function button(label,action,cls){return '<button type="button" class="btn '+(cls||'secondary')+'" data-workday="'+action+'">'+label+'</button>';}
 function draw(){
