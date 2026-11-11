@@ -8,6 +8,14 @@ let reportFrom=Core.monthBounds(month)[0],reportTo=Core.monthBounds(month)[1],to
 function load(){try{const raw=typeof Android!=='undefined'?Android.loadState():localStorage.getItem(Core.APP_ID);state=raw?Core.validate(JSON.parse(raw)):Core.fresh();if(!raw)persist(state);}catch(e){state=null;$('app').innerHTML=`<div class="card"><h2>Евиденцијата не се отвори</h2><p>${esc(e.message)}</p><p>Затвори и повторно отвори ја апликацијата или врати зачуван бекап.</p><button class="btn full" id="recoverBackup">Врати бекап</button></div>`;$('recoverBackup').onclick=restoreBackup;return false;}return true;}
 function persist(next){const raw=JSON.stringify(next);if(typeof Android!=='undefined'){if(!Android.saveState(raw))throw Error('Записот не се зачува. Провери го слободниот простор.');}else localStorage.setItem(Core.APP_ID,raw);}
 function commit(next,text){Core.validate(next);next.audit.push({at:new Date().toISOString(),text});if(next.audit.length>10000)next.audit=next.audit.slice(-10000);persist(next);state=next;render();}
+function commitWithAdmin(next,label,password){
+ Core.validate(next);
+ if(typeof Android==='undefined'||typeof Android.saveStateWithAdmin!=='function')throw Error('Потребна е новата Android верзија.');
+ next.audit.push({at:new Date().toISOString(),text:label});
+ if(next.audit.length>10000)next.audit=next.audit.slice(-10000);
+ if(!Android.saveStateWithAdmin(JSON.stringify(next),password))throw Error('Поставките не се зачуваа. Провери ја лозинката.');
+ state=next;render();
+}
 function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').classList.add('show');toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3500);}
 function badge(r){return `<span class="badge ${r.future?'plan':r.auto?'':'manual'}">${r.future?'ПЛАН':r.auto?'АВТО':'ИЗМЕНЕТО'}</span>`;}
 function stat(title,value,foot='',cls=''){return `<div class="stat ${cls}"><span>${title}</span><strong>${esc(value)}</strong><small>${foot}</small></div>`;}
@@ -100,7 +108,7 @@ window.handleImport=handleImport;
 window.onExportComplete=name=>{if(name.startsWith('Workfashion_backup_')&&state){const next=JSON.parse(JSON.stringify(state));next.lastBackupAt=new Date().toISOString();try{persist(next);state=next;if(view==='settings')render();}catch(e){toast(e.message);return;}}toast('Зачувано: '+name);};
 window.onNativeError=text=>toast(text);
 window.onNativeBack=()=>{if(!$('modal').hidden){closeModal();return true;}if(view!=='home'){view='home';render();return true;}return false;};
-window.WFApp={getState:()=>JSON.parse(JSON.stringify(state)),commit,setView:v=>{view=v;render();},editDay,editTrip,reportJson,exportRows};
+window.WFApp={getState:()=>JSON.parse(JSON.stringify(state)),commit,commitWithAdmin,setView:v=>{view=v;render();},editDay,editTrip,reportJson,exportRows};
 $('settingsButton').innerHTML=icon('settings');$('settingsButton').onclick=()=>{if(!state){restoreBackup();return;}view='settings';render();window.scrollTo(0,0);};
 if(load())render();setInterval(()=>{if(state&&view==='home'&&$('modal').hidden)render();},30000);
 
