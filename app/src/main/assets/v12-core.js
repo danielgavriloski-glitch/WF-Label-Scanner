@@ -147,11 +147,11 @@ Core.week=function(state,monday,now=new Date()){
   for(const r of rows){
     // An unedited default day is a full 8h day, not evidence of an absence.
     // A shift in progress must not be debited before it has actually finished.
-    const shiftEnded=r.date<currentDate ||
+    const shiftEnded=r.workdaySession ? r.workdayFinished : r.date<currentDate ||
       (r.date===currentDate&&r.type==='work'&&
         Core.timestamp(r.overnight?Core.plus(r.date,1):r.date,r.end)<=now.getTime());
     const completedTrip=Array.isArray(r.trips)&&r.trips.some(t=>!t.future&&!t.pending&&t.arrivalAt!==null);
-    const workConfirmed=!r.auto||completedTrip;
+    const workConfirmed=r.workdaySession ? r.workdayFinished : (!r.auto||completedTrip);
     r.shortfall=r.covered&&r.scheduled&&r.type==='work'&&!r.future&&
       shiftEnded&&workConfirmed?Math.max(0,s.dayMinutes-r.worked):0;
     // Existing manually entered compensatory off days keep their old −8h rule.
