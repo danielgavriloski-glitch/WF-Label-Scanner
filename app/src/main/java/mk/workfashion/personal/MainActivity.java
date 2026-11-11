@@ -148,8 +148,11 @@ public class MainActivity extends Activity {
                 if(lm==null||!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)){
                     workdayLocationResult(null,"Вклучи GPS локација.");return;
                 }
+                final boolean[] completed={false};
                 final LocationListener[] listener=new LocationListener[1];
                 listener[0]=location->{
+                    if(completed[0])return;
+                    completed[0]=true;
                     lm.removeUpdates(listener[0]);
                     long age=SystemClock.elapsedRealtimeNanos()-location.getElapsedRealtimeNanos();
                     if(age<0||age>30000000000L)workdayLocationResult(null,"GPS позицијата е застарена.");
@@ -157,6 +160,8 @@ public class MainActivity extends Activity {
                 };
                 lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,0,0,listener[0],getMainLooper());
                 new android.os.Handler(getMainLooper()).postDelayed(()->{
+                    if(completed[0])return;
+                    completed[0]=true;
                     lm.removeUpdates(listener[0]);
                     workdayLocationResult(null,"GPS не одговори навреме. Обиди се повторно.");
                 },15000);
