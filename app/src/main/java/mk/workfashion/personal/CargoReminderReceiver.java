@@ -27,7 +27,7 @@ public class CargoReminderReceiver extends BroadcastReceiver {
   manager.setInexactRepeating(AlarmManager.RTC_WAKEUP,c.getTimeInMillis(),AlarmManager.INTERVAL_DAY,pi);
  }
  @Override public void onReceive(Context ctx,Intent intent){
-  if("android.intent.action.BOOT_COMPLETED".equals(intent.getAction())){schedule(ctx);return;}
+  if("android.intent.action.BOOT_COMPLETED".equals(intent.getAction())){schedule(ctx);WorkdayFixedReceiver.schedule(ctx);return;}
   try{
    if(Build.VERSION.SDK_INT>=33&&ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return;
    File f=new File(ctx.getFilesDir(),"workfashion-state.json");if(!f.isFile()||f.length()>16*1024*1024)return;
