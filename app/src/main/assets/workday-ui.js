@@ -84,6 +84,7 @@ function drawSettings(){
   const settings=W.settings({mode:panel.querySelector('#wdMode').value,start:panel.querySelector('#wdStart').value,radiusM:Number(panel.querySelector('#wdRadius').value),workplace:lat===''?null:{lat:Number(lat),lon:Number(lon)}});
   if(settings.mode==='geofence'&&!settings.workplace)throw Error('Прво постави работна GPS локација.');
   const state=WFApp.getState();settings.activatedOn=state.workdaySettings&&state.workdaySettings.activatedOn||Core.today();state.workdaySettings=settings;WFApp.commitWithAdmin(state,'Променети поставки за работен ден',adminPassword);
+  if(typeof Android!=='undefined'&&typeof Android.refreshWorkdayMonitor==='function')Android.refreshWorkdayMonitor();
  }catch(e){alert(e.message);}};
 }
 function draw(){
