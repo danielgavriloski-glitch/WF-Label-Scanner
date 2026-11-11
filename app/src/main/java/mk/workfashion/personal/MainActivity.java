@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, OPEN_ROUTE_ARCHIVE=74, MAX_BYTES=16*1024*1024;
     WebView webView;
     private AtomicFile stateFile;
+    private volatile Location recentWorkdayFix=null;
     private byte[] pendingBytes;
     private String pendingName;
     private boolean ready=false;
@@ -101,6 +102,84 @@ public class MainActivity extends Activity {
     private synchronized String readState(){
         if(!stateFile.getBaseFile().exists())return "";
         try{return new String(stateFile.readFully(),StandardCharsets.UTF_8);}catch(Exception e){return "{\"readError\":true}";}
+    }
+    private static boolean sameWorkdaySettings(JSONObject a,JSONObject b){
+        JSONObject x=a.optJSONObject("workdaySettings"),y=b.optJSONObject("workdaySettings");
+        if(x==null||y==null)return x==null&&y==null;
+        if(!x.optString("mode","fixed").equals(y.optString("mode","fixed"))
+           ||!x.optString("start","08:00").equals(y.optString("start","08:00"))
+           ||x.optInt("radiusM",100)!=y.optInt("radiusM",100))return false;
+        JSONObject u=x.optJSONObject("workplace"),v=y.optJSONObject("workplace");
+        if(u==null||v==null)return u==null&&v==null;
+        return Double.compare(u.optDouble("lat",Double.NaN),v.optDouble("lat",Double.NaN))==0 &&
+               Double.compare(u.optDouble("lon",Double.NaN),v.optDouble("lon",Double.NaN))==0;
+    }
+    private boolean workdayStartAllowed(JSONObject current,JSONObject proposed,String date){
+        try{
+            JSONObject cfg=current.optJSONObject("workdaySettings");
+            if(cfg==null)cfg=new JSONObject();
+            String mode=cfg.optString("mode","fixed");
+            long now=System.currentTimeMillis();
+            if(!date.equals(new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.US).format(new java.util.Date(now))))return false;
+            long start=proposed.optLong("startAt",-1);
+            if(start<=0||start>now+10000L)return false;
+            if("geofence".equals(mode)){
+                Location fix=recentWorkdayFix;
+                JSONObject workplace=cfg.optJSONObject("workplace");
+                if(fix==null||workplace==null||!fix.hasAccuracy())return false;
+                long age=SystemClock.elapsedRealtimeNanos()-fix.getElapsedRealtimeNanos();
+                if(age<0||age>30000000000L||Math.abs(start-now)>60000L)return false;
+                if(android.os.Build.VERSION.SDK_INT>=18&&fix.isFromMockProvider())return false;
+                double lat=workplace.optDouble("lat",Double.NaN),lon=workplace.optDouble("lon",Double.NaN);
+                double radius=cfg.optDouble("radiusM",100);
+                if(!Double.isFinite(lat)||!Double.isFinite(lon)||radius<50||radius>1000||
+                    fix.getAccuracy()>Math.min(radius,150))return false;
+                float[] meters=new float[1];
+                Location.distanceBetween(lat,lon,fix.getLatitude(),fix.getLongitude(),meters);
+                return meters[0]<=radius&&"geofence".equals(proposed.optString("source"));
+            }
+            if("fixed".equals(mode)){
+                String scheduled=cfg.optString("start","08:00");
+                java.text.SimpleDateFormat formatter=new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm",java.util.Locale.US);
+                formatter.setLenient(false);
+                java.util.Date d=formatter.parse(date+" "+scheduled);
+                return d!=null&&start==d.getTime()&&start<=now&&"fixed".equals(proposed.optString("source"));
+            }
+            return "manual".equals(mode)&&Math.abs(start-now)<=60000L&&"manual".equals(proposed.optString("source"));
+        }catch(Exception e){return false;}
+    }
+    private synchronized boolean workdayWritePermitted(String incoming,String adminPassword){
+        try{
+            String prior=readState();
+            if(prior.isEmpty())return true;
+            JSONObject old=new JSONObject(prior),next=new JSONObject(incoming);
+            boolean admin=adminPassword!=null&&verifyAdmin(adminPassword);
+            if(!sameWorkdaySettings(old,next)&&!admin)return false;
+            JSONObject before=old.optJSONObject("workdaySessions"),after=next.optJSONObject("workdaySessions");
+            if(before==null)before=new JSONObject();
+            if(after==null)after=new JSONObject();
+            java.util.Iterator<String> originalKeys=before.keys();
+            while(originalKeys.hasNext()){
+                String date=originalKeys.next();
+                if(!after.has(date))return admin;
+                JSONObject priorDay=before.optJSONObject(date),newDay=after.optJSONObject(date);
+                if(priorDay==null||newDay==null)return false;
+                if(priorDay.optLong("startAt",-1)>0&&
+                   priorDay.optLong("startAt",-1)!=newDay.optLong("startAt",-1))return admin;
+                if(priorDay.optLong("endAt",-1)>0&&
+                   priorDay.optLong("endAt",-1)!=newDay.optLong("endAt",-1))return admin;
+            }
+            java.util.Iterator<String> dates=after.keys();
+            while(dates.hasNext()){
+                String date=dates.next();
+                JSONObject newDay=after.optJSONObject(date),priorDay=before.optJSONObject(date);
+                if(newDay==null)return false;
+                if(newDay.optLong("startAt",-1)>0&&(priorDay==null||priorDay.optLong("startAt",-1)<=0)){
+                    if(!admin&&!workdayStartAllowed(old,newDay,date))return false;
+                }
+            }
+            return true;
+        }catch(Exception e){return false;}
     }
     private synchronized boolean writeState(String text){
         FileOutputStream out=null;
@@ -160,7 +239,7 @@ public class MainActivity extends Activity {
                     lm.removeUpdates(listener[0]);
                     long age=SystemClock.elapsedRealtimeNanos()-location.getElapsedRealtimeNanos();
                     if(age<0||age>30000000000L)workdayLocationResult(null,"GPS позицијата е застарена.");
-                    else workdayLocationResult(location,null);
+                    else {recentWorkdayFix=location;workdayLocationResult(location,null);}
                 };
                 lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,0,0,listener[0],getMainLooper());
                 new android.os.Handler(getMainLooper()).postDelayed(()->{
@@ -234,7 +313,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void discardArchive(){Documents.removeTree(archiveStage());}
         @JavascriptInterface public boolean finishArchiveRestore(){try{Documents.installArchive(MainActivity.this,archiveStage());Documents.removeTree(archiveStage());return true;}catch(Exception e){error("Враќањето не заврши: "+e.getMessage());return false;}}
         @JavascriptInterface public String loadState(){return readState();}
-        @JavascriptInterface public boolean saveState(String text){return writeState(text);}
+        @JavascriptInterface public boolean saveState(String text){return workdayWritePermitted(text,null)&&writeState(text);}
+        @JavascriptInterface public boolean saveStateWithAdmin(String text,String password){return verifyAdmin(password)&&workdayWritePermitted(text,password)&&writeState(text);}
         @JavascriptInterface public void exportText(String name,String text,String mime){requestSave(name,text.getBytes(StandardCharsets.UTF_8),mime);}
         @JavascriptInterface public void exportBytes(String name,String base64,String mime){try{requestSave(name,Base64.decode(base64,Base64.DEFAULT),mime);}catch(Exception e){error("Фајлот не се подготви.");}}
         @JavascriptInterface public void exportPdf(String name,String json){try{requestSave(name,PdfReport.create(new JSONObject(json)),"application/pdf");}catch(Exception e){error("PDF извештајот не се подготви: "+e.getMessage());}}
