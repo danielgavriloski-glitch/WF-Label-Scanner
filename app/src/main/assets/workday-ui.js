@@ -5,10 +5,26 @@ const W=window.WFAGWorkday;
 if(!W||typeof window.WFApp==='undefined')return;
 const date=()=>Core.today(),now=()=>Date.now();
 function config(){return W.settings(WFApp.getState().workdaySettings||{});}
-function gpsPosition(){return new Promise((resolve,reject)=>{
- if(!navigator.geolocation){reject(Error('GPS не е достапен.'));return;}
- navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lon:p.coords.longitude,accuracy:p.coords.accuracy}),()=>reject(Error('GPS локацијата не може да се потврди.')), {enableHighAccuracy:true,timeout:12000,maximumAge:0});
-});}
+let pendingGps=null;
+window.onWFAGWorkdayLocation=raw=>{
+ if(!pendingGps)return;
+ const p=pendingGps;pendingGps=null;clearTimeout(p.timeout);
+ try{const result=JSON.parse(raw);if(result.error)throw Error(result.error);p.resolve(result);}catch(e){p.reject(e);}
+};
+function gpsPosition(){
+ if(typeof Android!=='undefined'&&typeof Android.requestWorkdayLocation==='function'){
+  return new Promise((resolve,reject)=>{
+   if(pendingGps){reject(Error('GPS проверката е во тек.'));return;}
+   const timeout=setTimeout(()=>{if(pendingGps){pendingGps=null;reject(Error('GPS не одговори.'));}},17000);
+   pendingGps={resolve,reject,timeout};
+   try{Android.requestWorkdayLocation();}catch(e){pendingGps=null;clearTimeout(timeout);reject(e);}
+  });
+ }
+ return new Promise((resolve,reject)=>{
+  if(!navigator.geolocation){reject(Error('GPS не е достапен.'));return;}
+  navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lon:p.coords.longitude,accuracy:p.coords.accuracy}),()=>reject(Error('GPS локацијата не може да се потврди.')),{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+ });
+}
 async function authorisedStart(day){
  const cfg=config();
  if(cfg.mode==='geofence'){
