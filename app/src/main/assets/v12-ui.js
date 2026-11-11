@@ -20,28 +20,6 @@ function routeNativeState(force){
 function routeDate(ms){const d=new Date(Number(ms)||0),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
 function routeClock(ms){if(!ms)return '—';const d=new Date(Number(ms)),p=n=>String(n).padStart(2,'0');return p(d.getHours())+':'+p(d.getMinutes());}
 function routeSpan(a,b){const m=Math.max(0,Math.round(((Number(b)||Date.now())-Number(a))/60000));return Core.hh(m);}
-function routePointMeters(a,b){
-  if(!a||!b)return 0;
-  const r=6371000,rad=x=>Number(x)*Math.PI/180;
-  const p1=rad(a.lat),p2=rad(b.lat),dp=rad(Number(b.lat)-Number(a.lat)),dl=rad(Number(b.lon)-Number(a.lon));
-  const h=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
-  return 2*r*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)));
-}
-function routeSessionMeters(s){
-  const stored=Number(s&&s.distanceM);
-  if(Number.isFinite(stored)&&stored>0)return stored;
-  const p=s&&Array.isArray(s.points)?s.points:[];let total=0;
-  for(let i=1;i<p.length;i++){
-    const d=routePointMeters(p[i-1],p[i]);
-    const dt=Math.max(1,(Number(p[i].at)-Number(p[i-1].at))/1000);
-    if(d<=Math.max(500,dt*80))total+=d;
-  }
-  return total;
-}
-function routeKm(m){const km=Math.max(0,Number(m)||0)/1000;return (km<10?km.toFixed(1):km.toFixed(0))+' km';}
-function routeSessions(from,to){
-  return routeNativeState().sessions.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
-}
 function routeSvg(sessions){
   // Stop-only preview. No location trails or route polylines are rendered.
   const stops=sessions.flatMap(s=>s.stops||[]).filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lon)));
@@ -75,32 +53,6 @@ function routePanelMarkup(from,to){
   }
   return '<div class="route-box"><div class="row"><div><h3>GPS застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања'+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Застанувања</button><button type="button" id="savedPlacesManage" class="btn light full">Зачувани места · Измени имиња</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп следење места':'Старт следење места')+'</button><p class="small muted route-privacy">Само места со застанување над 10 минути. Без автоматска километража и без следење линија на движење.</p></div>';
 }
-function openRouteMileage(defaultFrom,defaultTo){
-  const all=routeNativeState().sessions||[];
-  const today=Core.today();
-  const from=defaultFrom||today.slice(0,4)+'-01-01',to=defaultTo||today;
-  showModal('Километража','<div class="grid"><label class="field"><span>Од датум</span><input id="routeKmFrom" type="date" value="'+esc(from)+'"></label><label class="field"><span>До датум</span><input id="routeKmTo" type="date" value="'+esc(to)+'"></label></div><div id="routeKmResult"></div>');
-  const draw=function(){
-    const f=$('routeKmFrom').value,t=$('routeKmTo').value;
-    if(!f||!t||f>t){$('routeKmResult').innerHTML='<p class="error-text">Провери го периодот.</p>';return;}
-    const sessions=all.filter(s=>{const d=routeDate(s.startedAt);return d>=f&&d<=t;});
-    let total=0;const months={},years={};
-    sessions.forEach(s=>{
-      const m=routeSessionMeters(s);total+=m;
-      const d=routeDate(s.startedAt),ym=d.slice(0,7),y=d.slice(0,4);
-      months[ym]=(months[ym]||0)+m;years[y]=(years[y]||0)+m;
-    });
-    const monthRows=Object.keys(months).sort().reverse().map(k=>'<div class="mini-row"><span>'+esc(monthLabel(k))+'</span><strong>'+routeKm(months[k])+'</strong></div>').join('');
-    const yearRows=Object.keys(years).sort().reverse().map(k=>'<div class="mini-row"><span>'+k+'</span><strong>'+routeKm(years[k])+'</strong></div>').join('');
-    $('routeKmResult').innerHTML='<section class="card" style="margin-top:12px"><div class="row"><div><h3>Вкупно</h3><span class="small muted">'+Core.displayDate(f)+' – '+Core.displayDate(t)+' · '+sessions.length+' рути</span></div><strong class="trip-total">'+routeKm(total)+'</strong></div></section>'+
-      (monthRows?'<section class="card"><h3>По месеци</h3>'+monthRows+'</section>':'')+
-      (yearRows?'<section class="card"><h3>По години</h3>'+yearRows+'</section>':'')+
-      (!sessions.length?'<p class="trip-empty">Нема GPS рути во избраниот период.</p>':'')+
-      '<p class="small muted">Километрите се пресметани од снимената GPS трага и може малку да отстапуваат од километражата на возилото.</p>';
-  };
-  $('routeKmFrom').onchange=draw;$('routeKmTo').onchange=draw;draw();
-}
-
 function openRouteHistory() {
   const source=routeNativeState(),all=source.sessions.slice().sort((a,b)=>(Number(b.startedAt)||0)-(Number(a.startedAt)||0));
   const today=Core.today();
@@ -121,7 +73,7 @@ function openRouteHistory() {
     const matches=all.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
     const stops=matches.reduce((a,s)=>a+(s.stops||[]).length,0);
     const shown=matches.slice(0,routeHistoryCount);
-    $('gpsHistoryResult').innerHTML='<section class="card"><div class="row"><div><h3>Снимени патувања</h3><span class="small muted">'+matches.length+' рути · '+stops+' застанувања</span></div><strong class="trip-total">'+routeKm(total)+'</strong></div></section>'+
+    $('gpsHistoryResult').innerHTML='<section class="card"><div class="row"><div><h3>Снимени патувања</h3><span class="small muted">'+matches.length+' рути · '+stops+' застанувања</span></div></section>'+
       (shown.length?shown.map(s=>{
         const date=routeDate(s.startedAt),st=s.stops||[];
         const hasGeo=st.length>0;
@@ -509,7 +461,6 @@ function routeDayCardMarkup(compact) {
   const day=routeDayFix(),all=routeGPSList(),sessions=all.filter(s=>routeDate(s.startedAt)===day);
   const travel=(state.trips||[]).filter(t=>t.date===day);
   const stops=sessions.reduce((v,s)=>v+(s.stops||[]).length,0);
-  const distance=sessions.reduce((v,s)=>v+routeSessionMeters(s),0);
   const dates=[];
   for(let i=-3;i<=3;i++){const d=Core.plus(day,i);if(d<=Core.today())dates.push(d);}
   const nav='<div class="gps-day-controls">'+
@@ -517,28 +468,26 @@ function routeDayCardMarkup(compact) {
     '<label class="gps-day-date"><span>Избран ден</span><input id="gpsDayPicker" type="date" max="'+Core.today()+'" value="'+day+'"></label>'+
     '<button type="button" class="gps-day-arrow" data-gps-offset="1" '+(day>=Core.today()?'disabled':'')+' aria-label="Следен ден">›</button></div>'+
     '<div class="gps-day-strip">'+dates.map(d=>'<button type="button" data-gps-date="'+d+'" class="gps-day-chip '+(d===day?'active':'')+'"><span>'+['Нед','Пон','Вто','Сре','Чет','Пет','Саб'][Core.weekday(d)]+'</span><b>'+Number(d.slice(8))+'</b></button>').join('')+'</div>';
-  let content='<div class="gps-day-stats"><span><b>'+routeKm(distance)+'</b> поминато</span><span><b>'+sessions.length+'</b> GPS рути</span><span><b>'+stops+'</b> застанувања</span></div>';
+  let content='<div class="gps-day-stats"><span><b>'+sessions.length+'</b> GPS рути</span><span><b>'+stops+'</b> застанувања</span></div>';
   if(sessions.length){
     content+=sessions.map(s=>{
       const stopList=(s.stops||[]),start=routeClock(s.startedAt),end=s.endedAt?routeClock(s.endedAt):'во тек';
-      const points=(s.points||[]).length+(s.hourSegments||[]).reduce((k,seg)=>k+(seg.rawPoints||[]).length+(seg.lineSegments||[]).length,0);
-      return '<div class="gps-day-route"><div class="row"><strong>'+start+' – '+end+'</strong><span class="small muted">'+routeKm(routeSessionMeters(s))+'</span></div>'+
+      return '<div class="gps-day-route"><div class="row"><strong>'+start+' – '+end+'</strong><span class="small muted">'+stopList.length+' застанувања</span></div>'+
         routeSvg([s])+
         '<button type="button" class="btn secondary full" data-gps-open="'+esc(s.id||'')+'">Отвори вистинска офлајн мапа</button>'+
-        (stopList.length?'<div class="gps-stop-heading">Каде си застанал</div>'+stopList.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted" style="margin-top:10px">Нема регистрирано застанувања подолги од 5 минути.</p>')+
-        (points<2?'<p class="small muted">Се чекаат GPS координати за прикажување на целата линија.</p>':'')+
+        (stopList.length?'<div class="gps-stop-heading">Каде си застанал</div>'+stopList.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted" style="margin-top:10px">Нема регистрирано застанувања подолги од 10 минути.</p>')+
         '</div>';
     }).join('');
   }else {
-    content+='<p class="gps-empty">За '+Core.displayDate(day)+' нема снимена GPS рута во оваа инсталација. '+
-      'Работни патувања без зачувани координати не можат да се прикажат на мапа.</p>';
+    content+='<p class="gps-empty">За '+Core.displayDate(day)+' нема зачувани застанувања во оваа инсталација. '+
+      'Зачуваните места се прикажуваат без GPS трага и без броење километри.</p>';
   }
   if(travel.length){
     content+='<div class="gps-stop-heading">Евидентирани службени патувања</div>'+travel.map(t=>
       '<div class="mini-row"><span>'+esc(t.departure||'—')+' → '+esc(t.arrival||'во тек')+'</span><strong>'+esc(t.note||'Службен пат')+'</strong></div>').join('');
   }
   const tracking=routeNativeState().tracking;
-  return '<section class="card gps-day-card" id="gpsDayCard"><div class="row"><div><h2>Мапа и историја</h2><p class="small muted" style="margin:3px 0 7px">Листај денови со прст налево/надесно или со стрелките</p></div><span class="route-live '+(tracking?'on':'')+'">'+(tracking?'GPS':'OFF')+'</span></div>'+
+  return '<section class="card gps-day-card" id="gpsDayCard"><div class="row"><div><h2>Застанувања и историја</h2><p class="small muted" style="margin:3px 0 7px">Листај денови со прст налево/надесно или со стрелките</p></div><span class="route-live '+(tracking?'on':'')+'">'+(tracking?'GPS':'OFF')+'</span></div>'+
     nav+content+(compact?'<button type="button" id="gpsSeeAll" class="btn light full">Сите поминати денови →</button>':'')+
     '</section>';
 }
@@ -580,14 +529,14 @@ function bindGPSDayControls(){
 function renderGPSAllHistory(){
   const host=$('gpsAllHistory');if(!host)return;
   const all=routeGPSList(),today=Core.today(),shown=all.slice(0,routeShownCount);
-  host.innerHTML='<div class="section-head"><h2>Сите снимени патувања</h2><span class="small muted">'+all.length+' GPS рути</span></div>'+
+  host.innerHTML='<div class="section-head"><h2>Историја на застанувања</h2><span class="small muted">'+all.length+' GPS рути</span></div>'+
     (shown.length?shown.map(s=>{
       const d=routeDate(s.startedAt),st=s.stops||[];
-      return '<section class="card gps-history-entry"><button type="button" class="gps-history-day" data-gps-select="'+d+'"><strong>'+Core.displayDate(d)+'</strong><span>'+routeClock(s.startedAt)+'–'+(s.endedAt?routeClock(s.endedAt):'во тек')+' · '+routeKm(routeSessionMeters(s))+'</span></button>'+
+      return '<section class="card gps-history-entry"><button type="button" class="gps-history-day" data-gps-select="'+d+'"><strong>'+Core.displayDate(d)+'</strong><span>'+routeClock(s.startedAt)+'–'+(s.endedAt?routeClock(s.endedAt):'во тек')+' · '+st.length+' застанувања'+'</span></button>'+
         routeSvg([s])+
-        '<button type="button" class="btn secondary full" data-gps-history-map="'+esc(s.id||'')+'">Прикажи пат на офлајн мапа</button>'+
+        '<button type="button" class="btn secondary full" data-gps-history-map="'+esc(s.id||'')+'">Прикажи места на офлајн мапа</button>'+
         '<p class="small muted" style="margin-top:9px">'+st.length+' застанувања'+(st.length?' · '+st.map(p=>(p.name||'Локација')+' ('+routeSpan(p.startAt,p.endAt)+')').map(esc).join(', '):'')+'</p></section>';
-    }).join(''):'<section class="card"><p>Сè уште нема снимени GPS патувања во оваа Preview инсталација.</p><p class="small muted">За ново снимање избери „Тргнувам на пат“ и дозволи точна GPS локација. Старата WFAG има одделна GPS база.</p></section>')+
+    }).join(''):'<section class="card"><p>Сè уште нема зачувани застанувања во оваа инсталација.</p><p class="small muted">За ново снимање избери „Тргнувам на пат“ и дозволи точна GPS локација. Старата WFAG има одделна GPS база.</p></section>')+
     (all.length>shown.length?'<button id="gpsHistoryLoadMore" class="btn secondary full">Прикажи повеќе денови</button>':'');
   host.querySelectorAll('[data-gps-select]').forEach(b=>b.onclick=()=>{
     navigateGPSDay(b.dataset.gpsSelect);
