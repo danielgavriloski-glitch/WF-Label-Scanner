@@ -33,7 +33,7 @@ public class WorkdayArrivalService extends Service {
     private static final int NOTIFICATION=2837;
     private LocationManager locationManager;
     private LocationListener listener;
-    private boolean finished=false;
+    private String lastRecordedDate="";
 
     @Override public IBinder onBind(Intent intent){return null;}
 
@@ -92,13 +92,11 @@ public class WorkdayArrivalService extends Service {
             if(cfg==null||!"geofence".equals(cfg.optString("mode"))||cfg.optJSONObject("workplace")==null)return false;
             String date=today();
             if(date.compareTo(cfg.optString("activatedOn","9999-12-31"))<0)return false;
-            JSONObject sessions=state.optJSONObject("workdaySessions");
-            JSONObject day=sessions==null?null:sessions.optJSONObject(date);
-            return day==null||day.optLong("startAt",0)<=0;
+            return true;
         }catch(Exception e){return false;}
     }
     private void checkArrival(Location fix){
-        if(finished||fix==null||!fix.hasAccuracy())return;
+        if(fix==null||!fix.hasAccuracy()||today().equals(lastRecordedDate))return;
         long age=SystemClock.elapsedRealtimeNanos()-fix.getElapsedRealtimeNanos();
         if(age<0||age>30000000000L||(Build.VERSION.SDK_INT>=18&&fix.isFromMockProvider()))return;
         try{
@@ -118,7 +116,7 @@ public class WorkdayArrivalService extends Service {
             JSONObject sessions=state.optJSONObject("workdaySessions");
             if(sessions==null){sessions=new JSONObject();state.put("workdaySessions",sessions);}
             JSONObject old=sessions.optJSONObject(date);
-            if(old!=null&&old.optLong("startAt",0)>0){finished=true;stopSelf();return;}
+            if(old!=null&&old.optLong("startAt",0)>0){lastRecordedDate=date;return;}
             JSONObject day=new JSONObject();
             day.put("date",date);day.put("startAt",System.currentTimeMillis());day.put("endAt",JSONObject.NULL);
             day.put("travel",new JSONArray());day.put("status","working");day.put("source","geofence");
@@ -134,7 +132,7 @@ public class WorkdayArrivalService extends Service {
                 out=file.startWrite();
                 out.write(state.toString().getBytes(StandardCharsets.UTF_8));
                 file.finishWrite(out);
-                finished=true;stopSelf();
+                lastRecordedDate=date;
             }catch(Exception e){if(out!=null)file.failWrite(out);}
         }catch(Exception ignored){}
     }
