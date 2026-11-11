@@ -36,6 +36,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.io.BufferedInputStream;
+import java.security.SecureRandom;
+import java.security.MessageDigest;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 
 public class MainActivity extends Activity {
     private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, OPEN_ROUTE_ARCHIVE=74, MAX_BYTES=16*1024*1024;
@@ -179,7 +183,39 @@ public class MainActivity extends Activity {
         }catch(Exception e){return;}
         webView.evaluateJavascript("window.onWFAGWorkdayLocation&&window.onWFAGWorkdayLocation("+JSONObject.quote(result)+")",null);
     }
+    private static final String ADMIN_PREFS="wfag_admin_auth";
+    private static final int ADMIN_ITERATIONS=180000;
+    private byte[] deriveAdmin(String password,byte[] salt)throws Exception{
+        PBEKeySpec spec=new PBEKeySpec(password.toCharArray(),salt,ADMIN_ITERATIONS,256);
+        try{return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();}
+        finally{spec.clearPassword();}
+    }
+    private synchronized boolean adminConfigured(){
+        return getSharedPreferences(ADMIN_PREFS,MODE_PRIVATE).contains("hash");
+    }
+    private synchronized boolean setupAdmin(String password){
+        if(adminConfigured()||password==null||password.length()<6||password.length()>128)return false;
+        try{
+            byte[] salt=new byte[24];new SecureRandom().nextBytes(salt);
+            byte[] hash=deriveAdmin(password,salt);
+            return getSharedPreferences(ADMIN_PREFS,MODE_PRIVATE).edit()
+                .putString("salt",Base64.encodeToString(salt,Base64.NO_WRAP))
+                .putString("hash",Base64.encodeToString(hash,Base64.NO_WRAP)).commit();
+        }catch(Exception e){return false;}
+    }
+    private synchronized boolean verifyAdmin(String password){
+        if(!adminConfigured()||password==null)return false;
+        try{
+            android.content.SharedPreferences p=getSharedPreferences(ADMIN_PREFS,MODE_PRIVATE);
+            byte[] salt=Base64.decode(p.getString("salt",""),Base64.NO_WRAP);
+            byte[] expected=Base64.decode(p.getString("hash",""),Base64.NO_WRAP);
+            return MessageDigest.isEqual(expected,deriveAdmin(password,salt));
+        }catch(Exception e){return false;}
+    }
     public class LocalBridge {
+        @JavascriptInterface public boolean isAdminConfigured(){return adminConfigured();}
+        @JavascriptInterface public boolean setupAdminPassword(String password){return setupAdmin(password);}
+        @JavascriptInterface public boolean verifyAdminPassword(String password){return verifyAdmin(password);}
         @JavascriptInterface public void requestWorkdayLocation(){requestWorkdayPosition();}
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
             try{
