@@ -108,7 +108,18 @@ window.handleImport=handleImport;
 window.onExportComplete=name=>{if(name.startsWith('Workfashion_backup_')&&state){const next=JSON.parse(JSON.stringify(state));next.lastBackupAt=new Date().toISOString();try{persist(next);state=next;if(view==='settings')render();}catch(e){toast(e.message);return;}}toast('Зачувано: '+name);};
 window.onNativeError=text=>toast(text);
 window.onNativeBack=()=>{if(!$('modal').hidden){closeModal();return true;}if(view!=='home'){view='home';render();return true;}return false;};
-window.WFApp={getState:()=>JSON.parse(JSON.stringify(state)),commit,commitWithAdmin,setView:v=>{view=v;render();},editDay,editTrip,reportJson,exportRows};
+function syncNativeState(){
+ if(typeof Android==='undefined'||!state){if(state)render();return false;}
+ try{
+  const stored=Android.loadState();
+  if(stored){
+   const updated=Core.validate(JSON.parse(stored));
+   if(JSON.stringify(updated)!==JSON.stringify(state))state=updated;
+  }
+  render();return true;
+ }catch(e){return false;}
+}
+window.WFApp={getState:()=>JSON.parse(JSON.stringify(state)),commit,commitWithAdmin,syncNativeState,setView:v=>{view=v;render();},editDay,editTrip,reportJson,exportRows};
 $('settingsButton').innerHTML=icon('settings');$('settingsButton').onclick=()=>{if(!state){restoreBackup();return;}view='settings';render();window.scrollTo(0,0);};
 if(load())render();setInterval(()=>{if(state&&view==='home'&&$('modal').hidden)render();},30000);
 
