@@ -245,7 +245,7 @@ public class RouteMapActivity extends Activity {
             title = new TextView(this);
             String period = (!from.isEmpty() || !to.isEmpty()) ? "\n" + from + " – " + to : "";
             titleBaseText = "WFAG · GPS мапа" + period + "\n" + routeBounds.stopCount + " застанувања · допри црвена точка за детали";
-            title.setText(titleBaseText + (routeBounds.count > 1 ? "\nЧасовни линии ✓ · offline OSM · без плаќање" : ""));
+            title.setText(titleBaseText);
             title.setTextSize(14f);
             title.setTextColor(Color.rgb(21, 46, 53));
             title.setBackgroundColor(Color.argb(235, 255, 255, 255));
@@ -254,21 +254,6 @@ public class RouteMapActivity extends Activity {
             tp.gravity = Gravity.TOP | Gravity.START;
             tp.setMargins(20, 20, 20, 20);
             root.addView(title, tp);
-
-            roadButton = new Button(this);
-            roadButton.setText("Освежи часовни линии");
-            roadButton.setTextSize(13f);
-            FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
-            gp.gravity = Gravity.TOP | Gravity.END;
-            gp.setMargins(20, 170, 20, 20);
-            root.addView(roadButton, gp);
-            roadButton.setOnClickListener(v -> {
-                RouteTrackingService.retryPendingCompactions(this);
-                Toast.makeText(this, "Се проверуваат часовните линии офлајн.", Toast.LENGTH_SHORT).show();
-                roadButton.postDelayed(this::showMap, 1800L);
-            });
 
             imageButton = new Button(this);
             imageButton.setText("Зачувај слика PNG");
@@ -280,9 +265,6 @@ public class RouteMapActivity extends Activity {
             root.addView(imageButton, imageParams);
             imageButton.setOnClickListener(v -> requestPngExport());
 
-            if (routeBounds.count > 1) {
-                RouteTrackingService.retryPendingCompactions(this);
-            }
         } catch (Exception e) {
             showDownloadScreen("Офлајн мапата не може да се отвори. Симни ја повторно.");
         }
@@ -299,75 +281,7 @@ public class RouteMapActivity extends Activity {
                 if (session == null) continue;
                 if (!sessionInRange(session)) continue;
 
-                int currentColor = 0;
-                JSONArray hourly = session.optJSONArray("hourSegments");
-                if (hourly != null) {
-                    for (int h = 0; h < hourly.length(); h++) {
-                        JSONObject segment = hourly.optJSONObject(h);
-                        if (segment == null) continue;
-                        int colorIndex = segment.optInt("colorIndex", h % 6);
-                        currentColor = (colorIndex + 1) % 6;
-
-                        JSONArray lineSegments = segment.optJSONArray("lineSegments");
-                        if (lineSegments != null && lineSegments.length() > 0) {
-                            for (int s = 0; s < lineSegments.length(); s++) {
-                                JSONArray arr = lineSegments.optJSONArray(s);
-                                List<LatLong> line = new ArrayList<>();
-                                if (arr != null) {
-                                    for (int k = 0; k < arr.length(); k++) {
-                                        JSONArray p = arr.optJSONArray(k);
-                                        if (p == null || p.length() < 2) continue;
-                                        LatLong q = new LatLong(p.optDouble(0), p.optDouble(1));
-                                        line.add(q);
-                                        bounds.include(q);
-                                    }
-                                }
-                                addRouteSegment(line, colorIndex);
-                            }
-                        } else {
-                            JSONArray raw = segment.optJSONArray("rawPoints");
-                            List<LatLong> line = new ArrayList<>();
-                            JSONObject previous = null;
-                            if (raw != null) {
-                                for (int k = 0; k < raw.length(); k++) {
-                                    JSONObject p = raw.optJSONObject(k);
-                                    if (p == null) continue;
-                                    if (previous != null && shouldBreakRoute(previous, p)) {
-                                        addRouteSegment(line, colorIndex);
-                                        line = new ArrayList<>();
-                                    }
-                                    LatLong q = new LatLong(p.optDouble("lat"), p.optDouble("lon"));
-                                    line.add(q);
-                                    bounds.include(q);
-                                    previous = p;
-                                }
-                            }
-                            addRouteSegment(line, colorIndex);
-                        }
-                    }
-                }
-
-                JSONArray points = session.optJSONArray("points");
-                List<LatLong> route = new ArrayList<>();
-                JSONObject previousPoint = null;
-                if (points != null) {
-                    for (int j = 0; j < points.length(); j++) {
-                        JSONObject p = points.optJSONObject(j);
-                        if (p == null) continue;
-                        LatLong q = new LatLong(p.optDouble("lat"), p.optDouble("lon"));
-
-                        if (previousPoint != null && shouldBreakRoute(previousPoint, p)) {
-                            addRouteSegment(route, currentColor);
-                            route = new ArrayList<>();
-                        }
-
-                        route.add(q);
-                        bounds.include(q);
-                        previousPoint = p;
-                    }
-                }
-                addRouteSegment(route, currentColor);
-
+                // Show only confirmed stop pins; old and new route polylines stay hidden.
                 JSONArray stops = session.optJSONArray("stops");
                 if (stops == null) continue;
                 for (int j = 0; j < stops.length(); j++) {
