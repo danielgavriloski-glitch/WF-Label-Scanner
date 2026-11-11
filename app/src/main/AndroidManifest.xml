@@ -18,5 +18,6 @@
             </intent-filter>
         </activity>
         <service android:name=".RouteTrackingService" android:exported="false" android:foregroundServiceType="location" />
+        <service android:name=".WorkdayArrivalService" android:exported="false" android:foregroundServiceType="location" />
     </application>
 </manifest>
