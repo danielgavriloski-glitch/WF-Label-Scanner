@@ -24,7 +24,7 @@ Core.validate=function(raw){
  if(raw.workdaySessions){
   if(typeof raw.workdaySessions!=='object'||Array.isArray(raw.workdaySessions)||Object.keys(raw.workdaySessions).length>37000)throw Error('Невалидни работни денови');
   for(const [date,d] of Object.entries(raw.workdaySessions)){
-   if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!d||d.date!==date||!['not-started','working','travel','finished'].includes(d.status))throw Error('Невалиден работен ден');
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!d||d.date!==date||!['not-started','working','travel','finished'].includes(d.status))throw Error('Невалиден работен ден');
    if(d.startAt!==null&&(!Number.isFinite(d.startAt)||d.startAt<0))throw Error('Невалиден почеток');
    if(d.endAt!==null&&(!Number.isFinite(d.endAt)||d.endAt<d.startAt))throw Error('Невалиден крај');
    if(!Array.isArray(d.travel)||d.travel.length>1000)throw Error('Невалидни патувања');
