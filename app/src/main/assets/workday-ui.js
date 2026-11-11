@@ -26,6 +26,8 @@ function gpsPosition(){
  });
 }
 async function authorisedStart(day){
+ const raw=WFApp.getState().workdaySettings;
+ if(!raw||!raw.activatedOn)throw Error('Прво избери начин на почеток во Поставки.');
  const cfg=config();
  if(cfg.mode==='geofence'){
   if(!cfg.workplace)throw Error('Администраторот треба прво да постави работна локација.');
@@ -90,7 +92,10 @@ function draw(){
  const d=getDay(),t=W.totals(d,now());
  const panel=document.createElement('section');panel.id='wfagWorkdayControls';panel.className='card';
  let actions='';
- if(d.status==='not-started')actions=button(config().mode==='geofence'?'Провери GPS и започни':'Започни работен ден','start','primary');
+ if(d.status==='not-started')
+  actions=WFApp.getState().workdaySettings&&WFApp.getState().workdaySettings.activatedOn
+    ?button(config().mode==='geofence'?'Провери GPS и започни':'Започни работен ден','start','primary')
+    :button('Постави начин на започнување','settings','secondary');
  else if(d.status==='travel')actions=button('Пристигнав','arrive')+button('Заврши работен ден','finish','danger');
  else if(d.status==='working')actions=button('На пат','depart')+button('Заврши работен ден','finish','danger');
  panel.innerHTML='<h3>Работен ден · контрола</h3><p class="small muted">Статус: '+({ 'not-started':'Не е започнат',working:'Работа',travel:'На пат',finished:'Завршен'}[d.status]||d.status)+'</p><div class="mini-row"><span>Од почеток</span><strong>'+Core.hh(t.workedMinutes)+'</strong></div><div class="mini-row"><span>Време на пат</span><strong>'+Core.hh(t.travelMinutes)+'</strong></div>'+(d.endAt!==null?'<div class="mini-row"><span>Разлика од 8 часа</span><strong>'+Core.hhSigned(t.overtimeDelta)+'</strong></div>':'')+'<div class="actions">'+actions+'</div><p class="small muted">Евиденцијата е поврзана со дневниот фонд и пресметката на прекувремени часови.</p>';
@@ -98,6 +103,7 @@ function draw(){
  panel.querySelectorAll('[data-workday]').forEach(b=>b.addEventListener('click',async()=>{
   try{
    const action=b.dataset.workday,current=getDay(),time=now();
+   if(action==='settings'){WFApp.setView('settings');return;}
    const updated=action==='start'?await authorisedStart(current):action==='depart'?W.depart(current,time):action==='arrive'?W.arrive(current,time):W.finish(current,time);
    saveDay(updated,'Работен ден: '+action);
   }catch(e){alert(e.message);}
@@ -106,6 +112,8 @@ function draw(){
 let automaticInProgress=false;
 async function autoStart(){
  if(automaticInProgress||!document.querySelector('.hero')||getDay().status!=='not-started')return;
+ const settings=WFApp.getState().workdaySettings;
+ if(!settings||!settings.activatedOn||date()<settings.activatedOn)return;
  const cfg=config();
  if(cfg.mode==='manual')return;
  if(cfg.mode==='fixed'){
