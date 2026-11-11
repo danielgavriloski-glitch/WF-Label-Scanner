@@ -7,12 +7,13 @@ const service=fs.readFileSync('app/src/main/java/mk/workfashion/personal/RouteTr
 const main=fs.readFileSync('app/src/main/java/mk/workfashion/personal/MainActivity.java','utf8');
 const ui=fs.readFileSync('app/src/main/assets/v12-ui.js','utf8');
 
-// GPS accuracy and recording cadence must not be weakened to make the UI faster.
-assert.match(service,/GPS_MIN_TIME_MS=2000L/);
-assert.match(service,/MIN_POINT_DISTANCE_M=3f/);
+// This branch deliberately replaces continuous GPS points with one-shot stop sampling.
+assert.match(service,/STOP_MS=10L\*60L\*1000L/);
+assert.match(service,/SAMPLE_INTERVAL_MS=2L\*60L\*1000L/);
 assert.match(service,/locationWorker\.post\(/,'Session initialization must run off the main thread');
-assert.match(service,/requestLocationUpdates\(LocationManager\.GPS_PROVIDER,[^;]*locationThread\.getLooper\(\)\)/);
-assert.match(service,/requestLocationUpdates\(LocationManager\.NETWORK_PROVIDER,[^;]*locationThread\.getLooper\(\)\)/);
+assert.match(service,/requestSingleUpdate\(LocationManager\.GPS_PROVIDER/);
+assert.match(service,/requestSingleUpdate\(LocationManager\.NETWORK_PROVIDER/);
+assert.doesNotMatch(service,/requestLocationUpdates\(/,'Do not stream GPS updates all day');
 assert.match(main,/"wfag-route-stop"/,'Session completion must not freeze the UI');
 assert.match(main,/WFRoute\.invalidateCache/,'Resume must invalidate the GPS snapshot');
 
@@ -30,7 +31,7 @@ assert.equal(nativeReads,2,'Forced lookup should fetch current GPS state');
 vm.runInContext('invalidateRouteCache();routeNativeState()',ctx);
 assert.equal(nativeReads,3,'GPS events must invalidate cached data');
 new vm.Script(ui);
-assert.ok(ui.includes('tracking?15000:30000'), 'Active route cache should last 15 seconds');
+assert.ok(ui.includes('tracking?60000:120000'), 'Cached stop history should refresh only about once per minute');
 assert.ok(!ui.includes("if(view!=='home')refreshRoutePanel();checkRoutePrompt();"), 'Avoid automatic GPS panel redraw');
 assert.ok(ui.includes("document.visibilityState==='visible')checkRoutePrompt();"), 'Stop prompts remain active');
 console.log('WFAG_GPS_PERFORMANCE_OK');
