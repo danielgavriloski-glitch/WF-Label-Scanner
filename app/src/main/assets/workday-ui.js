@@ -50,6 +50,22 @@ function saveDay(d,label){
 }
 function escText(v){return String(v).replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));}
 function button(label,action,cls){return '<button type="button" class="btn '+(cls||'secondary')+'" data-workday="'+action+'">'+label+'</button>';}
+function authoriseSettings(){
+ if(typeof Android==='undefined'||typeof Android.isAdminConfigured!=='function')throw Error('За заштитени поставки е потребна Android верзијата.');
+ if(!Android.isAdminConfigured()){
+  const first=prompt('Постави администраторска лозинка (најмалку 6 знаци):');
+  if(first===null)throw Error('Откажано.');
+  if(first.length<6)throw Error('Лозинката мора да има најмалку 6 знаци.');
+  const second=prompt('Повтори ја администраторската лозинка:');
+  if(first!==second)throw Error('Лозинките не се совпаѓаат.');
+  if(!Android.setupAdminPassword(first))throw Error('Лозинката не се зачува.');
+  return true;
+ }
+ const password=prompt('Администраторска лозинка:');
+ if(password===null)throw Error('Откажано.');
+ if(!Android.verifyAdminPassword(password))throw Error('Погрешна администраторска лозинка.');
+ return true;
+}
 function drawSettings(){
  const host=document.getElementById('app');if(!host||!document.getElementById('settingsForm'))return;
  const old=document.getElementById('wfagWorkdaySettings');if(old)old.remove();
@@ -60,6 +76,7 @@ function drawSettings(){
  panel.querySelector('#wdMode').value=cfg.mode;
  panel.querySelector('#wdCurrentLocation').onclick=async()=>{try{const p=await gpsPosition();panel.querySelector('#wdLat').value=p.lat;panel.querySelector('#wdLon').value=p.lon;}catch(e){alert(e.message);}};
  panel.querySelector('#wdSaveSettings').onclick=()=>{try{
+  authoriseSettings();
   const lat=panel.querySelector('#wdLat').value.trim(),lon=panel.querySelector('#wdLon').value.trim();
   if((lat==='')!==(lon===''))throw Error('Внеси ги двете GPS координати.');
   const settings=W.settings({mode:panel.querySelector('#wdMode').value,start:panel.querySelector('#wdStart').value,radiusM:Number(panel.querySelector('#wdRadius').value),workplace:lat===''?null:{lat:Number(lat),lon:Number(lon)}});
