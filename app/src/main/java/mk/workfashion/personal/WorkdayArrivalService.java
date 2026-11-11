@@ -14,6 +14,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.AtomicFile;
@@ -34,6 +35,10 @@ public class WorkdayArrivalService extends Service {
     private LocationManager locationManager;
     private LocationListener listener;
     private String lastRecordedDate="";
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private static final long ARRIVAL_CHECK_INTERVAL_MS=3L*60L*1000L;
+    private Runnable timeout;
+    private final Runnable checkTask=this::requestArrivalFix;
 
     @Override public IBinder onBind(Intent intent){return null;}
 
@@ -63,15 +68,56 @@ public class WorkdayArrivalService extends Service {
             if(!monitorRequired()){stopSelf();return START_NOT_STICKY;}
             if(locationManager==null){
                 locationManager=(LocationManager)getSystemService(LOCATION_SERVICE);
-                if(locationManager==null||!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-                    stopSelf();return START_NOT_STICKY;
-                }
-                listener=this::checkArrival;
-                // No live map or UI polling; GPS requests are limited to 60 seconds / 25 metres.
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,60000L,25f,listener,Looper.getMainLooper());
+                if(locationManager==null){stopSelf();return START_NOT_STICKY;}
+                listener=fix->{
+                    if(fix==null||!fix.hasAccuracy()||fix.getAccuracy()>150f){
+                        requestGpsFix();
+                        return;
+                    }
+                    checkArrival(fix);
+                    if(!today().equals(lastRecordedDate))scheduleNextCheck();
+                };
+                mainHandler.post(checkTask);
             }
             return START_STICKY;
         }catch(Exception failure){stopSelf();return START_NOT_STICKY;}
+    }
+
+    private void cancelTimeout(){
+        if(timeout!=null)mainHandler.removeCallbacks(timeout);
+        timeout=null;
+    }
+    private void requestArrivalFix(){
+        if(locationManager==null||!monitorRequired()){stopSelf();return;}
+        try{
+            locationManager.removeUpdates(listener);
+            if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)){
+                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER,listener,Looper.getMainLooper());
+                cancelTimeout();
+                timeout=this::requestGpsFix;
+                mainHandler.postDelayed(timeout,12000L);
+            }else requestGpsFix();
+        }catch(Exception e){requestGpsFix();}
+    }
+    private void requestGpsFix(){
+        if(locationManager==null)return;
+        try{
+            locationManager.removeUpdates(listener);
+            cancelTimeout();
+            if(!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+                scheduleNextCheck();return;
+            }
+            locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER,listener,Looper.getMainLooper());
+            timeout=this::scheduleNextCheck;
+            mainHandler.postDelayed(timeout,25000L);
+        }catch(Exception failure){scheduleNextCheck();}
+    }
+    private void scheduleNextCheck(){
+        if(locationManager!=null&&listener!=null)try{locationManager.removeUpdates(listener);}catch(Exception ignored){}
+        cancelTimeout();
+        mainHandler.removeCallbacks(checkTask);
+        if(monitorRequired())mainHandler.postDelayed(checkTask,ARRIVAL_CHECK_INTERVAL_MS);
+        else stopSelf();
     }
 
     private AtomicFile dataFile(){return new AtomicFile(new File(getFilesDir(),"workfashion-state.json"));}
@@ -92,7 +138,9 @@ public class WorkdayArrivalService extends Service {
             if(cfg==null||!"geofence".equals(cfg.optString("mode"))||cfg.optJSONObject("workplace")==null)return false;
             String date=today();
             if(date.compareTo(cfg.optString("activatedOn","9999-12-31"))<0)return false;
-            return true;
+            JSONObject sessions=state.optJSONObject("workdaySessions");
+            JSONObject todaySession=sessions==null?null:sessions.optJSONObject(date);
+            return todaySession==null||todaySession.optLong("startAt",0L)<=0;
         }catch(Exception e){return false;}
     }
     private void checkArrival(Location fix){
@@ -116,7 +164,7 @@ public class WorkdayArrivalService extends Service {
             JSONObject sessions=state.optJSONObject("workdaySessions");
             if(sessions==null){sessions=new JSONObject();state.put("workdaySessions",sessions);}
             JSONObject old=sessions.optJSONObject(date);
-            if(old!=null&&old.optLong("startAt",0)>0){lastRecordedDate=date;return;}
+            if(old!=null&&old.optLong("startAt",0)>0){lastRecordedDate=date;stopSelf();return;}
             JSONObject day=new JSONObject();
             day.put("date",date);day.put("startAt",System.currentTimeMillis());day.put("endAt",JSONObject.NULL);
             day.put("travel",new JSONArray());day.put("status","working");day.put("source","geofence");
@@ -133,10 +181,13 @@ public class WorkdayArrivalService extends Service {
                 out.write(state.toString().getBytes(StandardCharsets.UTF_8));
                 file.finishWrite(out);
                 lastRecordedDate=date;
+                stopSelf(); // GPS monitor is no longer necessary after today's verified arrival.
             }catch(Exception e){if(out!=null)file.failWrite(out);}
         }catch(Exception ignored){}
     }
     @Override public void onDestroy(){
+        cancelTimeout();
+        mainHandler.removeCallbacks(checkTask);
         if(locationManager!=null&&listener!=null){
             try{locationManager.removeUpdates(listener);}catch(Exception ignored){}
         }
