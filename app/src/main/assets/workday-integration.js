@@ -5,8 +5,13 @@ if(!Core||!W||Core.__wfagWorkdayIntegration)return Core;
 Core.__wfagWorkdayIntegration=true;
 const previous=Core.day;
 Core.day=function(state,date,now=new Date()){
- const r=previous(state,date,now),session=state.workdaySessions&&state.workdaySessions[date];
- if(!r.covered||!['work','holidayWork'].includes(r.type))return r;
+ let r=previous(state,date,now);
+ const session=state.workdaySessions&&state.workdaySessions[date];
+ if(!r.covered)return r;
+ // An explicitly started Saturday/Sunday workday is work, not a day off.
+ if(session&&session.startAt!==null&&r.type==='off'&&!r.scheduled)
+  r=Object.assign({},r,{type:'work'});
+ if(!['work','holidayWork'].includes(r.type))return r;
  const cfg=state.workdaySettings;
  if((!session||session.startAt===null)&&cfg&&cfg.activatedOn&&date>=cfg.activatedOn&&
     r.auto&&(!r.trips||r.trips.length===0)){
@@ -16,7 +21,7 @@ Core.day=function(state,date,now=new Date()){
  const t=W.totals(session,now.getTime(),state.settings.dayMinutes);
  const start=Core.parts(new Date(session.startAt)),end=Core.parts(new Date(session.endAt===null?now.getTime():session.endAt));
  return Object.assign({},r,{
-  worked:t.workedMinutes,travel:t.travelMinutes,
+  worked:t.workedMinutes,travel:Math.min(t.workedMinutes,Math.max(t.travelMinutes,r.travel||0)),
   start:start.hour+':'+start.minute,end:end.hour+':'+end.minute,
   overnight:end.date!==date,auto:false,
   workdaySession:true,workdayFinished:session.endAt!==null,
