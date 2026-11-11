@@ -108,7 +108,10 @@ async function autoStart(){
  if(automaticInProgress||!document.querySelector('.hero')||getDay().status!=='not-started')return;
  const cfg=config();
  if(cfg.mode==='manual')return;
- if(cfg.mode==='fixed'&&now()<Core.timestamp(date(),cfg.start))return;
+ if(cfg.mode==='fixed'){
+  if(!WFApp.getState().settings.workdays.includes(Core.weekday(date())))return;
+  if(now()<Core.timestamp(date(),cfg.start))return;
+ }
  if(cfg.mode==='geofence'){
   if(!cfg.workplace)return;
   if(typeof Android!=='undefined'&&typeof Android.hasWorkdayLocationPermission==='function'&&!Android.hasWorkdayLocationPermission())return;
