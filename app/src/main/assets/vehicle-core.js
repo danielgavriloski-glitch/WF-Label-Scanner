@@ -169,7 +169,10 @@ function autoLink(log,sessions){
   for(const s of sessions||[]){
     if(!s.id||!Number.isFinite(Number(s.startedAt))||!Number.isFinite(Number(s.endedAt))||!s.endedAt||Number(s.startedAt)<log.autoLinkFrom||Number(s.endedAt)<Number(s.startedAt))continue;
     const sourceId=s.tripId?'wfag:'+s.tripId:'gps:'+s.id;if(known.has(sourceId))continue;
-    next=put(next,'trips',{at:local(s.startedAt),endAt:local(s.endedAt),km:Math.round(gpsKm(s)*1000)/1000,startOdo:null,endOdo:null,source:'gps',sourceId,from:'',to:String(((s.stops||[]).slice(-1)[0]||{}).name||'').slice(0,200),note:'Автоматски поврзано GPS патување; растојанието може да се коригира.'});
+    const recordedKm=gpsKm(s);
+    // Stop-only sessions never provide GPS distance. Do not create false 0-km vehicle trips.
+    if(!Number.isFinite(recordedKm)||recordedKm<=0)continue;
+    next=put(next,'trips',{at:local(s.startedAt),endAt:local(s.endedAt),km:Math.round(recordedKm*1000)/1000,startOdo:null,endOdo:null,source:'gps',sourceId,from:'',to:String(((s.stops||[]).slice(-1)[0]||{}).name||'').slice(0,200),note:'Автоматски поврзано GPS патување; растојанието може да се коригира.'});
     known.add(sourceId);added++;
   }
   return {log:next,added};
