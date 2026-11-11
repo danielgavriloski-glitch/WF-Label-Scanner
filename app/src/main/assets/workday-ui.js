@@ -32,7 +32,25 @@ function saveDay(d,label){
  s.workdaySessions[d.date]=d;
  WFApp.commit(s,label);
 }
+function escText(v){return String(v).replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));}
 function button(label,action,cls){return '<button type="button" class="btn '+(cls||'secondary')+'" data-workday="'+action+'">'+label+'</button>';}
+function drawSettings(){
+ const host=document.getElementById('app');if(!host||!document.getElementById('settingsForm'))return;
+ const old=document.getElementById('wfagWorkdaySettings');if(old)old.remove();
+ const cfg=config(),place=cfg.workplace||{};
+ const panel=document.createElement('section');panel.className='card';panel.id='wfagWorkdaySettings';
+ panel.innerHTML='<h2>Почеток на работен ден</h2><label class="field"><span>Начин на започнување</span><select id="wdMode"><option value="fixed">Фиксно време</option><option value="geofence">GPS работна локација</option><option value="manual">Рачно</option></select></label><label class="field"><span>Фиксен почеток</span><input id="wdStart" type="time" value="'+escText(cfg.start)+'"></label><label class="field"><span>GPS радиус (50–1000 метри)</span><input id="wdRadius" type="number" min="50" max="1000" value="'+cfg.radiusM+'"></label><label class="field"><span>Географска ширина</span><input id="wdLat" type="number" step="any" placeholder="Latitude" value="'+(place.lat??'')+'"></label><label class="field"><span>Географска должина</span><input id="wdLon" type="number" step="any" placeholder="Longitude" value="'+(place.lon??'')+'"></label><button class="btn secondary" type="button" id="wdCurrentLocation">Користи ја сегашната GPS локација</button><button class="btn full" type="button" id="wdSaveSettings">Зачувај GPS поставки</button><p class="small muted">GPS режимот проверува локација при започнување. Автоматско следење во позадина сè уште не е вклучено.</p>';
+ document.getElementById('settingsForm').insertAdjacentElement('afterend',panel);
+ panel.querySelector('#wdMode').value=cfg.mode;
+ panel.querySelector('#wdCurrentLocation').onclick=async()=>{try{const p=await gpsPosition();panel.querySelector('#wdLat').value=p.lat;panel.querySelector('#wdLon').value=p.lon;}catch(e){alert(e.message);}};
+ panel.querySelector('#wdSaveSettings').onclick=()=>{try{
+  const lat=panel.querySelector('#wdLat').value.trim(),lon=panel.querySelector('#wdLon').value.trim();
+  if((lat==='')!==(lon===''))throw Error('Внеси ги двете GPS координати.');
+  const settings=W.settings({mode:panel.querySelector('#wdMode').value,start:panel.querySelector('#wdStart').value,radiusM:Number(panel.querySelector('#wdRadius').value),workplace:lat===''?null:{lat:Number(lat),lon:Number(lon)}});
+  if(settings.mode==='geofence'&&!settings.workplace)throw Error('Прво постави работна GPS локација.');
+  const state=WFApp.getState();state.workdaySettings=settings;WFApp.commit(state,'Променети поставки за работен ден');
+ }catch(e){alert(e.message);}};
+}
 function draw(){
  const host=document.getElementById('app');if(!host||!window.WFApp||!host.querySelector('.hero'))return;
  const old=document.getElementById('wfagWorkdayControls');if(old)old.remove();
@@ -42,7 +60,7 @@ function draw(){
  if(d.status==='not-started')actions=button(config().mode==='geofence'?'Провери GPS и започни':'Започни работен ден','start','primary');
  else if(d.status==='travel')actions=button('Пристигнав','arrive')+button('Заврши работен ден','finish','danger');
  else if(d.status==='working')actions=button('На пат','depart')+button('Заврши работен ден','finish','danger');
- panel.innerHTML='<h3>Работен ден · контрола</h3><p class="small muted">Статус: '+({ 'not-started':'Не е започнат',working:'Работа',travel:'На пат',finished:'Завршен'}[d.status]||d.status)+'</p><div class="mini-row"><span>Од почеток</span><strong>'+Core.hh(t.workedMinutes)+'</strong></div><div class="mini-row"><span>Време на пат</span><strong>'+Core.hh(t.travelMinutes)+'</strong></div>'+(d.endAt!==null?'<div class="mini-row"><span>Разлика од 8 часа</span><strong>'+Core.hhSigned(t.overtimeDelta)+'</strong></div>':'')+'<div class="actions">'+actions+'</div><p class="small muted">Ова е пробна евиденција. Не го менува постојниот фонд додека не се поврзат двете пресметки.</p>';
+ panel.innerHTML='<h3>Работен ден · контрола</h3><p class="small muted">Статус: '+({ 'not-started':'Не е започнат',working:'Работа',travel:'На пат',finished:'Завршен'}[d.status]||d.status)+'</p><div class="mini-row"><span>Од почеток</span><strong>'+Core.hh(t.workedMinutes)+'</strong></div><div class="mini-row"><span>Време на пат</span><strong>'+Core.hh(t.travelMinutes)+'</strong></div>'+(d.endAt!==null?'<div class="mini-row"><span>Разлика од 8 часа</span><strong>'+Core.hhSigned(t.overtimeDelta)+'</strong></div>':'')+'<div class="actions">'+actions+'</div><p class="small muted">Ова е пробна евиденција. Евиденцијата е поврзана со дневниот фонд и пресметката на прекувремени часови.</p>';
  host.querySelector('.hero').insertAdjacentElement('afterend',panel);
  panel.querySelectorAll('[data-workday]').forEach(b=>b.addEventListener('click',async()=>{
   try{
@@ -53,8 +71,8 @@ function draw(){
  }));
 }
 const previous=window.WFApp.setView;
-window.WFApp.setView=function(v){previous(v);if(v==='home')draw();};
+window.WFApp.setView=function(v){previous(v);if(v==='home')draw();if(v==='settings')drawSettings();};
 draw();
-const observer=new MutationObserver(()=>{if(document.querySelector('.hero')&&!document.getElementById('wfagWorkdayControls'))draw();});
+const observer=new MutationObserver(()=>{if(document.querySelector('.hero')&&!document.getElementById('wfagWorkdayControls'))draw();if(document.getElementById('settingsForm')&&!document.getElementById('wfagWorkdaySettings'))drawSettings();});
 observer.observe(document.getElementById('app'),{childList:true});
 })();
