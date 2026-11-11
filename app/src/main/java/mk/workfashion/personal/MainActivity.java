@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
         CargoReminderReceiver.schedule(this);
+        WorkdayFixedReceiver.schedule(this);
         if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 98);
         documentVisit=getPreferences(0).getString("documentVisit","");
         scanOutput=getPreferences(0).getString("scanOutput","");
@@ -227,6 +228,7 @@ public class MainActivity extends Activity {
                 JSONObject cfg=state.optJSONObject("workdaySettings");
                 boolean selected=cfg!=null&&"geofence".equals(cfg.optString("mode"))&&
                     cfg.optJSONObject("workplace")!=null&&!cfg.optString("activatedOn","").isEmpty();
+                WorkdayFixedReceiver.schedule(this);
                 Intent monitor=new Intent(this,WorkdayArrivalService.class);
                 if(!selected){stopService(monitor);return;}
                 if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
