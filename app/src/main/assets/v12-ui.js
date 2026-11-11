@@ -8,7 +8,7 @@ let routeStateCache=null,routeStateCacheAt=0;
 function invalidateRouteCache(){routeStateCache=null;routeStateCacheAt=0;}
 function routeNativeState(force){
   // One WebView render requests GPS data repeatedly. Share a short-lived snapshot.
-  const now=Date.now(),maxAge=routeStateCache&&routeStateCache.tracking?15000:30000;
+  const now=Date.now(),maxAge=routeStateCache&&routeStateCache.tracking?60000:120000;
   if(!force&&routeStateCache&&now-routeStateCacheAt<maxAge)return routeStateCache;
   try{
     if(typeof Android==='undefined'||!Android.getRouteLog)return {tracking:false,sessions:[],savedPlaces:[]};
@@ -43,35 +43,18 @@ function routeSessions(from,to){
   return routeNativeState().sessions.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
 }
 function routeSvg(sessions){
-  const colors=['#2563eb','#16a34a','#ea580c','#9333ea','#0891b2','#be185d'];
-  const lines=[],allPoints=[];
-  sessions.forEach(s=>{
-    let nextColor=0;
-    (s.hourSegments||[]).forEach((seg,idx)=>{
-      const ci=Number.isFinite(Number(seg.colorIndex))?Number(seg.colorIndex)%colors.length:idx%colors.length;
-      nextColor=(ci+1)%colors.length;
-      const road=seg.lineSegments||[];
-      if(road.length){
-        road.forEach(arr=>{
-          const pts=(arr||[]).map(p=>({lat:Number(p[0]),lon:Number(p[1])})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
-          if(pts.length>1){lines.push({pts,color:colors[ci]});pts.forEach(p=>allPoints.push(p));}
-        });
-      }else{
-        const pts=(seg.rawPoints||[]).map(p=>({lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
-        if(pts.length>1){lines.push({pts,color:colors[ci]});pts.forEach(p=>allPoints.push(p));}
-      }
-    });
-    const current=(s.points||[]).map(p=>({lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
-    if(current.length>1){lines.push({pts:current,color:colors[nextColor]});current.forEach(p=>allPoints.push(p));}
-  });
-  if(allPoints.length<2)return '<div class="route-map-empty">Рутата ќе се појави штом GPS сними движење.</div>';
-  const lats=allPoints.map(p=>p.lat),lons=allPoints.map(p=>p.lon);
-  let minLat=Math.min.apply(null,lats),maxLat=Math.max.apply(null,lats),minLon=Math.min.apply(null,lons),maxLon=Math.max.apply(null,lons);
-  if(maxLat-minLat<0.0001){maxLat+=0.00005;minLat-=0.00005}if(maxLon-minLon<0.0001){maxLon+=0.00005;minLon-=0.00005}
-  const xy=p=>{const x=10+(Number(p.lon)-minLon)/(maxLon-minLon)*280,y=150-(Number(p.lat)-minLat)/(maxLat-minLat)*140;return [x,y];};
-  const paths=lines.map(l=>'<polyline style="stroke:'+l.color+'" points="'+l.pts.map(p=>xy(p).join(',')).join(' ')+'"></polyline>').join('');
-  let pins='',n=0;sessions.forEach(s=>(s.stops||[]).forEach(st=>{n++;const q=xy(st);pins+='<g><circle cx="'+q[0].toFixed(1)+'" cy="'+q[1].toFixed(1)+'" r="8"></circle><text x="'+q[0].toFixed(1)+'" y="'+(q[1]+3).toFixed(1)+'">'+n+'</text></g>'; }));
-  return '<svg class="route-map-svg" viewBox="0 0 300 160" role="img" aria-label="Снимена рута">'+paths+pins+'</svg><p class="small muted route-map-note">Секој час е посебна боја; линиите се поврзани. Завршените часови се чуваат како компактна линија.</p>';
+  // Stop-only preview. No location trails or route polylines are rendered.
+  const stops=sessions.flatMap(s=>s.stops||[]).filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lon)));
+  if(!stops.length)return '<div class="route-map-empty">Нема зачувани застанувања подолги од 10 минути.</div>';
+  const lats=stops.map(p=>Number(p.lat)),lons=stops.map(p=>Number(p.lon));
+  let minLat=Math.min(...lats),maxLat=Math.max(...lats),minLon=Math.min(...lons),maxLon=Math.max(...lons);
+  if(maxLat-minLat<0.0001){maxLat+=0.00005;minLat-=0.00005;}
+  if(maxLon-minLon<0.0001){maxLon+=0.00005;minLon-=0.00005;}
+  const pins=stops.map((p,i)=>{
+    const x=10+(Number(p.lon)-minLon)/(maxLon-minLon)*280,y=150-(Number(p.lat)-minLat)/(maxLat-minLat)*140;
+    return '<g><circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="8"></circle><text x="'+x.toFixed(1)+'" y="'+(y+3).toFixed(1)+'">'+(i+1)+'</text></g>';
+  }).join('');
+  return '<svg class="route-map-svg" viewBox="0 0 300 160" role="img" aria-label="Зачувани застанувања">'+pins+'</svg><p class="small muted route-map-note">Прикажани се само местата на подолги застанувања, без линија на движење.</p>';
 }
 function routeStopMarkup(stop,index){
   const name=(stop.name||'').trim()||'Локација',lat=Number(stop.lat),lon=Number(stop.lon),end=Number(stop.endAt)||Date.now();
@@ -80,18 +63,17 @@ function routeStopMarkup(stop,index){
 function routePanelMarkup(from,to){
   const data=routeNativeState(),sessions=data.sessions.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
   const allStops=[];sessions.forEach(s=>(s.stops||[]).forEach(st=>allStops.push(st)));
-  const active=data.tracking,totalMeters=sessions.reduce((sum,s)=>sum+routeSessionMeters(s),0);
+  const active=data.tracking;
   let body='';
   if(routeMode==='map')body=routeSvg(sessions);
-  else if(!sessions.length)body='<p class="trip-empty">Нема снимена GPS рута во овој период.</p>';
+  else if(!sessions.length)body='<p class="trip-empty">Нема запишани застанувања во овој период.</p>';
   else{
     body=sessions.slice().reverse().map(s=>{
       const stops=(s.stops||[]);
-      const hours=(s.hourSegments||[]).length,currentGps=(s.points||[]).length;
-      return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+hours+' часови · '+currentGps+' тековни GPS</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 5 минути.</p>')+'</div>';
+      return '<div class="route-session"><div class="mini-row"><span class="muted">'+Core.displayDate(routeDate(s.startedAt))+' · '+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span><strong>'+stops.length+' застанувања</strong></div>'+(stops.length?stops.map((x,i)=>routeStopMarkup(x,i+1)).join(''):'<p class="trip-empty">Нема застанување подолго од 10 минути.</p>')+'</div>';
     }).join('');
   }
-  return '<div class="route-box"><div class="row"><div><h3>GPS рута и застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања · '+routeKm(totalMeters)+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Мапа и застанувања</button><button type="button" id="savedPlacesManage" class="btn light full">Зачувани места · Измени имиња</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn light full" id="routeMileage">Километража · '+routeKm(totalMeters)+'</button><button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп GPS следење':'Старт GPS следење')+'</button><p class="small muted route-privacy">Ова е посебна лична евиденција и не влегува во работните часови или PDF извештаите.</p></div>';
+  return '<div class="route-box"><div class="row"><div><h3>GPS застанувања</h3><span class="small muted">'+(active?'Следењето е активно':'Следењето не е активно')+' · '+allStops.length+' застанувања'+'</span></div><span class="route-live '+(active?'on':'')+'">'+(active?'GPS':'OFF')+'</span></div><button class="btn secondary full" id="routeHistory">Историја по датуми · Застанувања</button><button type="button" id="savedPlacesManage" class="btn light full">Зачувани места · Измени имиња</button><div class="switch-tabs route-tabs"><button data-route-mode="list" class="'+(routeMode==='list'?'selected':'')+'">Листа</button><button data-route-mode="map">Офлајн мапа</button></div>'+body+'<button class="btn '+(active?'danger':'secondary')+' full" id="routeToggle">'+(active?'Стоп следење места':'Старт следење места')+'</button><p class="small muted route-privacy">Само места со застанување над 10 минути. Без автоматска километража и без следење линија на движење.</p></div>';
 }
 function openRouteMileage(defaultFrom,defaultTo){
   const all=routeNativeState().sessions||[];
@@ -125,30 +107,28 @@ function openRouteHistory() {
   const oldest=all.length?routeDate(all[all.length-1].startedAt):today.slice(0,4)+'-01-01';
   routeHistoryCount=30;
   showModal('Историја на GPS патувања',
-    '<p class="small muted">Избери датум или период. Рутите, времето на застанувањата и километражата се читаат од снимената GPS историја на телефонот.</p>'+
+    '<p class="small muted">Избери датум или период. Се прикажуваат само зачувани места и времетраење на застанувањата. Старите податоци остануваат зачувани.</p>'+
     '<div class="grid"><label class="field"><span>Од датум</span><input id="gpsHistoryFrom" type="date" value="'+esc(oldest)+'"></label>'+
     '<label class="field"><span>До датум</span><input id="gpsHistoryTo" type="date" value="'+esc(today)+'"></label></div>'+
     '<div id="gpsHistoryResult"></div>'+
     '<button id="gpsHistoryBackup" class="btn light full" type="button">Зачувај GPS архива (JSON)</button>'+
-    '<p class="small muted">Во отворената офлајн мапа избери „Зачувај слика PNG“ за фотографија од рутата. Извозот на архива не ги брише податоците.</p>');
+    '<p class="small muted">Во отворената офлајн мапа избери „Зачувај слика PNG“ за фотографија од застанувањата. Извозот на архива не ги брише податоците.</p>');
   const draw=()=>{
     const from=$('gpsHistoryFrom').value,to=$('gpsHistoryTo').value;
     if(!Core.dateValid(from)||!Core.dateValid(to)||from>to){
       $('gpsHistoryResult').innerHTML='<p class="error-text">Провери ги датумите.</p>';return;
     }
     const matches=all.filter(s=>{const d=routeDate(s.startedAt);return d>=from&&d<=to;});
-    const total=matches.reduce((a,s)=>a+routeSessionMeters(s),0);
     const stops=matches.reduce((a,s)=>a+(s.stops||[]).length,0);
     const shown=matches.slice(0,routeHistoryCount);
     $('gpsHistoryResult').innerHTML='<section class="card"><div class="row"><div><h3>Снимени патувања</h3><span class="small muted">'+matches.length+' рути · '+stops+' застанувања</span></div><strong class="trip-total">'+routeKm(total)+'</strong></div></section>'+
       (shown.length?shown.map(s=>{
-        const date=routeDate(s.startedAt),st=s.stops||[],km=routeKm(routeSessionMeters(s));
-        const hasGeo=(s.points||[]).length>0||(s.hourSegments||[]).some(h=>(h.rawPoints||[]).length>0||(h.lineSegments||[]).length>0)||st.length>0;
+        const date=routeDate(s.startedAt),st=s.stops||[];
+        const hasGeo=st.length>0;
         return '<section class="card route-session"><div class="row"><strong>'+Core.displayDate(date)+'</strong><span class="small muted">'+routeClock(s.startedAt)+' – '+(s.endedAt?routeClock(s.endedAt):'во тек')+'</span></div>'+
-          '<div class="mini-row"><span>Поминато</span><strong>'+km+'</strong></div>'+
           '<div class="mini-row"><span>Застанувања</span><strong>'+st.length+'</strong></div>'+
-          (st.length?st.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted">Нема снимено застанување подолго од 5 минути.</p>')+
-          (hasGeo?'<button type="button" class="btn secondary full" data-route-session="'+esc(s.id||'')+'">Отвори ја оваа рута на мапа</button>':'<p class="small muted">За ова патување нема зачувани GPS координати. Рутата не може да се реконструира.</p>')+
+          (st.length?st.map((p,i)=>routeStopMarkup(p,i+1)).join(''):'<p class="small muted">Нема снимено застанување подолго од 10 минути.</p>')+
+          (hasGeo?'<button type="button" class="btn secondary full" data-route-session="'+esc(s.id||'')+'">Прикажи ги застанувањата на мапа</button>':'<p class="small muted">За ова патување нема зачувани застанувања.</p>')+
           '</section>';
       }).join(''):'<p class="trip-empty">Нема снимени GPS патувања во избраниот период. За нови рути дозволи Локација и стартувај службен пат.</p>')+
       (matches.length>shown.length?'<button type="button" class="btn light full" id="gpsHistoryMore">Прикажи уште '+Math.min(30,matches.length-shown.length)+' рути</button>':'');
@@ -186,7 +166,6 @@ function bindRouteButtons(){
   const manage=$('savedPlacesManage');if(manage)manage.onclick=openSavedPlacesModal;
   document.querySelectorAll('[data-route-mode]').forEach(b=>b.onclick=function(){if(b.dataset.routeMode==='map'&&typeof Android!=='undefined'&&Android.openRouteHistoryMap){const host=$('routePanel');Android.openRouteHistoryMap(host?host.dataset.from:'',host?host.dataset.to:'');return;}routeMode=b.dataset.routeMode;refreshRoutePanel();});
   document.querySelectorAll('.route-map-open').forEach(b=>b.onclick=function(){if(typeof Android!=='undefined'&&Android.openRouteMap)Android.openRouteMap(Number(b.dataset.lat),Number(b.dataset.lon));});
-  const km=$('routeMileage');if(km)km.onclick=function(){const host=$('routePanel');openRouteMileage(host?host.dataset.from:'',host?host.dataset.to:'');};
   const toggle=$('routeToggle');if(toggle)toggle.onclick=function(){
     if(typeof Android==='undefined')return;
     const d=routeNativeState(true);
@@ -205,7 +184,7 @@ function checkRoutePrompt(){
   if(!stop)return;
   routePromptStopId=stop.id;
   const lat=Number(stop.lat),lon=Number(stop.lon);
-  showModal('Застанување над 5 минути','<p>Се задржа тука повеќе од 5 минути. Дали е ова стандардно место?</p><div class="route-prompt-place"><strong>Локација</strong><span>'+lat.toFixed(5)+', '+lon.toFixed(5)+'</span><button class="link-btn" id="promptOpenMap">Отвори офлајн мапа</button></div><label class="field"><span>Име на местото (по желба)</span><input id="routeStopName" maxlength="80" placeholder="На пример: Магацин Скопје"></label><label class="check"><input id="rememberRoutePlace" type="checkbox" checked><span>Запамети го ова име и препознај го следниот пат.</span></label><button class="btn full" id="saveRoutePlace">Зачувај</button><button class="btn light full" id="leaveRouteLocation" style="margin-top:10px">Остави како „Локација“</button>');
+  showModal('Застанување над 10 минути','<p>Се задржа тука повеќе од 10 минути. Дали е ова стандардно место?</p><div class="route-prompt-place"><strong>Локација</strong><span>'+lat.toFixed(5)+', '+lon.toFixed(5)+'</span><button class="link-btn" id="promptOpenMap">Отвори офлајн мапа</button></div><label class="field"><span>Име на местото (по желба)</span><input id="routeStopName" maxlength="80" placeholder="На пример: Магацин Скопје"></label><label class="check"><input id="rememberRoutePlace" type="checkbox" checked><span>Запамети го ова име и препознај го следниот пат.</span></label><button class="btn full" id="saveRoutePlace">Зачувај</button><button class="btn light full" id="leaveRouteLocation" style="margin-top:10px">Остави како „Локација“</button>');
   $('promptOpenMap').onclick=function(){if(Android.openRouteMap)Android.openRouteMap(lat,lon);};
   $('saveRoutePlace').onclick=function(){const name=$('routeStopName').value.trim();Android.setRouteStop(stop.id,name,!!$('rememberRoutePlace').checked&&!!name);routePromptStopId='';closeModal();invalidateRouteCache();refreshRoutePanel();toast(name?'Местото е зачувано како '+name+'.':'Зачувано е како „Локација“.');};
   $('leaveRouteLocation').onclick=function(){Android.setRouteStop(stop.id,'',false);routePromptStopId='';closeModal();invalidateRouteCache();refreshRoutePanel();toast('Застанувањето остана како „Локација“.');};
