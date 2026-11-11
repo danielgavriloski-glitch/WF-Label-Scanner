@@ -112,7 +112,9 @@ function draw(){
 }
 let automaticInProgress=false;
 async function autoStart(){
- if(automaticInProgress||!document.querySelector('.hero')||getDay().status!=='not-started')return;
+ if(automaticInProgress||!document.querySelector('.hero'))return;
+ if(typeof Android!=='undefined'&&typeof WFApp.syncNativeState==='function')WFApp.syncNativeState();
+ if(getDay().status!=='not-started')return;
  const settings=WFApp.getState().workdaySettings;
  if(!settings||!settings.activatedOn||date()<settings.activatedOn)return;
  const cfg=config();
