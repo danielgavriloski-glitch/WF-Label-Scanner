@@ -31,17 +31,12 @@ public class RouteTrackingService extends Service implements LocationListener {
     public static final String ACTION_START="mk.workfashion.personal.ROUTE_START";
     private static final String CHANNEL_ID="wfag_route_tracking";
     private static final int NOTIFICATION_ID=1401;
-    private static final long GPS_MIN_TIME_MS=2000L;
-    private static final float GPS_MIN_DISTANCE_M=0f;
-    private static final long NETWORK_MIN_TIME_MS=10000L;
-    private static final float NETWORK_MIN_DISTANCE_M=10f;
-    private static final float MAX_ACCEPTABLE_ACCURACY_M=80f;
-    private static final long GPS_PREFERENCE_WINDOW_MS=20000L;
-    private static final float MIN_POINT_DISTANCE_M=3f;
-    private static final long MAX_POINT_INTERVAL_MS=2000L;
-    private static final float MAX_REASONABLE_SPEED_MPS=65f;
-    private static final long HOUR_SEGMENT_MS=60L*60L*1000L;
-    private static final long STOP_MS=5L*60L*1000L;
+    // Take isolated fixes rather than keeping the GPS receiver awake all day.
+    private static final long SAMPLE_INTERVAL_MS=2L*60L*1000L;
+    private static final long NETWORK_TIMEOUT_MS=12000L;
+    private static final long GPS_TIMEOUT_MS=25000L;
+    private static final float MAX_ACCEPTABLE_ACCURACY_M=120f;
+    private static final long STOP_MS=10L*60L*1000L;
     private static final float STOP_RADIUS_M=140f;
     private static final float STOP_EXIT_RADIUS_M=220f;
     private static final float STOP_MOVING_SPEED_MPS=2.8f;
@@ -53,7 +48,8 @@ public class RouteTrackingService extends Service implements LocationListener {
     private LocationManager locationManager;
     private HandlerThread locationThread;
     private Handler locationWorker;
-    private long lastGpsFixAt=0L;
+    private Runnable sampleTimeout;
+    private final Runnable sampleTask=this::requestSample;
 
     @Override public void onCreate(){
         super.onCreate();
@@ -63,12 +59,12 @@ public class RouteTrackingService extends Service implements LocationListener {
         locationWorker=new Handler(locationThread.getLooper());
         NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"WFAG · Патувања",NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("Следење рута додека трае службен пат");
+        ch.setDescription("Штедливо следење само на застанувања над 10 минути");
         nm.createNotificationChannel(ch);
     }
 
     @Override public int onStartCommand(Intent intent,int flags,int startId){
-        startForeground(NOTIFICATION_ID,notification("Патувањето се следи","GPS следењето е активно."));
+        startForeground(NOTIFICATION_ID,notification("Застанувања","Штедливо GPS следење · над 10 минути."));
         final String action=intent==null?null:intent.getAction();
         final String tripId=intent==null?null:intent.getStringExtra("tripId");
         // Starting a session can read/write years of route history; do not block Android's main looper.
@@ -77,22 +73,57 @@ public class RouteTrackingService extends Service implements LocationListener {
             JSONObject state=readState(this);
             if(!state.optBoolean("tracking",false)){stopSelfResult(startId);return;}
             startUpdates();
-            resumePendingCompactions(this);
+            // Old road-matching jobs are intentionally not resumed: no route lines are recorded.
         });
         return START_STICKY;
     }
 
     private void startUpdates(){
         locationManager=(LocationManager)getSystemService(LOCATION_SERVICE);
+        if(locationManager==null){stopSelf();return;}
+        locationWorker.removeCallbacks(sampleTask);
+        if(sampleTimeout!=null)locationWorker.removeCallbacks(sampleTimeout);
+        try{locationManager.removeUpdates(this);}catch(Exception ignored){}
+        requestSample();
+    }
+
+    private void requestSample(){
+        if(locationManager==null||locationWorker==null)return;
         try{
-            try{locationManager.removeUpdates(this);}catch(Exception ignored){}
-            if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,GPS_MIN_TIME_MS,GPS_MIN_DISTANCE_M,this,locationThread.getLooper());
-            if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,NETWORK_MIN_TIME_MS,NETWORK_MIN_DISTANCE_M,this,locationThread.getLooper());
-        }catch(SecurityException e){
-            finishSession(this);stopSelf();
-        }
+            if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)){
+                // Cheap network location first; use one GPS fix only if unavailable or imprecise.
+                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER,this,locationThread.getLooper());
+                scheduleTimeout(this::requestGpsSample,NETWORK_TIMEOUT_MS);
+            }else requestGpsSample();
+        }catch(SecurityException denied){finishSession(this);stopSelf();}
+         catch(Exception failed){requestGpsSample();}
+    }
+
+    private void requestGpsSample(){
+        if(locationManager==null)return;
+        try{
+            locationManager.removeUpdates(this);
+            if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER,this,locationThread.getLooper());
+                scheduleTimeout(this::scheduleNextSample,GPS_TIMEOUT_MS);
+            }else scheduleNextSample();
+        }catch(SecurityException denied){finishSession(this);stopSelf();}
+         catch(Exception failed){scheduleNextSample();}
+    }
+
+    private void scheduleTimeout(Runnable action,long delay){
+        if(sampleTimeout!=null)locationWorker.removeCallbacks(sampleTimeout);
+        sampleTimeout=action;
+        locationWorker.postDelayed(sampleTimeout,delay);
+    }
+
+    private void scheduleNextSample(){
+        if(locationManager!=null)try{locationManager.removeUpdates(this);}catch(Exception ignored){}
+        if(locationWorker==null)return;
+        if(sampleTimeout!=null)locationWorker.removeCallbacks(sampleTimeout);
+        sampleTimeout=null;
+        locationWorker.removeCallbacks(sampleTask);
+        locationWorker.postDelayed(sampleTask,SAMPLE_INTERVAL_MS);
     }
 
     @Override public void onDestroy(){
@@ -106,70 +137,39 @@ public class RouteTrackingService extends Service implements LocationListener {
     @Override public void onStatusChanged(String provider,int status,Bundle extras){}
 
     @Override public void onLocationChanged(Location loc){
-        if(loc==null||!loc.hasAccuracy()||loc.getAccuracy()>MAX_ACCEPTABLE_ACCURACY_M)return;
+        if(loc==null||!loc.hasAccuracy()||loc.getAccuracy()>MAX_ACCEPTABLE_ACCURACY_M){
+            if(loc!=null&&LocationManager.GPS_PROVIDER.equals(loc.getProvider()))scheduleNextSample();
+            else requestGpsSample();
+            return;
+        }
+        // A cached position could incorrectly create a ten-minute stop.
+        long ageNs=android.os.SystemClock.elapsedRealtimeNanos()-loc.getElapsedRealtimeNanos();
+        if(ageNs<0L||ageNs>30L*1000L*1000L*1000L){
+            if(LocationManager.GPS_PROVIDER.equals(loc.getProvider()))scheduleNextSample();
+            else requestGpsSample();
+            return;
+        }
         final long now=System.currentTimeMillis();
-        final boolean gps=LocationManager.GPS_PROVIDER.equals(loc.getProvider());
-        if(gps)lastGpsFixAt=now;
-        else if(lastGpsFixAt>0L&&now-lastGpsFixAt<GPS_PREFERENCE_WINDOW_MS)return;
-
-        synchronized(LOCK){
-            try{
+        try{
+            synchronized(LOCK){
                 JSONObject state=readStateUnlocked(this);
-                if(!state.optBoolean("tracking",false))return;
+                if(!state.optBoolean("tracking",false)){scheduleNextSample();return;}
                 JSONObject session=findSession(state,state.optString("activeSessionId"));
-                if(session==null)return;
-
-                JSONArray points=session.optJSONArray("points");
-                if(points==null){points=new JSONArray();session.put("points",points);}
-                long hourStart=session.optLong("hourStartAt",0L);
-                if(hourStart<=0L){
-                    JSONObject first=points.length()>0?points.optJSONObject(0):null;
-                    hourStart=first==null?now:first.optLong("at",now);
-                    session.put("hourStartAt",hourStart);
-                }
-
-                String compactSegmentId="";
-                if(points.length()>=2&&now-hourStart>=HOUR_SEGMENT_MS){
-                    compactSegmentId=closeHourSegment(session,points,hourStart,now);
-                    JSONArray nextPoints=new JSONArray();
-                    JSONObject bridge=points.optJSONObject(points.length()-1);
-                    if(bridge!=null)nextPoints.put(new JSONObject(bridge.toString()));
-                    points=nextPoints;
-                    session.put("points",points);
-                    session.put("hourStartAt",now);
-                }
-
-                JSONObject last=points.length()>0?points.optJSONObject(points.length()-1):null;
-                boolean add=last==null;
-                float stepDistance=0f;
-                long stepElapsed=0L;
-
-                if(last!=null){
-                    stepDistance=distance(last.optDouble("lat"),last.optDouble("lon"),loc.getLatitude(),loc.getLongitude());
-                    stepElapsed=Math.max(1000L,now-last.optLong("at"));
-                    float lastAccuracy=(float)last.optDouble("accuracy",30d);
-                    float plausibleMax=Math.max(120f,(stepElapsed/1000f)*MAX_REASONABLE_SPEED_MPS+lastAccuracy+loc.getAccuracy());
-                    if(stepDistance>plausibleMax)return;
-                    add=stepDistance>=MIN_POINT_DISTANCE_M||stepElapsed>=MAX_POINT_INTERVAL_MS;
-                }
-
-                if(add){
-                    JSONObject p=new JSONObject();
-                    p.put("lat",loc.getLatitude());
-                    p.put("lon",loc.getLongitude());
-                    p.put("at",now);
-                    p.put("accuracy",Math.round(loc.getAccuracy()));
-                    p.put("provider",loc.getProvider()==null?"":loc.getProvider());
-                    if(loc.hasSpeed())p.put("speedMps",Math.round(loc.getSpeed()*10f)/10f);
-                    points.put(p);
-                    if(last!=null)session.put("distanceM",session.optDouble("distanceM",0d)+stepDistance);
-                }
-
+                if(session==null){scheduleNextSample();return;}
+                long lastAt=session.optLong("lastFixAt",0L);
+                float stepDistance=lastAt>0L?distance(session.optDouble("lastLat"),session.optDouble("lastLon"),
+                    loc.getLatitude(),loc.getLongitude()):0f;
+                long stepElapsed=lastAt>0L?Math.max(1000L,now-lastAt):0L;
+                session.put("lastLat",loc.getLatitude());
+                session.put("lastLon",loc.getLongitude());
+                session.put("lastFixAt",now);
+                session.put("lastAccuracy",Math.round(loc.getAccuracy()));
+                // No raw points, distance summing, hourly road matching or track lines.
                 updateStopState(state,session,loc,now,stepDistance,stepElapsed);
                 writeStateUnlocked(this,state);
-                if(!compactSegmentId.isEmpty())queueCompaction(this,session.optString("id"),compactSegmentId);
-            }catch(Exception ignored){}
-        }
+            }
+        }catch(Exception ignored){}
+        scheduleNextSample();
     }
 
     private void updateStopState(JSONObject state,JSONObject session,Location loc,long now,float stepDistance,long stepElapsed)throws Exception{
@@ -186,13 +186,15 @@ public class RouteTrackingService extends Service implements LocationListener {
         float fromAnchor=distance(aLat,aLon,loc.getLatitude(),loc.getLongitude());
         float calculatedSpeed=stepElapsed>0L?stepDistance/(stepElapsed/1000f):0f;
         float speed=loc.hasSpeed()?loc.getSpeed():calculatedSpeed;
-        boolean moving=speed>=STOP_MOVING_SPEED_MPS&&stepDistance>=12f;
+        // Two reliable fixes beyond the stop radius are needed before closing a stop.
+        boolean moving=(fromAnchor>STOP_EXIT_RADIUS_M&&loc.getAccuracy()<=90f)||
+            (loc.hasSpeed()&&speed>=STOP_MOVING_SPEED_MPS&&loc.getAccuracy()<=90f);
         String activeStopId=session.optString("activeStopId","");
 
         if(!moving){
             session.put("moveSince",0L);
 
-            // GPS drift while parked must not restart the 5-minute timer.
+            // GPS drift while parked must not restart the 10-minute timer.
             if(fromAnchor<=STOP_EXIT_RADIUS_M||loc.getAccuracy()>=45f){
                 if(fromAnchor<=STOP_RADIUS_M){
                     double blend=0.08d;
@@ -243,6 +245,14 @@ public class RouteTrackingService extends Service implements LocationListener {
             return;
         }
 
+        // Without an established stop, follow the current position to avoid false stops while travelling.
+        if(activeStopId.isEmpty()){
+            session.put("anchorLat",loc.getLatitude());
+            session.put("anchorLon",loc.getLongitude());
+            session.put("anchorSince",now);
+            session.put("moveSince",0L);
+            return;
+        }
         long moveSince=session.optLong("moveSince",0L);
         if(moveSince<=0L){
             session.put("moveSince",now);
@@ -253,7 +263,7 @@ public class RouteTrackingService extends Service implements LocationListener {
         if(!activeStopId.isEmpty()){
             JSONArray stops=session.optJSONArray("stops");
             JSONObject stop=findStop(stops,activeStopId);
-            if(stop!=null){stop.put("active",false);stop.put("endAt",now);}
+            if(stop!=null){stop.put("active",false);stop.put("endAt",moveSince);}
         }
         session.put("activeStopId","");
         session.put("anchorLat",loc.getLatitude());
@@ -398,12 +408,12 @@ public class RouteTrackingService extends Service implements LocationListener {
         }catch(Exception ignored){}
     }
 
-    public static void retryPendingCompactions(Context c){resumePendingCompactions(c);}
+    public static void retryPendingCompactions(Context c){/* Legacy road matching disabled for battery saving. */}
 
     private void notifyStop(JSONObject stop){
         if(android.os.Build.VERSION.SDK_INT<33||checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED){
             NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-            nm.notify(NOTIFICATION_ID,notification("Застанување над 5 минути","Допри за достава, преземање или прикачување документи."));
+            nm.notify(NOTIFICATION_ID,notification("Застанување над 10 минути","Допри за достава, преземање или прикачување документи."));
         }
     }
 
@@ -592,29 +602,19 @@ public class RouteTrackingService extends Service implements LocationListener {
     public static void finishSession(Context c){
         synchronized(LOCK){
             try{
-                JSONObject s=readStateUnlocked(c);
-                JSONObject session=findSession(s,s.optString("activeSessionId"));
+                JSONObject state=readStateUnlocked(c);
+                JSONObject session=findSession(state,state.optString("activeSessionId"));
                 long now=System.currentTimeMillis();
-                String compactId="";
-                String sessionId="";
                 if(session!=null){
-                    sessionId=session.optString("id","");
-                    JSONArray points=session.optJSONArray("points");
-                    if(points!=null&&points.length()>=2){
-                        long hourStart=session.optLong("hourStartAt",session.optLong("startedAt",now));
-                        compactId=closeHourSegment(session,points,hourStart,now);
-                        session.put("points",new JSONArray());
-                    }
                     session.put("endedAt",now);
                     String sid=session.optString("activeStopId","");
                     JSONObject stop=findStop(session.optJSONArray("stops"),sid);
                     if(stop!=null){stop.put("active",false);stop.put("endAt",now);}
                     session.put("activeStopId","");
                 }
-                s.put("tracking",false);
-                s.put("activeSessionId","");
-                writeStateUnlocked(c,s);
-                if(!compactId.isEmpty())queueCompaction(c,sessionId,compactId);
+                state.put("tracking",false);
+                state.put("activeSessionId","");
+                writeStateUnlocked(c,state);
             }catch(Exception ignored){}
         }
     }
