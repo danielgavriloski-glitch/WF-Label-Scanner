@@ -59,12 +59,12 @@ function authoriseSettings(){
   const second=prompt('Повтори ја администраторската лозинка:');
   if(first!==second)throw Error('Лозинките не се совпаѓаат.');
   if(!Android.setupAdminPassword(first))throw Error('Лозинката не се зачува.');
-  return true;
+  return first;
  }
  const password=prompt('Администраторска лозинка:');
  if(password===null)throw Error('Откажано.');
  if(!Android.verifyAdminPassword(password))throw Error('Погрешна администраторска лозинка.');
- return true;
+ return password;
 }
 function drawSettings(){
  const host=document.getElementById('app');if(!host||!document.getElementById('settingsForm'))return;
@@ -76,12 +76,12 @@ function drawSettings(){
  panel.querySelector('#wdMode').value=cfg.mode;
  panel.querySelector('#wdCurrentLocation').onclick=async()=>{try{const p=await gpsPosition();panel.querySelector('#wdLat').value=p.lat;panel.querySelector('#wdLon').value=p.lon;}catch(e){alert(e.message);}};
  panel.querySelector('#wdSaveSettings').onclick=()=>{try{
-  authoriseSettings();
+  const adminPassword=authoriseSettings();
   const lat=panel.querySelector('#wdLat').value.trim(),lon=panel.querySelector('#wdLon').value.trim();
   if((lat==='')!==(lon===''))throw Error('Внеси ги двете GPS координати.');
   const settings=W.settings({mode:panel.querySelector('#wdMode').value,start:panel.querySelector('#wdStart').value,radiusM:Number(panel.querySelector('#wdRadius').value),workplace:lat===''?null:{lat:Number(lat),lon:Number(lon)}});
   if(settings.mode==='geofence'&&!settings.workplace)throw Error('Прво постави работна GPS локација.');
-  const state=WFApp.getState();state.workdaySettings=settings;WFApp.commit(state,'Променети поставки за работен ден');
+  const state=WFApp.getState();state.workdaySettings=settings;WFApp.commitWithAdmin(state,'Променети поставки за работен ден',adminPassword);
  }catch(e){alert(e.message);}};
 }
 function draw(){
