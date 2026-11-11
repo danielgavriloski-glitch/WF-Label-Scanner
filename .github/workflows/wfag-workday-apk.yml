@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/wfag-workday-start-gps-travel
+      - fix/wfag-battery-stops-10min-20261111
   workflow_dispatch:
 jobs:
   build:
