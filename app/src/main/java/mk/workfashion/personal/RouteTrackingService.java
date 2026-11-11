@@ -449,6 +449,33 @@ public class RouteTrackingService extends Service implements LocationListener {
     }
     public static String stateJson(Context c){return readState(c).toString();}
 
+    /** Small display-only snapshot: retain the complete original JSON for backups. */
+    public static String displayStateJson(Context c){
+        synchronized(LOCK){
+            JSONObject state=readStateUnlocked(c);
+            try{
+                JSONObject compact=new JSONObject();
+                compact.put("tracking",state.optBoolean("tracking",false));
+                compact.put("activeSessionId",state.optString("activeSessionId",""));
+                compact.put("savedPlaces",state.optJSONArray("savedPlaces"));
+                JSONArray sessions=state.optJSONArray("sessions"),out=new JSONArray();
+                for(int i=0;sessions!=null&&i<sessions.length();i++){
+                    JSONObject old=sessions.optJSONObject(i);
+                    if(old==null)continue;
+                    JSONObject item=new JSONObject();
+                    item.put("id",old.optString("id",""));
+                    item.put("tripId",old.optString("tripId",""));
+                    item.put("startedAt",old.optLong("startedAt",0L));
+                    item.put("endedAt",old.optLong("endedAt",0L));
+                    item.put("stops",old.optJSONArray("stops")==null?new JSONArray():old.optJSONArray("stops"));
+                    out.put(item);
+                }
+                compact.put("sessions",out);
+                return compact.toString();
+            }catch(Exception ignored){return "{\"tracking\":false,\"sessions\":[],\"savedPlaces\":[]}";}
+        }
+    }
+
     /** Merge a manually exported WFAG GPS archive; never overwrite current trips or tracking. */
     public static int importArchive(Context c,String json)throws Exception{
         if(json==null||json.length()>16*1024*1024)throw new Exception("GPS архивата е преголема.");
