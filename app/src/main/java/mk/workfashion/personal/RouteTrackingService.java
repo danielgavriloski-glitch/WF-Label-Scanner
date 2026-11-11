@@ -89,6 +89,7 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     private void requestSample(){
         if(locationManager==null||locationWorker==null)return;
+        if(!readState(this).optBoolean("tracking",false)){stopSelf();return;}
         try{
             if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)){
                 // Cheap network location first; use one GPS fix only if unavailable or imprecise.
@@ -128,6 +129,10 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public void onDestroy(){
         if(locationManager!=null)try{locationManager.removeUpdates(this);}catch(Exception ignored){}
+        if(locationWorker!=null){
+            locationWorker.removeCallbacks(sampleTask);
+            if(sampleTimeout!=null)locationWorker.removeCallbacks(sampleTimeout);
+        }
         if(locationThread!=null)locationThread.quitSafely();
         super.onDestroy();
     }
@@ -153,9 +158,9 @@ public class RouteTrackingService extends Service implements LocationListener {
         try{
             synchronized(LOCK){
                 JSONObject state=readStateUnlocked(this);
-                if(!state.optBoolean("tracking",false)){scheduleNextSample();return;}
+                if(!state.optBoolean("tracking",false)){stopSelf();return;}
                 JSONObject session=findSession(state,state.optString("activeSessionId"));
-                if(session==null){scheduleNextSample();return;}
+                if(session==null){stopSelf();return;}
                 long lastAt=session.optLong("lastFixAt",0L);
                 float stepDistance=lastAt>0L?distance(session.optDouble("lastLat"),session.optDouble("lastLon"),
                     loc.getLatitude(),loc.getLongitude()):0f;
