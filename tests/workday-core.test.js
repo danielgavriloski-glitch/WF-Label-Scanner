@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('assert');
+const W=require('../app/src/main/assets/workday-core.js');
+const at=(h,m=0)=>new Date(2026,10,11,h,m).getTime();
+let day=W.newDay('2026-11-11');
+day=W.start(day,at(8),'manual');
+day=W.depart(day,at(9));
+day=W.arrive(day,at(10,30));
+day=W.finish(day,at(17));
+assert.deepStrictEqual(W.totals(day,at(18)),{workedMinutes:540,travelMinutes:90,overtimeDelta:60});
+let short=W.finish(W.start(W.newDay('2026-11-11'),at(8)),at(14));
+assert.strictEqual(W.totals(short,at(15)).overtimeDelta,-120);
+let geo=W.geofenceStart(W.newDay('2026-11-11'),{mode:'geofence',workplace:{lat:41.998,lon:21.425},radiusM:100},{lat:41.998,lon:21.425,accuracy:20},at(8));
+assert.strictEqual(geo.source,'geofence');
+assert.strictEqual(W.geofenceStart(W.newDay('2026-11-11'),{mode:'geofence',workplace:{lat:41.998,lon:21.425},radiusM:100},{lat:41.998,lon:21.425,accuracy:300},at(8)).startAt,null);
+console.log('WFAG workday engine: all tests passed');
