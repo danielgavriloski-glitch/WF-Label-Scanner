@@ -453,7 +453,14 @@ public class MainActivity extends Activity {
         if(!ready){super.onBackPressed();return;}
         webView.evaluateJavascript("window.onNativeBack?onNativeBack():false",value->{if(!"true".equals(value))super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(window.WFRoute&&window.WFRoute.invalidateCache)window.WFRoute.invalidateCache();if(typeof render==='function'&&document.getElementById('modal').hidden)render();",null);}
+    @Override protected void onResume(){
+        super.onResume();
+        configureWorkdayMonitor(false);
+        if(ready&&webView!=null)webView.evaluateJavascript(
+            "if(window.WFRoute&&window.WFRoute.invalidateCache)window.WFRoute.invalidateCache();"+
+            "if(window.WFApp&&window.WFApp.syncNativeState)window.WFApp.syncNativeState();"+
+            "if(window.WFAGWorkdayAutoStart)window.WFAGWorkdayAutoStart();",null);
+    }
     @Override protected void onDestroy(){if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();}super.onDestroy();}
 
     static class PdfReport {
