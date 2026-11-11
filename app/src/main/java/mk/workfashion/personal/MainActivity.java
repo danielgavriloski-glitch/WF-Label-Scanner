@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
     private boolean workdayStartAllowed(JSONObject current,JSONObject proposed,String date){
         try{
             JSONObject cfg=current.optJSONObject("workdaySettings");
-            if(cfg==null)cfg=new JSONObject();
+            if(cfg==null||cfg.optString("activatedOn","").isEmpty())return false;
             String mode=cfg.optString("mode","fixed");
             long now=System.currentTimeMillis();
             if(!date.equals(new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.US).format(new java.util.Date(now))))return false;
