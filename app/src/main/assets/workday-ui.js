@@ -81,7 +81,7 @@ function drawSettings(){
   if((lat==='')!==(lon===''))throw Error('Внеси ги двете GPS координати.');
   const settings=W.settings({mode:panel.querySelector('#wdMode').value,start:panel.querySelector('#wdStart').value,radiusM:Number(panel.querySelector('#wdRadius').value),workplace:lat===''?null:{lat:Number(lat),lon:Number(lon)}});
   if(settings.mode==='geofence'&&!settings.workplace)throw Error('Прво постави работна GPS локација.');
-  const state=WFApp.getState();state.workdaySettings=settings;WFApp.commitWithAdmin(state,'Променети поставки за работен ден',adminPassword);
+  const state=WFApp.getState();settings.activatedOn=state.workdaySettings&&state.workdaySettings.activatedOn||Core.today();state.workdaySettings=settings;WFApp.commitWithAdmin(state,'Променети поставки за работен ден',adminPassword);
  }catch(e){alert(e.message);}};
 }
 function draw(){
