@@ -6,14 +6,15 @@ const monthLabel=m=>MK_MONTHS[Number(m.slice(5))-1]+' '+m.slice(0,4), num=x=>Str
 let state,view='home',month=Core.today().slice(0,7),leaveYear=Number(Core.today().slice(0,4)),reportMode='month';
 let reportFrom=Core.monthBounds(month)[0],reportTo=Core.monthBounds(month)[1],toastTimer;
 function load(){try{const raw=typeof Android!=='undefined'?Android.loadState():localStorage.getItem(Core.APP_ID);state=raw?Core.validate(JSON.parse(raw)):Core.fresh();if(!raw)persist(state);}catch(e){state=null;$('app').innerHTML=`<div class="card"><h2>Евиденцијата не се отвори</h2><p>${esc(e.message)}</p><p>Затвори и повторно отвори ја апликацијата или врати зачуван бекап.</p><button class="btn full" id="recoverBackup">Врати бекап</button></div>`;$('recoverBackup').onclick=restoreBackup;return false;}return true;}
-function persist(next){const raw=JSON.stringify(next);if(typeof Android!=='undefined'){if(!Android.saveState(raw))throw Error('Записот не се зачува. Провери го слободниот простор.');}else localStorage.setItem(Core.APP_ID,raw);}
+function nativeSaveError(fallback){if(typeof Android!=='undefined'&&typeof Android.getLastSaveError==='function'){const detail=String(Android.getLastSaveError()||'');if(detail)return detail;}return fallback;}
+function persist(next){const raw=JSON.stringify(next);if(typeof Android!=='undefined'){if(!Android.saveState(raw))throw Error(nativeSaveError('Записот не се зачува. Обиди се повторно.'));}else localStorage.setItem(Core.APP_ID,raw);}
 function commit(next,text){Core.validate(next);next.audit.push({at:new Date().toISOString(),text});if(next.audit.length>10000)next.audit=next.audit.slice(-10000);persist(next);state=next;render();}
 function commitWithAdmin(next,label,password){
  Core.validate(next);
  if(typeof Android==='undefined'||typeof Android.saveStateWithAdmin!=='function')throw Error('Потребна е новата Android верзија.');
  next.audit.push({at:new Date().toISOString(),text:label});
  if(next.audit.length>10000)next.audit=next.audit.slice(-10000);
- if(!Android.saveStateWithAdmin(JSON.stringify(next),password))throw Error('Поставките не се зачуваа. Провери ја лозинката.');
+ if(!Android.saveStateWithAdmin(JSON.stringify(next),password))throw Error(nativeSaveError('Поставките не се зачуваа. Провери ја лозинката.'));
  state=next;render();
 }
 function toast(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').classList.add('show');toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3500);}
@@ -105,7 +106,7 @@ function handleImport(text){try{
  commit(parsed,'Вратен бекап'+(keepVehicle?' · задржана евиденција за комбе':''));closeModal();toast('Бекапот е успешно вратен.');
 }catch(e){toast(e.message);}}
 window.handleImport=handleImport;
-window.onExportComplete=name=>{if(name.startsWith('Workfashion_backup_')&&state){const next=JSON.parse(JSON.stringify(state));next.lastBackupAt=new Date().toISOString();try{persist(next);state=next;if(view==='settings')render();}catch(e){toast(e.message);return;}}toast('Зачувано: '+name);};
+window.onExportComplete=name=>{if(name.startsWith('Workfashion_backup_')&&state){const next=JSON.parse(JSON.stringify(state));next.lastBackupAt=new Date().toISOString();try{persist(next);state=next;if(view==='settings')render();}catch(e){toast('Бекапот е зачуван, но датумот на последниот бекап не се ажурира: '+e.message);return;}}toast('Зачувано: '+name);};
 window.onNativeError=text=>toast(text);
 window.onNativeBack=()=>{if(!$('modal').hidden){closeModal();return true;}if(view!=='home'){view='home';render();return true;}return false;};
 function syncNativeState(){

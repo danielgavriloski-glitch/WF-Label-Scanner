@@ -49,20 +49,51 @@ jobs:
           test -f signing/signing.properties
           echo "WFAG_SIGNING_READY=true" >> "$GITHUB_ENV"
       - name: Compile and lint normal release
-        run: gradle :app:assembleRelease :app:lintRelease --no-daemon
+        run: gradle :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest :app:lintRelease -PwfagTestRunner=mk.workfashion.personal.BackupRestoreInstrumentation --no-daemon
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm-wfag.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify native backup restore
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell pm grant mk.workfashion.personal android.permission.POST_NOTIFICATIONS
+            adb logcat -c
+            adb shell am instrument -w mk.workfashion.personal.test/mk.workfashion.personal.BackupRestoreInstrumentation > backup-validation.txt
+            adb logcat -d > backup-runtime.txt
+            cat backup-validation.txt
+            grep WFAG_BACKUP_RESTORE_OK backup-validation.txt
+      - name: Upload backup verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFAG-3-5-1-native-backup-validation
+          path: |
+            backup-validation.txt
+            backup-runtime.txt
+          retention-days: 7
       - name: Prepare verified signed update
         if: env.WFAG_SIGNING_READY == 'true'
         run: |
           mkdir -p delivery
           APK="app/build/outputs/apk/release/app-release.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='mk.workfashion.personal' versionCode='27'"
-          cp "$APK" delivery/WFAG_3_5_UPDATE.apk
-          sha256sum delivery/WFAG_3_5_UPDATE.apk > delivery/SHA256SUMS.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='mk.workfashion.personal' versionCode='28'"
+          cp "$APK" delivery/WFAG_3_5_1_BACKUP_FIX.apk
+          sha256sum delivery/WFAG_3_5_1_BACKUP_FIX.apk > delivery/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: env.WFAG_SIGNING_READY == 'true'
         with:
-          name: WFAG-3-5-UPDATE
+          name: WFAG-3-5-1-UPDATE
           path: delivery/
           if-no-files-found: error
           retention-days: 7
@@ -75,13 +106,13 @@ jobs:
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" unsigned-delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt" unsigned-delivery/toolchain/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" unsigned-delivery/toolchain/
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging unsigned-delivery/app-release-unsigned.apk | grep "package: name='mk.workfashion.personal' versionCode='27'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging unsigned-delivery/app-release-unsigned.apk | grep "package: name='mk.workfashion.personal' versionCode='28'"
           echo "::warning::Release compiled. Sign locally with the preserved WFAG key before distributing an installable update."
       - name: Upload unsigned compilation for local signing
         if: env.WFAG_SIGNING_READY != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: WFAG-3-5-UNSIGNED-COMPILATION-ONLY
+          name: WFAG-3-5-1-UNSIGNED-COMPILATION-ONLY
           path: unsigned-delivery/
           if-no-files-found: error
           retention-days: 7
@@ -89,7 +120,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WFAG-3-5-lint
+          name: WFAG-3-5-1-lint
           path: |
             app/build/reports/lint-results-release.html
             app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
