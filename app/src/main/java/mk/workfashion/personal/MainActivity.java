@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
         CargoReminderReceiver.schedule(this);
-        WorkdayFixedReceiver.schedule(this);
+        
         if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 98);
         documentVisit=getPreferences(0).getString("documentVisit","");
         scanOutput=getPreferences(0).getString("scanOutput","");
@@ -222,24 +222,7 @@ public class MainActivity extends Activity {
         },"wfag-route-stop").start();
     }
     private void configureWorkdayMonitor(boolean mayRequestPermission){
-        runOnUiThread(()->{
-            try{
-                JSONObject state=new JSONObject(readState());
-                JSONObject cfg=state.optJSONObject("workdaySettings");
-                boolean selected=cfg!=null&&"geofence".equals(cfg.optString("mode"))&&
-                    cfg.optJSONObject("workplace")!=null&&!cfg.optString("activatedOn","").isEmpty();
-                WorkdayFixedReceiver.schedule(this);
-                Intent monitor=new Intent(this,WorkdayArrivalService.class);
-                if(!selected){stopService(monitor);return;}
-                if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
-                    if(mayRequestPermission)requestPermissions(
-                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},97);
-                    return;
-                }
-                if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(monitor);
-                else startService(monitor);
-            }catch(Exception e){error("GPS следењето во позадина не можеше да се активира.");}
-        });
+        runOnUiThread(()->stopService(new Intent(this,WorkdayArrivalService.class)));
     }
     private void requestWorkdayPosition(){
         runOnUiThread(()->{
@@ -348,7 +331,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
         @JavascriptInterface public String getRouteLog(){return RouteTrackingService.displayStateJson(MainActivity.this);}
         @JavascriptInterface public void openRouteArchive(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_ROUTE_ARCHIVE);}catch(Exception e){error("Изборот на GPS архивата не се отвори.");}});}
-        @JavascriptInterface public void startRouteTracking(String tripId){requestRouteStart(tripId);}
+        @JavascriptInterface public void startRouteTracking(String tripId){error("GPS следењето е исклучено во оваа верзија.");}
         @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
         @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
         @JavascriptInterface public boolean renameSavedPlace(String placeId,String name){return RouteTrackingService.renameSavedPlace(MainActivity.this,placeId,name);}
