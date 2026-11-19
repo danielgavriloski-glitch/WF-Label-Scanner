@@ -53,29 +53,12 @@ public class RouteTrackingService extends Service implements LocationListener {
 
     @Override public void onCreate(){
         super.onCreate();
-        // GPS callbacks and archive I/O must never run on the UI/main thread.
-        locationThread=new HandlerThread("wfag-gps-location");
-        locationThread.start();
-        locationWorker=new Handler(locationThread.getLooper());
-        NotificationManager nm=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-        NotificationChannel ch=new NotificationChannel(CHANNEL_ID,"WFAG · Патувања",NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("Штедливо следење само на застанувања над 10 минути");
-        nm.createNotificationChannel(ch);
     }
 
     @Override public int onStartCommand(Intent intent,int flags,int startId){
-        startForeground(NOTIFICATION_ID,notification("Застанувања","Штедливо GPS следење · над 10 минути."));
-        final String action=intent==null?null:intent.getAction();
-        final String tripId=intent==null?null:intent.getStringExtra("tripId");
-        // Starting a session can read/write years of route history; do not block Android's main looper.
-        locationWorker.post(()->{
-            if(ACTION_START.equals(action))beginSession(this,tripId);
-            JSONObject state=readState(this);
-            if(!state.optBoolean("tracking",false)){stopSelfResult(startId);return;}
-            startUpdates();
-            // Old road-matching jobs are intentionally not resumed: no route lines are recorded.
-        });
-        return START_STICKY;
+        // Retain archive helpers, but never restart GPS tracking after an update.
+        stopSelf();
+        return START_NOT_STICKY;
     }
 
     private void startUpdates(){
@@ -88,28 +71,11 @@ public class RouteTrackingService extends Service implements LocationListener {
     }
 
     private void requestSample(){
-        if(locationManager==null||locationWorker==null)return;
-        if(!readState(this).optBoolean("tracking",false)){stopSelf();return;}
-        try{
-            if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)){
-                // Cheap network location first; use one GPS fix only if unavailable or imprecise.
-                locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER,this,locationThread.getLooper());
-                scheduleTimeout(this::requestGpsSample,NETWORK_TIMEOUT_MS);
-            }else requestGpsSample();
-        }catch(SecurityException denied){finishSession(this);stopSelf();}
-         catch(Exception failed){requestGpsSample();}
+        stopSelf();
     }
 
     private void requestGpsSample(){
-        if(locationManager==null)return;
-        try{
-            locationManager.removeUpdates(this);
-            if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER,this,locationThread.getLooper());
-                scheduleTimeout(this::scheduleNextSample,GPS_TIMEOUT_MS);
-            }else scheduleNextSample();
-        }catch(SecurityException denied){finishSession(this);stopSelf();}
-         catch(Exception failed){scheduleNextSample();}
+        stopSelf();
     }
 
     private void scheduleTimeout(Runnable action,long delay){

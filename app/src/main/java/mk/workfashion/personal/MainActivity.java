@@ -2,8 +2,6 @@ package mk.workfashion.personal;
 
 import android.Manifest;
 import android.location.Location;
-import android.location.LocationManager;
-import android.location.LocationListener;
 import android.os.SystemClock;
 import android.app.Activity;
 import android.content.pm.PackageManager;
@@ -194,22 +192,10 @@ public class MainActivity extends Activity {
     }
 
     private void startRouteService(String tripId){
-        Intent i=new Intent(this,RouteTrackingService.class);
-        i.setAction(RouteTrackingService.ACTION_START);
-        i.putExtra("tripId",tripId==null?"":tripId);
-        if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
+        error("GPS следењето е исклучено во оваа верзија.");
     }
     private void requestRouteStart(String tripId){
-        runOnUiThread(()->{
-            boolean noLocation=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&
-               checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED;
-            boolean noNotifications=android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED;
-            if(noLocation||noNotifications){
-                pendingRouteTripId=tripId==null?"":tripId;
-                if(android.os.Build.VERSION.SDK_INT>=33)requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.POST_NOTIFICATIONS},ROUTE_PERMISSION);
-                else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},ROUTE_PERMISSION);
-            }else startRouteService(tripId);
-        });
+        error("GPS следењето е исклучено во оваа верзија.");
     }
     private void stopRouteService(){
         // The route archive can be large; finalize it without freezing the visible UI.
@@ -225,36 +211,7 @@ public class MainActivity extends Activity {
         runOnUiThread(()->stopService(new Intent(this,WorkdayArrivalService.class)));
     }
     private void requestWorkdayPosition(){
-        runOnUiThread(()->{
-            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED){
-                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION}, 96);
-                workdayLocationResult(null,"Дозволи прецизна GPS локација и обиди се повторно.");
-                return;
-            }
-            try{
-                LocationManager lm=(LocationManager)getSystemService(LOCATION_SERVICE);
-                if(lm==null||!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-                    workdayLocationResult(null,"Вклучи GPS локација.");return;
-                }
-                final boolean[] completed={false};
-                final LocationListener[] listener=new LocationListener[1];
-                listener[0]=location->{
-                    if(completed[0])return;
-                    completed[0]=true;
-                    lm.removeUpdates(listener[0]);
-                    long age=SystemClock.elapsedRealtimeNanos()-location.getElapsedRealtimeNanos();
-                    if(age<0||age>30000000000L)workdayLocationResult(null,"GPS позицијата е застарена.");
-                    else {recentWorkdayFix=location;workdayLocationResult(location,null);}
-                };
-                lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,0,0,listener[0],getMainLooper());
-                new android.os.Handler(getMainLooper()).postDelayed(()->{
-                    if(completed[0])return;
-                    completed[0]=true;
-                    lm.removeUpdates(listener[0]);
-                    workdayLocationResult(null,"GPS не одговори навреме. Обиди се повторно.");
-                },15000);
-            }catch(Exception e){workdayLocationResult(null,"GPS не е достапен.");}
-        });
+        runOnUiThread(()->workdayLocationResult(null,"GPS локацијата е исклучена. Работните часови се пресметуваат без локација."));
     }
     private void workdayLocationResult(Location location,String error){
         if(webView==null)return;
@@ -302,9 +259,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean verifyAdminPassword(String password){return verifyAdmin(password);}
         @JavascriptInterface public void requestWorkdayLocation(){requestWorkdayPosition();}
         @JavascriptInterface public void refreshWorkdayMonitor(){configureWorkdayMonitor(true);}
-        @JavascriptInterface public boolean hasWorkdayLocationPermission(){
-            return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED;
-        }
+        @JavascriptInterface public boolean hasWorkdayLocationPermission(){return false;}
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
             try{
                 File target=Documents.file(MainActivity.this,fileId);
@@ -331,7 +286,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
         @JavascriptInterface public String getRouteLog(){return RouteTrackingService.displayStateJson(MainActivity.this);}
         @JavascriptInterface public void openRouteArchive(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_ROUTE_ARCHIVE);}catch(Exception e){error("Изборот на GPS архивата не се отвори.");}});}
-        @JavascriptInterface public void startRouteTracking(String tripId){error("GPS следењето е исклучено во оваа верзија.");}
+        @JavascriptInterface public void startRouteTracking(String tripId){ /* Travel hours do not start GPS monitoring. */ }
         @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
         @JavascriptInterface public boolean setRouteStop(String stopId,String name,boolean remember){return RouteTrackingService.resolveStop(MainActivity.this,stopId,name,remember);}
         @JavascriptInterface public boolean renameSavedPlace(String placeId,String name){return RouteTrackingService.renameSavedPlace(MainActivity.this,placeId,name);}
@@ -422,17 +377,6 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
-        if(requestCode==97){
-            if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)
-                configureWorkdayMonitor(false);
-            else error("За автоматски почеток во позадина е потребна прецизна GPS дозвола.");
-        }
-        if(requestCode==ROUTE_PERMISSION){
-            boolean locationGranted=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||
-                checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
-            if(locationGranted){String trip=pendingRouteTripId;pendingRouteTripId="";startRouteService(trip);}
-            else{pendingRouteTripId="";error("За автоматско следење на рутата дозволи Location / Локација.");}
-        }
     }
     @Override public void onBackPressed(){
         if(!ready){super.onBackPressed();return;}

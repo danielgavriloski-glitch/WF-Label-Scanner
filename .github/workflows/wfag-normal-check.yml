@@ -66,19 +66,34 @@ jobs:
           path: delivery/
           if-no-files-found: error
           retention-days: 7
-      - name: Preserve unsigned compilation for signing
+      - name: Prepare unsigned release for local signing
+        if: env.WFAG_SIGNING_READY != 'true'
+        run: |
+          mkdir -p unsigned-delivery/toolchain
+          cp app/build/outputs/apk/release/app-release-unsigned.apk unsigned-delivery/
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" unsigned-delivery/toolchain/
+          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" unsigned-delivery/toolchain/
+          cp "$ANDROID_HOME/build-tools/35.0.0/aapt" unsigned-delivery/toolchain/
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib64/libc++.so" unsigned-delivery/toolchain/
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging unsigned-delivery/app-release-unsigned.apk | grep "package: name='mk.workfashion.personal' versionCode='27'"
+          echo "::warning::Release compiled. Sign locally with the preserved WFAG key before distributing an installable update."
+      - name: Upload unsigned compilation for local signing
         if: env.WFAG_SIGNING_READY != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: WFAG-3-5-UNSIGNED-COMPILATION-ONLY
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: unsigned-delivery/
           if-no-files-found: error
           retention-days: 7
-      - name: Report missing update signing key
-        if: env.WFAG_SIGNING_READY != 'true'
-        run: |
-          echo "::error::Release compiled, but the existing WFAG signing key is required to produce an update preserving installed app data."
-          exit 1
+      - name: Upload lint results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFAG-3-5-lint
+          path: |
+            app/build/reports/lint-results-release.html
+            app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
+          retention-days: 7
       - name: Remove temporary signing material
         if: always()
         run: rm -rf signing "$RUNNER_TEMP/wfag-signing.zip"
