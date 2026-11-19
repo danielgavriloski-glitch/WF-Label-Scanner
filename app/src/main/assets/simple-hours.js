@@ -19,7 +19,7 @@
    const clean={...state,trips:originalTrips.filter(t=>!ignored.includes(t))};
    const row=previous(clean,date,now);
    const visible=originalTrips.filter(t=>t.date===date).map(t=>Core.tripView(t,now));
-   return {...row,trips:visible,travel:visible.reduce((sum,t)=>sum+t.travel,0),
+   return {...row,trips:visible,travel:explicit?Math.min(row.worked,visible.reduce((sum,t)=>sum+(t.pending?0:t.travel),0)):Math.min(row.worked,visible.reduce((sum,t)=>sum+(t.pending&&date<today?0:t.travel),0)),
       pendingTripReview:ignored.some(t=>!t.arrival&&date<today)};
  };
  return Core;
