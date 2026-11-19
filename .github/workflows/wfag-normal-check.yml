@@ -4,9 +4,12 @@ on:
     branches:
       - fix/wfag-simple-hours-no-gps-20261119
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,9 +23,62 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Build unsigned release for compilation check
-        run: gradle :app:assembleRelease --no-daemon
+      - name: Install current Android SDK packages
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Restore existing WFAG release signing key
+        env:
+          WFAG_SIGNING_BUNDLE: ${{ secrets.WFAG_SIGNING_BUNDLE }}
+        run: |
+          if [ -z "$WFAG_SIGNING_BUNDLE" ]; then
+            echo "WFAG_SIGNING_READY=false" >> "$GITHUB_ENV"
+            echo "::warning::Existing WFAG signing key is not configured. Compilation can run, but no installable update will be published."
+            exit 0
+          fi
+          umask 077
+          mkdir -p signing
+          printf '%s' "$WFAG_SIGNING_BUNDLE" | base64 -d > "$RUNNER_TEMP/wfag-signing.zip"
+          unzip -q -o "$RUNNER_TEMP/wfag-signing.zip" signing/wfag-release.jks signing/signing.properties
+          rm -f "$RUNNER_TEMP/wfag-signing.zip"
+          test -f signing/wfag-release.jks
+          test -f signing/signing.properties
+          echo "WFAG_SIGNING_READY=true" >> "$GITHUB_ENV"
+      - name: Compile and lint normal release
+        run: gradle :app:assembleRelease :app:lintRelease --no-daemon
+      - name: Prepare verified signed update
+        if: env.WFAG_SIGNING_READY == 'true'
+        run: |
+          mkdir -p delivery
+          APK="app/build/outputs/apk/release/app-release.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='mk.workfashion.personal' versionCode='27'"
+          cp "$APK" delivery/WFAG_3_5_UPDATE.apk
+          sha256sum delivery/WFAG_3_5_UPDATE.apk > delivery/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: env.WFAG_SIGNING_READY == 'true'
+        with:
+          name: WFAG-3-5-UPDATE
+          path: delivery/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve unsigned compilation for signing
+        if: env.WFAG_SIGNING_READY != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFAG-3-5-UNSIGNED-COMPILATION-ONLY
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Report missing update signing key
+        if: env.WFAG_SIGNING_READY != 'true'
+        run: |
+          echo "::error::Release compiled, but the existing WFAG signing key is required to produce an update preserving installed app data."
+          exit 1
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -rf signing "$RUNNER_TEMP/wfag-signing.zip"
