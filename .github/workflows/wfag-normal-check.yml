@@ -1,0 +1,25 @@
+name: WFAG normal update checks
+on:
+  push:
+    branches:
+      - fix/wfag-simple-hours-no-gps-20261119
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Core attendance regression
+        run: |
+          node tests/core.test.js
+          node tests/wfag-simple-hours.test.js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build unsigned release for compilation check
+        run: gradle :app:assembleRelease --no-daemon
