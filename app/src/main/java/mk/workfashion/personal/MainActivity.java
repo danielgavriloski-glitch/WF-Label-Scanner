@@ -83,10 +83,18 @@ public class MainActivity extends Activity {
                 if(!request.getUrl().toString().startsWith("file:///android_asset/"))return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
                 return null;
             }
-            @Override public void onPageFinished(WebView view,String url){ready=true;}
+            @Override public void onPageFinished(WebView view,String url){ready=true;openPickupIntent();}
         });
         webView.loadUrl("file:///android_asset/index.html");
+        PickupReminderReceiver.refresh(this);
     }
+    private void openPickupIntent(){
+        if(ready&&webView!=null&&getIntent()!=null&&getIntent().getBooleanExtra(PickupReminderReceiver.EXTRA_OPEN,false)){
+            getIntent().removeExtra(PickupReminderReceiver.EXTRA_OPEN);
+            webView.evaluateJavascript("window.WFApp&&WFApp.setView('pickups')",null);
+        }
+    }
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);openPickupIntent();}
     private void error(String message){runOnUiThread(()->webView.evaluateJavascript("window.onNativeError&&onNativeError("+JSONObject.quote(message)+")",null));}
     private synchronized String readState(){
         if(!stateFile.getBaseFile().exists())return "";
@@ -98,7 +106,8 @@ public class MainActivity extends Activity {
             if(text.length()>MAX_BYTES)return false;
             JSONObject obj=new JSONObject(text);
             if(!"workfashion-personal-time".equals(obj.optString("appId"))||obj.optInt("schemaVersion")!=1)return false;
-            out=stateFile.startWrite();out.write(text.getBytes(StandardCharsets.UTF_8));stateFile.finishWrite(out);return true;
+            out=stateFile.startWrite();out.write(text.getBytes(StandardCharsets.UTF_8));stateFile.finishWrite(out);
+            PickupReminderReceiver.sync(this,obj);return true;
         }catch(Exception e){if(out!=null)stateFile.failWrite(out);return false;}
     }
 
@@ -128,6 +137,20 @@ public class MainActivity extends Activity {
         });
     }
     public class LocalBridge {
+        @JavascriptInterface public boolean pickupNotificationsEnabled(){return PickupReminderReceiver.notificationsEnabled(MainActivity.this);}
+        @JavascriptInterface public void requestPickupNotifications(){runOnUiThread(()->{
+            PickupReminderReceiver.ensureChannel(MainActivity.this);
+            boolean asked=getPreferences(0).getBoolean("pickupNotificationAsked",false);
+            if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED&&(!asked||shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))){
+                getPreferences(0).edit().putBoolean("pickupNotificationAsked",true).apply();
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},99);
+            }else if(!PickupReminderReceiver.notificationsEnabled(MainActivity.this)){
+                Intent settings=new Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName())
+                    .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,PickupReminderReceiver.CHANNEL);
+                startActivity(settings);
+            }
+        });}
         @JavascriptInterface public boolean deleteUnreferencedDocument(String fileId){
             try{
                 File target=Documents.file(MainActivity.this,fileId);
@@ -244,6 +267,11 @@ public class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==99){
+            PickupReminderReceiver.refresh(this);
+            if(ready&&webView!=null)webView.evaluateJavascript("if(typeof view!=='undefined'&&view==='pickups'&&document.getElementById('modal').hidden)render()",null);
+            return;
+        }
         if(requestCode==ROUTE_PERMISSION){
             boolean locationGranted=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||
                 checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;
@@ -255,7 +283,7 @@ public class MainActivity extends Activity {
         if(!ready){super.onBackPressed();return;}
         webView.evaluateJavascript("window.onNativeBack?onNativeBack():false",value->{if(!"true".equals(value))super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render();window.onRouteNativeChanged&&onRouteNativeChanged()",null);}
+    @Override protected void onResume(){super.onResume();PickupReminderReceiver.refresh(this);if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render();window.onRouteNativeChanged&&onRouteNativeChanged()",null);}
     @Override protected void onDestroy(){if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();}super.onDestroy();}
 
     static class PdfReport {

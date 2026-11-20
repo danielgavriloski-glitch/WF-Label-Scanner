@@ -167,7 +167,27 @@ public class SmokeInstrumentation extends Instrumentation {
             }
             screenshot.recycle();
 
-            result.putString("stream","WF_SMOKE_OK: WFAG v3.1 warehouse documents, native attachment and complete ZIP restore; Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
+            // Exercise the real WebView form, native background receiver and atomic archive move.
+            getUiAutomation().grantRuntimePermission(getTargetContext().getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
+            check("true".equals(js(a,"(()=>{WFApp.setView('pickups');WFPickups.form();document.getElementById('pickupFrom').value='Јуба';document.getElementById('pickupGoods').value='3 пакети текстил';document.getElementById('pickupAddress').value='Скопје';document.getElementById('pickupForm').dispatchEvent(new Event('submit',{cancelable:true}));return Pickups.pending(state.pickupLog).length===1&&document.querySelectorAll('[data-pickup-complete]').length===1;})()")),"Pickup form did not save");
+            check(PickupReminderReceiver.notificationsEnabled(getTargetContext()),"Pickup notification permission missing");
+            new PickupReminderReceiver().onReceive(getTargetContext(),new Intent(PickupReminderReceiver.ACTION_REMIND));
+            check(PickupReminderReceiver.visible(getTargetContext()),"Daily background notification not posted");
+            android.app.PendingIntent scheduled=android.app.PendingIntent.getBroadcast(getTargetContext(),PickupReminderReceiver.ID,new Intent(getTargetContext(),PickupReminderReceiver.class).setAction(PickupReminderReceiver.ACTION_REMIND),android.app.PendingIntent.FLAG_NO_CREATE|android.app.PendingIntent.FLAG_IMMUTABLE);
+            check(scheduled!=null,"No daily reminder pending intent");
+            long nextReminder=PickupReminderReceiver.nextReminder(System.currentTimeMillis());
+            java.util.Calendar reminder=java.util.Calendar.getInstance();reminder.setTimeInMillis(nextReminder);
+            check(nextReminder>System.currentTimeMillis()&&reminder.get(java.util.Calendar.HOUR_OF_DAY)==8,"Wrong daily reminder time");
+            int documentCount=new JSONObject(a.new LocalBridge().loadState()).getJSONObject("warehouseLog").getJSONArray("visits").length();
+            check("true".equals(js(a,"(()=>{const id=state.pickupLog.items[0].id;WFPickups.complete(id);return Pickups.pending(state.pickupLog).length===0&&view==='documents'&&document.getElementById('warehouseNote').value.includes('3 пакети текстил')&&state.pickupLog.items[0].status==='picked_up';})()")),"Picked-up goods were not moved to Documents");
+            check(!PickupReminderReceiver.visible(getTargetContext()),"Completed pickup notification was not removed");
+            new PickupReminderReceiver().onReceive(getTargetContext(),new Intent(PickupReminderReceiver.ACTION_REMIND));
+            check(!PickupReminderReceiver.visible(getTargetContext()),"Completed pickup still generates reminders");
+            check("true".equals(js(a,"(()=>{closeModal();const before=state.warehouseLog.visits.length;WFPickups.complete(state.pickupLog.items[0].id);closeModal();return load()&&state.warehouseLog.visits.length===before&&state.pickupLog.items[0].status==='picked_up';})()")),"Pickup duplicate tap/restart regression");
+            check(new JSONObject(a.new LocalBridge().loadState()).getJSONObject("warehouseLog").getJSONArray("visits").length()==documentCount+1,"Pickup created duplicate documents");
+            check("true".equals(js(a,"(()=>{WFApp.setView('pickups');return document.getElementById('pickupAdd')!==null&&document.querySelectorAll('[data-pickup-complete]').length===0;})()")),"Completed goods remain pending");
+
+            result.putString("stream","WF_SMOKE_OK: WFAG 3.4.1 pickups, native daily notification, atomic move to documents, cancellation, double-tap and reload; WFAG v3.1 warehouse documents, native attachment and complete ZIP restore; Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
             java.io.StringWriter trace=new java.io.StringWriter();

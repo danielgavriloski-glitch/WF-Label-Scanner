@@ -13,8 +13,8 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 26
-        versionName '3.4'
+        versionCode 27
+        versionName '3.4.1'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
         manifestPlaceholders = [appLabel: 'Workfashion · Мои часови']
     }
@@ -31,6 +31,15 @@ android {
     }
 
     buildTypes {
+        // The uploaded preview used an ephemeral debug certificate. Keep its data
+        // accessible by installing this build alongside it, with ZIP import.
+        pickups {
+            initWith debug
+            if (signingPropsFile.exists()) signingConfig signingConfigs.wfagRelease
+            applicationIdSuffix '.pickups34'
+            manifestPlaceholders = [appLabel: 'WFAG · Роба']
+            matchingFallbacks = ['debug']
+        }
         crafter {
             initWith debug
             if (signingPropsFile.exists()) signingConfig signingConfigs.wfagRelease
