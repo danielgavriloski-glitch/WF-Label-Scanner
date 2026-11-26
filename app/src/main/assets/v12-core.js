@@ -9,6 +9,57 @@ Core.__wfagV12=true;
 
 const baseValidate=Core.validate;
 const baseDay=Core.day;
+const basePutRange=Core.putRange;
+const isWork=record=>record&&['work','holidayWork'].includes(record.type);
+
+function firstTripStart(trips){
+  let first=null;
+  for(const trip of trips){
+    if(trip.workStart&&(!first||trip.departure<first.departure))first=trip;
+  }
+  return first&&first.workStart;
+}
+Core.defaultWorkStart=function(state,date){
+  const record=state.records&&state.records[date];
+  return isWork(record)?record.start:firstTripStart((state.trips||[]).filter(t=>t.date===date))||state.settings.start||'08:00';
+};
+
+// Review status for the all-time balance without recalculating every past day.
+Core.reviewDates=function(state,now=new Date()){
+  const current=Core.today(now),days=new Map();
+  for(const trip of state.trips||[]){
+    if(trip.date<state.settings.trackStart||trip.date>current)continue;
+    let day=days.get(trip.date);
+    if(!day){day={first:null,departure:trip.departure,pending:false};days.set(trip.date,day);}
+    if(trip.departure<day.departure)day.departure=trip.departure;
+    if(trip.workStart&&(!day.first||trip.departure<day.first.departure))day.first=trip;
+    if(!trip.arrival&&trip.date<current)day.pending=true;
+  }
+  const review=[];
+  for(const [date,day] of days){
+    const record=state.records&&state.records[date];
+    const works=record?isWork(record):true; // Every grouped automatic day has a work trip.
+    const start=isWork(record)?record.start:day.first&&day.first.workStart||state.settings.start;
+    if(day.pending||(works&&day.departure<start))review.push(date);
+  }
+  return review.sort();
+};
+
+function checkStartBeforeTrips(state,date,start){
+  if((state.trips||[]).some(t=>t.date===date&&Core.minutes(t.departure)<Core.minutes(start))){
+    throw Error('Почетокот на работа не може да биде по поаѓањето на пат ('+Core.displayDate(date)+'). Исправи го почетокот или поаѓањето.');
+  }
+}
+
+Core.putRange=function(state,from,to,record,weekdaysOnly=true){
+  const result=basePutRange(state,from,to,record,weekdaysOnly);
+  if(isWork(record)){
+    for(const date of Core.dates(from,to)){
+      if(!weekdaysOnly||state.settings.workdays.includes(Core.weekday(date)))checkStartBeforeTrips(result.state,date,record.start);
+    }
+  }
+  return result;
+};
 
 Core.TYPES.holiday='Неработен ден – празник';
 
@@ -26,8 +77,12 @@ Core.putTrip=function(state,input){
   if(!copy.trips)copy.trips=[];
   const old=input.id?copy.trips.find(t=>t.id===input.id):null;
   const id=input.id||('trip_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
-  const sameDay=copy.trips.find(t=>t.date===input.date&&t.id!==id&&t.workStart);
-  const workStart=input.workStart||old&&old.workStart||sameDay&&sameDay.workStart||state.settings.start||'08:00';
+  const record=state.records&&state.records[input.date];
+  const sameDay=copy.trips.filter(t=>t.date===input.date&&t.id!==id);
+  // A new trip must not reset a day that has already begun. A day edit is the
+  // authoritative start; otherwise preserve the first saved start for that day.
+  const workStart=isWork(record)?record.start:firstTripStart(sameDay)||input.workStart||
+    (old&&old.date===input.date&&old.workStart)||state.settings.start||'08:00';
   Core.minutes(workStart);
   Core.minutes(input.departure);
   if(Core.timestamp(input.date,workStart)>Core.timestamp(input.date,input.departure))throw Error('Почетокот на работа не може да биде по поаѓањето на пат.');
@@ -43,20 +98,11 @@ Core.putTrip=function(state,input){
   const index=copy.trips.findIndex(t=>t.id===id);
   if(index<0)copy.trips.push(trip);else copy.trips[index]=trip;
   copy.trips.forEach(t=>{if(t.date===trip.date)t.workStart=workStart;});
+  checkStartBeforeTrips(copy,trip.date,workStart);
   Core.validate(copy);
   return {state:copy,trip:trip};
 };
 
-function tripActualEnd(t,nowMs){
-  if(t.departureAt>nowMs)return null;
-  if(t.arrivalAt===null)return nowMs;
-  return Math.min(t.arrivalAt,nowMs);
-}
-function tripPlannedEnd(t,nowMs){
-  if(t.arrivalAt!==null)return t.arrivalAt;
-  if(t.departureAt<=nowMs)return nowMs;
-  return null;
-}
 function shiftTimes(state,date,r){
   const rec=state.records&&state.records[date];
   const pause=rec&&Number.isInteger(rec.pause)?rec.pause:0;
@@ -74,47 +120,58 @@ function timeAt(ms){
 
 Core.day=function(state,date,now=new Date()){
   const r=baseDay(state,date,now);
-  if(!r.covered||!['work','holidayWork'].includes(r.type)||!r.trips.length)return r;
+  if(!r.covered||!r.trips.length)return r;
+  // A trip explicitly records work on an otherwise automatic weekend/off day.
+  // A saved leave/off decision still wins and must never be silently changed.
+  if(r.auto&&r.type==='off'){
+    r.type='work';r.start=state.settings.start;r.end=state.settings.end;
+  }
+  if(!['work','holidayWork'].includes(r.type))return r;
 
-  const starts=r.trips.map(t=>t.workStart).filter(Boolean);
-  const workStart=starts.length?starts[0]:r.start;
+  const record=state.records&&state.records[date];
+  const workStart=isWork(record)?record.start:firstTripStart(r.trips)||r.start;
   Core.minutes(workStart);
   const startAt=Core.timestamp(date,workStart);
-  const originalShiftEnd=Core.timestamp(r.overnight?Core.plus(date,1):date,r.end);
   const nowMs=now.getTime();
-
-  let actualEnd=Math.min(originalShiftEnd,nowMs);
-  let plannedEnd=originalShiftEnd;
-  for(const t of r.trips){
-    const a=tripActualEnd(t,nowMs);
-    const p=tripPlannedEnd(t,nowMs);
-    if(a!==null)actualEnd=Math.max(actualEnd,a);
-    if(p!==null)plannedEnd=Math.max(plannedEnd,p);
+  const workStartConflict=r.trips.some(t=>t.departureAt<startAt);
+  const trips=r.trips.map(t=>Object.assign({},t,{workStart:workStart}));
+  if(r.pendingTripReview||workStartConflict){
+    return Object.assign({},r,{
+      start:workStart,end:'',overnight:false,worked:null,planWork:null,
+      workStart:workStart,workEndAt:null,workStartConflict:workStartConflict,
+      pendingTripReview:true,totalsComplete:false,trips:trips,
+      reviewReason:workStartConflict?'Почетокот на работа е по поаѓањето. Исправи ги времињата.':'Недостасува пристигнување. Внеси го вистинскиот датум и час.'
+    });
   }
-  actualEnd=Math.max(startAt,actualEnd);
-  plannedEnd=Math.max(startAt,plannedEnd);
 
+  // Trips describe parts of one continuous workday. The last entered arrival is
+  // its actual end, including early finishes; never add a trip to the shift.
+  const last=trips[trips.length-1];
+  const plannedEnd=last.arrivalAt;
+  const actualEnd=Math.max(startAt,Math.min(plannedEnd===null?nowMs:plannedEnd,nowMs));
   const shift=shiftTimes(state,date,r);
   const worked=adjustedMinutes(startAt,actualEnd,shift.pause,shift.pausePaid);
-  const planWork=adjustedMinutes(startAt,plannedEnd,shift.pause,shift.pausePaid);
-  const displayEnd=plannedEnd>originalShiftEnd?plannedEnd:originalShiftEnd;
-  const endParts=Core.parts(new Date(displayEnd));
-  const overnight=endParts.date!==date;
+  const planWork=plannedEnd===null?null:adjustedMinutes(startAt,plannedEnd,shift.pause,shift.pausePaid);
+  const overnight=plannedEnd!==null&&Core.parts(new Date(plannedEnd)).date!==date;
 
   return Object.assign({},r,{
     start:workStart,
-    end:timeAt(displayEnd),
+    end:plannedEnd===null?'':timeAt(plannedEnd),
     overnight:overnight,
     worked:worked,
     planWork:planWork,
     workStart:workStart,
-    workEndAt:actualEnd
+    workEndAt:actualEnd,
+    workInProgress:plannedEnd===null||plannedEnd>nowMs,
+    workStartConflict:false,
+    trips:trips
   });
 };
 
 // Signed overtime is recalculated from original day records on every view.
 // No migration and no persisted adjustment: old and new days use the same rules.
 Core.hhSigned=function(value){
+  if(value==null||!Number.isFinite(Number(value)))return '—';
   return (value<0?'−':value>0?'+':'')+Core.hh(Math.abs(value));
 };
 
@@ -126,6 +183,11 @@ Core.week=function(state,monday,now=new Date()){
   const target=Math.round(s.weekMinutes*coveredDays/nominalDays);
   let normal=0;
   for(const r of rows){
+    if(r.worked===null){
+      r.regular=null;r.overtime=null;
+      if(r.type==='holidayWork'&&r.scheduled)normal+=Math.min(s.dayMinutes,r.credit);
+      continue;
+    }
     if(r.type==='holidayWork'){
       r.overtime=r.worked;
       if(r.scheduled)normal+=Math.min(s.dayMinutes,r.credit);
@@ -139,7 +201,7 @@ Core.week=function(state,monday,now=new Date()){
   // Missing weekday hours remain a separate negative balance.
   for(const r of rows){
     if(!r.scheduled&&r.type!=='holidayWork'){
-      r.regular=0;
+      r.regular=r.worked===null?null:0;
       r.overtime=r.worked;
     }
   }
@@ -147,29 +209,32 @@ Core.week=function(state,monday,now=new Date()){
   for(const r of rows){
     // An unedited default day is a full 8h day, not evidence of an absence.
     // A shift in progress must not be debited before it has actually finished.
-    const shiftEnded=r.date<currentDate ||
+    const shiftEnded=!r.workInProgress&&!r.pendingTripReview&&(r.date<currentDate ||
       (r.date===currentDate&&r.type==='work'&&
-        Core.timestamp(r.overnight?Core.plus(r.date,1):r.date,r.end)<=now.getTime());
+        Core.timestamp(r.overnight?Core.plus(r.date,1):r.date,r.end)<=now.getTime()));
     const completedTrip=Array.isArray(r.trips)&&r.trips.some(t=>!t.future&&!t.pending&&t.arrivalAt!==null);
     const workConfirmed=!r.auto||completedTrip;
-    r.shortfall=r.covered&&r.scheduled&&r.type==='work'&&!r.future&&
+    r.shortfall=r.worked===null?null:r.covered&&r.scheduled&&r.type==='work'&&!r.future&&
       shiftEnded&&workConfirmed?Math.max(0,s.dayMinutes-r.worked):0;
     // Existing manually entered compensatory off days keep their old −8h rule.
     // Holidays, vacation, sick leave, paid leave and holiday work are exempt.
     r.compDebit=r.covered&&!r.future&&!r.auto&&r.scheduled&&r.type==='off'?s.dayMinutes:0;
-    r.overtimeNet=r.overtime-r.shortfall-r.compDebit;
+    r.overtimeNet=r.worked===null?null:r.overtime-r.shortfall-r.compDebit;
   }
   const grossOvertime=rows.reduce((a,r)=>a+r.overtime,0);
   const shortfall=rows.reduce((a,r)=>a+r.shortfall,0);
   const compDays=rows.filter(r=>r.compDebit>0).length;
   const compTime=rows.reduce((a,r)=>a+r.compDebit,0);
   const net=grossOvertime-shortfall-compTime;
+  const reviewDates=rows.filter(r=>r.pendingTripReview).map(r=>r.date);
+  const unknownTarget=rows.filter(r=>r.covered&&r.scheduled&&r.worked===null&&r.type!=='holidayWork').length*s.dayMinutes;
   return {
-    rows:rows,target:target,normal:normal,missing:Math.max(0,target-normal),
+    rows:rows,target:target,normal:normal,missing:Math.max(0,target-unknownTarget-normal),
     grossOvertime:grossOvertime,shortfall:shortfall,compDays:compDays,compTime:compTime,
     compApplied:compTime,overtime:net,
     worked:rows.reduce((a,r)=>a+r.worked,0),
-    holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0)
+    holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0),
+    pendingTripReview:reviewDates.length>0,totalsComplete:reviewDates.length===0,reviewDates:reviewDates
   };
 };
 
@@ -191,6 +256,7 @@ Core.period=function(state,from,to,now=new Date()){
   const travel=sum('travel'),worked=sum('worked');
   const workplace=rows.reduce((a,r)=>a+Math.max(0,r.worked-r.travel),0);
   const workDays=rows.filter(r=>r.covered&&!r.future&&r.worked>0).length;
+  const reviewDates=rows.filter(r=>r.pendingTripReview).map(r=>r.date);
   return {
     from:from,to:to,rows:rows,worked:worked,regular:sum('regular'),
     grossOvertime:grossOvertime,shortfall:shortfall,
@@ -200,7 +266,8 @@ Core.period=function(state,from,to,now=new Date()){
     counts:counts,planned:planned,
     missing:closedWeeks.reduce((a,[m,w])=>a+w.missing,0),
     holidayWork:rows.filter(r=>r.type==='holidayWork').reduce((a,r)=>a+r.worked,0),
-    travel:travel,workplace:workplace,workDays:workDays,tripRows:rows.flatMap(r=>r.trips)
+    travel:travel,workplace:workplace,workDays:workDays,tripRows:rows.flatMap(r=>r.trips),
+    pendingTripReview:reviewDates.length>0,totalsComplete:reviewDates.length===0,reviewDates:reviewDates
   };
 };
 

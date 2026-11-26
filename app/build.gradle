@@ -13,8 +13,8 @@ android {
         applicationId 'mk.workfashion.personal'
         minSdk 26
         targetSdk 35
-        versionCode 27
-        versionName '3.4.1'
+        versionCode 29
+        versionName '3.6.0'
         testInstrumentationRunner 'mk.workfashion.personal.SmokeInstrumentation'
         manifestPlaceholders = [appLabel: 'Workfashion · Мои часови']
     }
@@ -60,6 +60,15 @@ android {
             if (signingPropsFile.exists()) {
                 signingConfig signingConfigs.wfagRelease
             }
+        }
+        // Separate installation for users whose old CI debug key was not retained.
+        // CI produces an unsigned APK; a durable private key signs it outside Git.
+        stable {
+            initWith release
+            signingConfig null
+            applicationIdSuffix '.stable'
+            manifestPlaceholders = [appLabel: 'WFAG']
+            matchingFallbacks = ['release']
         }
     }
 

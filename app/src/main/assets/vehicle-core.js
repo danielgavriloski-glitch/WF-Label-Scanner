@@ -3,7 +3,7 @@
   if(typeof module==='object'&&module.exports)module.exports=api;else root.Vehicle=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(Core){
 'use strict';
-const collections=['readings','fills','tireSets','tireChanges','trips','averages'];
+const collections=['readings','fills','tireSets','tireChanges','trips','averages','services'];
 const clone=x=>JSON.parse(JSON.stringify(x));
 const live=xs=>(xs||[]).filter(x=>!x.deleted);
 const order=(a,b)=>a.at.localeCompare(b.at)||((a.odo??0)-(b.odo??0))||a.id.localeCompare(b.id);
@@ -21,7 +21,7 @@ function dateTime(value){
   if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)||!Core.dateValid(value.slice(0,10)))throw Error('Внеси валиден датум и час.');
   Core.minutes(value.slice(11));return value;
 }
-function fresh(){return {version:1,name:'Volkswagen Crafter',autoLinkFrom:0,readings:[],fills:[],tireSets:[{id:'summer',name:'Летни',season:'summer',note:''},{id:'winter',name:'Зимски',season:'winter',note:''}],tireChanges:[],trips:[],averages:[],audit:[]};}
+function fresh(){return {version:1,name:'Volkswagen Crafter',autoLinkFrom:0,readings:[],fills:[],tireSets:[{id:'summer',name:'Летни',season:'summer',note:''},{id:'winter',name:'Зимски',season:'winter',note:''}],tireChanges:[],trips:[],averages:[],services:[],audit:[]};}
 function tripKm(t){return t.startOdo!==null&&t.endOdo!==null?t.endOdo-t.startOdo:t.km;}
 function observations(log){
   const rows=[];
@@ -35,6 +35,7 @@ function observations(log){
 function validate(log){
   if(!log||log.version!==1||typeof log.name!=='string'||!log.name.trim()||log.name.length>100)throw Error('Невалидна евиденција за комбето.');
   if(log.autoLinkFrom!==undefined&&(!Number.isFinite(log.autoLinkFrom)||log.autoLinkFrom<0))throw Error('Невалидна поставка за GPS патувањата.');
+  if(!Array.isArray(log.services))log.services=[];
   const ids=new Set();
   for(const kind of collections){
     if(!Array.isArray(log[kind])||log[kind].length>37000)throw Error('Невалидна листа: '+kind);
@@ -43,6 +44,13 @@ function validate(log){
       ids.add(r.id);
       if(r.deleted!==undefined&&typeof r.deleted!=='boolean')throw Error('Невалиден статус на записот.');
       if(typeof r.note!=='string'||r.note.length>1500)throw Error('Предолга или невалидна белешка.');
+      if(kind==='services'){
+        if(typeof r.title!=='string'||!r.title.trim()||r.title.length>100)throw Error('Невалиден вид сервис.');
+        dateTime(r.at);
+        for(const k of ['odo','nextOdo','cost'])if(r[k]!==null&&(!Number.isFinite(r[k])||r[k]<0||r[k]>10000000))throw Error('Невалидна сервисна километража или цена.');
+        if(r.nextDate!==null&&(!Core.dateValid(r.nextDate)))throw Error('Невалиден датум за следен сервис.');
+        continue;
+      }
       if(kind==='tireSets'){
         if(typeof r.name!=='string'||!r.name.trim()||r.name.length>100||!['summer','winter','all'].includes(r.season))throw Error('Провери го името и видот на гумите.');
         continue;
@@ -76,6 +84,7 @@ function validate(log){
 }
 function record(kind,input){
   const r={id:input.id||id(),note:String(input.note||'').trim(),deleted:!!input.deleted};
+  if(kind==='services')return {...r,at:dateTime(input.at),title:String(input.title||'').trim(),odo:number(input.odo,'километража',true),nextOdo:number(input.nextOdo,'следен сервис km',true),nextDate:input.nextDate||null,cost:number(input.cost,'цена',true)};
   if(kind==='tireSets')return {...r,name:String(input.name||'').trim(),season:input.season};
   r.at=dateTime(input.at);
   if(['readings','fills','tireChanges'].includes(kind))r.odo=number(input.odo,'километража');

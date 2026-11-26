@@ -22,8 +22,11 @@ function fresh(now=new Date()){return {appId:APP_ID,schemaVersion:1,createdAt:no
 function tripView(trip,now=new Date()){
  const departureAt=timestamp(trip.date,trip.departure),arrivalAt=trip.arrival?timestamp(trip.arrivalDate,trip.arrival):null;
  const future=departureAt>now.getTime(),pending=arrivalAt===null;
- const travel=Math.max(0,Math.floor((Math.min(arrivalAt===null?now.getTime():arrivalAt,now.getTime())-departureAt)/60000));
- return {...trip,departureAt,arrivalAt,future,pending,planned:future||(arrivalAt!==null&&arrivalAt>now.getTime()),travel,plannedMinutes:arrivalAt===null?0:Math.max(0,Math.floor((arrivalAt-departureAt)/60000))};
+ // A missing arrival is not evidence that yesterday's trip continued overnight.
+ // Keep the original trip editable, but require its actual end before totaling it.
+ const pendingTripReview=pending&&trip.date<today(now);
+ const travel=pendingTripReview?null:Math.max(0,Math.floor((Math.min(arrivalAt===null?now.getTime():arrivalAt,now.getTime())-departureAt)/60000));
+ return {...trip,departureAt,arrivalAt,future,pending,pendingTripReview,planned:future||(arrivalAt!==null&&arrivalAt>now.getTime()),travel,plannedMinutes:pendingTripReview?null:arrivalAt===null?0:Math.max(0,Math.floor((arrivalAt-departureAt)/60000))};
 }
 function validateTrips(raw){
  if(!has(raw,'trips'))raw.trips=[]; // Version 1 records and leave balances remain intact.
@@ -93,7 +96,8 @@ function day(state,date,now=new Date()){
  const planWork=isWork?Math.max(0,Math.floor(span)-(pausePaid?0:(r?r.pause:0))):0;
  const planCredit=PAID.includes(type)&&covered&&scheduled?s.dayMinutes:0;
  const trips=covered?(state.trips||[]).filter(t=>t.date===date).map(t=>tripView(t,now)).sort((a,b)=>a.departureAt-b.departureAt):[];
- return {date,type,start:isWork?start:'',end:isWork?end:'',overnight,auto:!r,covered,scheduled,future,pause,worked,planWork,planCredit,credit,expected,expectedElapsed,note:r?r.note:'',regular:0,overtime:0,trips,travel:trips.reduce((a,t)=>a+t.travel,0)};
+ const pendingTripReview=trips.some(t=>t.pendingTripReview);
+ return {date,type,start:isWork?start:'',end:isWork?end:'',overnight,auto:!r,covered,scheduled,future,pause,worked,planWork,planCredit,credit,expected,expectedElapsed,note:r?r.note:'',regular:0,overtime:0,trips,pendingTripReview,totalsComplete:!pendingTripReview,travel:trips.reduce((a,t)=>a+(t.travel||0),0)};
 }
 function week(state,monday,now=new Date()){
  const rows=dates(monday,plus(monday,6)).map(d=>day(state,d,now)),s=state.settings;
@@ -135,7 +139,7 @@ function putRange(state,from,to,record,weekdaysOnly=true){
  if(!chosen.length)throw Error('Во периодот нема избрани работни денови.');
  const copy=JSON.parse(JSON.stringify(state));chosen.forEach(d=>copy.records[d]={...record});validate(copy);return {state:copy,count:chosen.length,overwritten:chosen.filter(d=>has(state.records,d)).length};
 }
-function hh(min){const n=Math.max(0,Math.round(min));return `${Math.floor(n/60)}:${pad(n%60)}`;}
+function hh(min){if(min==null||!Number.isFinite(Number(min)))return '—';const n=Math.max(0,Math.round(min));return `${Math.floor(n/60)}:${pad(n%60)}`;}
 function displayDate(d){return `${d.slice(8)}.${d.slice(5,7)}.${d.slice(0,4)}`;}
 return {APP_ID,TZ,TYPES,PAID,pad,dateValid,plus,weekday,weekStart,dates,minutes,parts,today,timestamp,monthBounds,fresh,validate,day,week,period,leave,putRange,tripView,putTrip,removeTrip,hh,displayDate};
 });

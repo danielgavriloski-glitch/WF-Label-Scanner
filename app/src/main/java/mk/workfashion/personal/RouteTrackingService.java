@@ -60,14 +60,9 @@ public class RouteTrackingService extends Service implements LocationListener {
     }
 
     @Override public int onStartCommand(Intent intent,int flags,int startId){
-        startForeground(NOTIFICATION_ID,notification("Патувањето се следи","GPS следењето е активно."));
-        String action=intent==null?null:intent.getAction();
-        if(intent!=null&&ACTION_START.equals(action))beginSession(this,intent.getStringExtra("tripId"));
-        JSONObject state=readState(this);
-        if(!state.optBoolean("tracking",false)){stopSelf();return START_NOT_STICKY;}
-        startUpdates();
-        resumePendingCompactions(this);
-        return START_STICKY;
+        // Work-hour entries no longer start or resume GPS after an update.
+        // Archive helpers below keep every recorded route available.
+        stopSelf();return START_NOT_STICKY;
     }
 
     private void startUpdates(){
@@ -425,12 +420,16 @@ public class RouteTrackingService extends Service implements LocationListener {
         }catch(Exception e){if(out!=null)try{file(c).failWrite(out);}catch(Exception ignored){}}
     }
     public static String stateJson(Context c){return readState(c).toString();}
+    public static String displayStateJson(Context c){
+        JSONObject state=readState(c);try{state.put("tracking",false);state.put("activeSessionId","");state.put("gpsDisabled",true);}catch(Exception ignored){}return state.toString();
+    }
 
     /** Merge a manually exported WFAG GPS archive; never overwrite current trips or tracking. */
     public static int importArchive(Context c,String json)throws Exception{
         if(json==null||json.length()>16*1024*1024)throw new Exception("GPS архивата е преголема.");
         JSONObject archive=new JSONObject(json);
         JSONArray incoming=archive.optJSONArray("sessions");
+        if(!archive.has("sessions"))incoming=new JSONArray();
         if(incoming==null||incoming.length()>5000)throw new Exception("Не е валидна WFAG GPS архива.");
         synchronized(LOCK){
             JSONObject current=readStateUnlocked(c);

@@ -22,6 +22,49 @@ public class SmokeInstrumentation extends Instrumentation {
     }
     void check(boolean ok,String message)throws Exception{if(!ok)throw new Exception(message);}
 
+    void checkNativeBackupAndHistory(MainActivity a)throws Exception{
+        MainActivity.LocalBridge bridge=a.new LocalBridge();
+        JSONObject serviceState=new JSONObject(bridge.loadState());
+        JSONObject service=new JSONObject().put("id","service_smoke").put("title","Масло").put("at","2026-10-01T09:00").put("odo",10000).put("nextOdo",11000).put("nextDate","2020-01-01").put("cost",0).put("note","").put("deleted",false);
+        serviceState.getJSONObject("vehicleLog").put("services",new JSONArray().put(service));
+        serviceState.put("futureModule",new JSONObject().put("keep","legacy-extra-value"));
+        check(bridge.saveState(serviceState.toString()),"Service state did not save");
+        JSONArray due=ServiceReminderReceiver.due(serviceState,System.currentTimeMillis());
+        check(due.length()==1,"Due service calculation failed");ServiceReminderReceiver.show(getTargetContext(),due);
+        JSONArray history=new JSONObject(bridge.getNotificationHistory()).getJSONArray("notifications");
+        check("service".equals(history.getJSONObject(history.length()-1).getString("type")),"Posted service notification not retained");
+        check("true".equals(js(a,"document.getElementById('notificationBell')!==null")),"Notification history bell missing");
+
+        // Legacy ZIP names, an older GPS object without sessions and unknown extras.
+        String original=bridge.loadState();java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+        try(java.util.zip.ZipOutputStream zip=new java.util.zip.ZipOutputStream(bytes)){
+            Documents.putText(zip,"workfashion-state.json",original);Documents.putText(zip,"gps.json","{\"savedPlaces\":[]}");Documents.putText(zip,"future/module.txt","future payload");
+            JSONArray docs=Documents.documentList(new JSONObject(original));java.util.HashSet<String> seen=new java.util.HashSet<>();
+            for(int i=0;i<docs.length();i++){String id=docs.getJSONObject(i).getString("fileId");if(!seen.add(id))continue;zip.putNextEntry(new java.util.zip.ZipEntry("documents/"+id));zip.write(java.nio.file.Files.readAllBytes(Documents.file(getTargetContext(),id).toPath()));zip.closeEntry();}
+        }
+        File stage=new File(getTargetContext().getCacheDir(),"wfag-restore-stage");String restored=Documents.stageArchive(getTargetContext(),new java.io.ByteArrayInputStream(bytes.toByteArray()),stage);
+        check(bridge.finishArchiveRestoreState(restored),"Legacy ZIP restore failed");
+        check(new JSONObject(bridge.loadState()).getJSONObject("futureModule").getString("keep").equals("legacy-extra-value"),"Restore discarded unknown state fields");
+        check(new File(getTargetContext().getFilesDir(),"wfag-backup-extras/future/module.txt").isFile(),"Restore discarded safe unknown ZIP content");
+        check(new JSONObject(bridge.getNotificationHistory()).getJSONArray("notifications").length()==history.length(),"Old ZIP without history erased notifications");
+
+        // Simulate interruption after a partial restore; old state and read flags recover.
+        String before=bridge.loadState(),beforeHistory=bridge.getNotificationHistory();BackupRestoreJournal.begin(getTargetContext());
+        JSONObject changed=new JSONObject(before);changed.getJSONObject("settings").put("name","Interrupted restore");check(bridge.saveState(changed.toString()),"Rollback fixture save failed");
+        File added=Documents.file(getTargetContext(),Documents.unique("txt"));java.nio.file.Files.write(added.toPath(),"temporary".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        bridge.markAllNotificationsRead();BackupRestoreJournal.recover(getTargetContext());
+        check(before.equals(bridge.loadState())&&beforeHistory.equals(bridge.getNotificationHistory())&&!added.exists(),"Interrupted restore did not roll back data, history and new attachments");
+
+        // Plain JSON can restore metadata without pretending to restore missing bytes.
+        JSONObject jsonOnly=new JSONObject(before);JSONObject missing=new JSONObject().put("id","missing_scan").put("fileId",Documents.unique("txt")).put("name","Old scan.txt").put("mime","text/plain").put("bytes",10).put("sha256",new String(new char[64]).replace('\0','0'));
+        jsonOnly.getJSONObject("warehouseLog").getJSONArray("visits").getJSONObject(0).getJSONArray("documents").put(missing);
+        check(bridge.finishArchiveRestoreState(jsonOnly.toString()),"JSON metadata-only backup was incorrectly rejected");
+        check(bridge.missingDocumentCount(jsonOnly.getJSONObject("warehouseLog").toString())==1&&!bridge.documentExists(missing.getString("fileId")),"Missing scan bytes were not reported truthfully");
+        check(bridge.finishArchiveRestoreState(before),"Restoring fixture state failed");
+        check(!bridge.finishArchiveRestoreState("invalid JSON")&&before.equals(bridge.loadState()),"Rejected restore changed saved records");
+        check("true".equals(js(a,"load();render();state.vehicleLog.services.length===1&&state.futureModule.keep==='legacy-extra-value'")),"Restored service records not visible to WebView");
+    }
+
     @Override public void onStart(){
         Bundle result=new Bundle();
         try{
@@ -48,8 +91,8 @@ public class SmokeInstrumentation extends Instrumentation {
             }
 
             check("true".equals(js(a,
-                "(()=>{WFApp.setView('home');const p=document.getElementById('gpsDayPicker');if(!p||!document.getElementById('gpsDayCard'))return false;const date=p.value;document.querySelector('[data-gps-offset=\\\"-1\\\"]').click();const before=document.getElementById('gpsDayPicker').value;if(before===date)return false;WFApp.setView('routes');return document.getElementById('gpsAllHistory')!==null&&document.getElementById('gpsArchiveImport')!==null&&document.querySelector('[data-view=\\\"routes\\\"]')!==null;})()"
-            )),"Daily GPS browsing, history tab or import button not visible");
+                "(()=>{Android.startRouteTracking('smoke-disabled');const route=JSON.parse(Android.getRouteLog());return route.tracking===false&&route.gpsDisabled===true;})()"
+            )),"Work hours unexpectedly started GPS tracking");
 
             check("true".equals(js(a,
                 "(()=>{WFApp.editTrip(null,'2026-10-07');if(!document.getElementById('workStartStandard').checked)return false;document.getElementById('tripDeparture').value='10:00';document.getElementById('tripArrivalDate').value='2026-10-07';document.getElementById('tripArrival').value='19:00';document.getElementById('tripNote').value='Велес – Скопје';document.getElementById('tripForm').dispatchEvent(new Event('submit',{cancelable:true}));return state.trips.length===1&&state.trips[0].workStart==='08:00'&&state.trips[0].arrival==='19:00';})()"
@@ -173,10 +216,16 @@ public class SmokeInstrumentation extends Instrumentation {
             check(PickupReminderReceiver.notificationsEnabled(getTargetContext()),"Pickup notification permission missing");
             new PickupReminderReceiver().onReceive(getTargetContext(),new Intent(PickupReminderReceiver.ACTION_REMIND));
             check(PickupReminderReceiver.visible(getTargetContext()),"Daily background notification not posted");
+            JSONArray firstHistory=new JSONObject(a.new LocalBridge().getNotificationHistory()).getJSONArray("notifications");
+            check(firstHistory.length()>0&&!firstHistory.getJSONObject(firstHistory.length()-1).getBoolean("read"),"Delivered notification missing from unread history");
+            new PickupReminderReceiver().onReceive(getTargetContext(),new Intent(PickupReminderReceiver.ACTION_REMIND));
+            check(new JSONObject(a.new LocalBridge().getNotificationHistory()).getJSONArray("notifications").length()==firstHistory.length(),"Repeated reminder created duplicate history");
+            check(a.new LocalBridge().markNotificationRead(firstHistory.getJSONObject(firstHistory.length()-1).getString("id")),"Notification mark-read failed");
+            check(new JSONObject(a.new LocalBridge().getNotificationHistory()).getJSONArray("notifications").getJSONObject(firstHistory.length()-1).getBoolean("read"),"Notification read state was not persisted");
             android.app.PendingIntent scheduled=android.app.PendingIntent.getBroadcast(getTargetContext(),PickupReminderReceiver.ID,new Intent(getTargetContext(),PickupReminderReceiver.class).setAction(PickupReminderReceiver.ACTION_REMIND),android.app.PendingIntent.FLAG_NO_CREATE|android.app.PendingIntent.FLAG_IMMUTABLE);
             check(scheduled!=null,"No daily reminder pending intent");
             long nextReminder=PickupReminderReceiver.nextReminder(System.currentTimeMillis());
-            java.util.Calendar reminder=java.util.Calendar.getInstance();reminder.setTimeInMillis(nextReminder);
+            java.util.Calendar reminder=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Skopje"));reminder.setTimeInMillis(nextReminder);
             check(nextReminder>System.currentTimeMillis()&&reminder.get(java.util.Calendar.HOUR_OF_DAY)==8,"Wrong daily reminder time");
             int documentCount=new JSONObject(a.new LocalBridge().loadState()).getJSONObject("warehouseLog").getJSONArray("visits").length();
             check("true".equals(js(a,"(()=>{const id=state.pickupLog.items[0].id;WFPickups.complete(id);return Pickups.pending(state.pickupLog).length===0&&view==='documents'&&document.getElementById('warehouseNote').value.includes('3 пакети текстил')&&state.pickupLog.items[0].status==='picked_up';})()")),"Picked-up goods were not moved to Documents");
@@ -187,7 +236,8 @@ public class SmokeInstrumentation extends Instrumentation {
             check(new JSONObject(a.new LocalBridge().loadState()).getJSONObject("warehouseLog").getJSONArray("visits").length()==documentCount+1,"Pickup created duplicate documents");
             check("true".equals(js(a,"(()=>{WFApp.setView('pickups');return document.getElementById('pickupAdd')!==null&&document.querySelectorAll('[data-pickup-complete]').length===0;})()")),"Completed goods remain pending");
 
-            result.putString("stream","WF_SMOKE_OK: WFAG 3.4.1 pickups, native daily notification, atomic move to documents, cancellation, double-tap and reload; WFAG v3.1 warehouse documents, native attachment and complete ZIP restore; Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
+            checkNativeBackupAndHistory(a);
+            result.putString("stream","WF_SMOKE_OK: WFAG 3.6.0 notification history, service reminders, legacy ZIP and atomic restore rollback; WFAG 3.4.1 pickups, native daily notification, atomic move to documents, cancellation, double-tap and reload; WFAG v3.1 warehouse documents, native attachment and complete ZIP restore; Crafter vehicle forms, fuel calculations, seasonal tires, backup preservation, vehicle PDF, holiday overtime, saved-data reload, holiday/overtime PDFs, 08:00/custom work start, travel extends workday, free-day deduction\n");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable t){
             java.io.StringWriter trace=new java.io.StringWriter();

@@ -33,7 +33,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.io.BufferedInputStream;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements NotificationHistory.Listener {
     private static final int CREATE_FILE=71, OPEN_BACKUP=72, ROUTE_PERMISSION=73, OPEN_ROUTE_ARCHIVE=74, MAX_BYTES=16*1024*1024;
     WebView webView;
     private AtomicFile stateFile;
@@ -47,6 +47,9 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         stateFile=new AtomicFile(new File(getFilesDir(), "workfashion-state.json"));
+        try{BackupRestoreJournal.recover(this);}catch(Exception e){android.util.Log.e("WFAGBackup","Pending restore could not be recovered",e);}
+        NotificationHistory.listen(this);
+        stopService(new Intent(this,RouteTrackingService.class));
         documentVisit=getPreferences(0).getString("documentVisit","");
         scanOutput=getPreferences(0).getString("scanOutput","");
         replaceDocumentId=getPreferences(0).getString("replaceDocumentId","");
@@ -87,56 +90,89 @@ public class MainActivity extends Activity {
         });
         webView.loadUrl("file:///android_asset/index.html");
         PickupReminderReceiver.refresh(this);
+        ServiceReminderReceiver.refresh(this);
     }
     private void openPickupIntent(){
-        if(ready&&webView!=null&&getIntent()!=null&&getIntent().getBooleanExtra(PickupReminderReceiver.EXTRA_OPEN,false)){
-            getIntent().removeExtra(PickupReminderReceiver.EXTRA_OPEN);
-            webView.evaluateJavascript("window.WFApp&&WFApp.setView('pickups')",null);
-        }
+        if(!ready||webView==null||getIntent()==null)return;
+        Intent intent=getIntent();String notificationId=intent.getStringExtra(NotificationHistory.EXTRA_ID);
+        boolean pickups=intent.getBooleanExtra(PickupReminderReceiver.EXTRA_OPEN,false),services=intent.getBooleanExtra("wfag_open_services",false);
+        intent.removeExtra(NotificationHistory.EXTRA_ID);intent.removeExtra(PickupReminderReceiver.EXTRA_OPEN);intent.removeExtra("wfag_open_services");
+        if(notificationId!=null&&!notificationId.isEmpty()){
+            NotificationHistory.markRead(this,notificationId);
+            String fallback=services?"window.WFVehicle&&WFVehicle.setTab('services')":"window.WFApp&&WFApp.setView('pickups')";
+            webView.evaluateJavascript("if(window.onNotificationOpened){onNotificationOpened("+JSONObject.quote(notificationId)+");}else{"+fallback+";}",null);
+        }else if(pickups)webView.evaluateJavascript("window.WFApp&&WFApp.setView('pickups')",null);
+        else if(services)webView.evaluateJavascript("window.WFVehicle&&WFVehicle.setTab('services')",null);
     }
+    @Override public void changed(){runOnUiThread(()->{if(ready&&webView!=null)webView.evaluateJavascript("window.onNotificationHistoryChanged&&onNotificationHistoryChanged()",null);});}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);openPickupIntent();}
-    private void error(String message){runOnUiThread(()->webView.evaluateJavascript("window.onNativeError&&onNativeError("+JSONObject.quote(message)+")",null));}
+    private void error(String message){runOnUiThread(()->{if(webView!=null)webView.evaluateJavascript("window.onNativeError&&onNativeError("+JSONObject.quote(message)+")",null);});}
     private synchronized String readState(){
-        if(!stateFile.getBaseFile().exists())return "";
+        if(!stateFile.getBaseFile().exists()&&!new File(stateFile.getBaseFile()+".bak").exists())return "";
         try{return new String(stateFile.readFully(),StandardCharsets.UTF_8);}catch(Exception e){return "{\"readError\":true}";}
     }
+    private volatile String lastStateSaveError="",lastImportedHistory="";
     private synchronized boolean writeState(String text){
-        FileOutputStream out=null;
+        FileOutputStream out=null;lastStateSaveError="";
         try{
-            if(text.length()>MAX_BYTES)return false;
+            if(text==null){lastStateSaveError="Нема податоци за зачувување.";return false;}
+            byte[] bytes=text.getBytes(StandardCharsets.UTF_8);
+            if(bytes.length>MAX_BYTES){lastStateSaveError="Евиденцијата е поголема од дозволените 16 MB. Ова не е недостиг на слободен простор.";return false;}
             JSONObject obj=new JSONObject(text);
-            if(!"workfashion-personal-time".equals(obj.optString("appId"))||obj.optInt("schemaVersion")!=1)return false;
-            out=stateFile.startWrite();out.write(text.getBytes(StandardCharsets.UTF_8));stateFile.finishWrite(out);
-            PickupReminderReceiver.sync(this,obj);return true;
-        }catch(Exception e){if(out!=null)stateFile.failWrite(out);return false;}
+            if(!"workfashion-personal-time".equals(obj.optString("appId"))||obj.optInt("schemaVersion")!=1){lastStateSaveError="Записот не е во поддржаниот WFAG формат.";return false;}
+            if(obj.has("notificationHistory"))NotificationHistory.normalize(obj.get("notificationHistory"));
+            out=stateFile.startWrite();out.write(bytes);stateFile.finishWrite(out);out=null;
+            if(obj.has("notificationHistory")){
+                String incoming=obj.get("notificationHistory").toString();
+                if(!incoming.equals(lastImportedHistory))try{NotificationHistory.merge(this,obj.get("notificationHistory"));lastImportedHistory=incoming;}catch(Exception e){android.util.Log.w("WFAGBackup","Imported history remains preserved in the saved state",e);}
+            }
+            PickupReminderReceiver.sync(this,obj);ServiceReminderReceiver.sync(this,obj);return true;
+        }catch(org.json.JSONException e){lastStateSaveError="Записот содржи невалидни податоци.";}
+        catch(Exception e){lastStateSaveError=saveError(e,"WFAG не успеа да ја запише евиденцијата. Обиди се повторно.");}
+        if(out!=null)try{stateFile.failWrite(out);}catch(Exception ignored){}return false;
+    }
+    private String saveError(Exception error,String fallback){
+        if(error instanceof SecurityException)return "Нема дозвола за избраната датотека или папка. Избери друга папка.";
+        String detail=error.getMessage();
+        if(detail!=null&&detail.contains("ENOSPC"))return "Телефонот пријави дека нема простор за зачувување.";
+        return fallback+(detail==null||detail.trim().isEmpty()?"":" "+detail);
+    }
+    private synchronized boolean restoreArchiveState(String text){
+        try{
+            String normalized=Documents.normalizeState(text);byte[] bytes=normalized.getBytes(StandardCharsets.UTF_8);
+            if(bytes.length>MAX_BYTES)throw new Exception("Евиденцијата во бекапот е поголема од 16 MB.");
+            JSONObject incoming=new JSONObject(normalized);
+            boolean fullArchive=new File(archiveStage(),"state.json").isFile();
+            if(fullArchive){
+                JSONObject archived=new JSONObject(Documents.normalizeState(new String(java.nio.file.Files.readAllBytes(new File(archiveStage(),"state.json").toPath()),StandardCharsets.UTF_8)));
+                if(!Documents.archiveComplete(archived,archiveStage()))throw new Exception("Недостасува исправен приложен документ во ZIP бекапот.");
+            }
+            BackupRestoreJournal.begin(this);
+            if(new File(archiveStage(),"state.json").isFile())Documents.installArchive(this,archiveStage());
+            if(incoming.has("notificationHistory"))NotificationHistory.merge(this,incoming.get("notificationHistory"));
+            if(!writeState(normalized))throw new Exception(lastStateSaveError);
+            BackupRestoreJournal.commit(this);Documents.removeTree(archiveStage());changed();return true;
+        }catch(Exception e){
+            try{BackupRestoreJournal.recover(this);PickupReminderReceiver.refresh(this);ServiceReminderReceiver.refresh(this);}catch(Exception rollback){android.util.Log.e("WFAGBackup","Restore rollback failed",rollback);lastStateSaveError="Враќањето е прекинато. Претходната состојба е зачувана за обновување при следното отворање.";error(lastStateSaveError);return false;}
+            lastImportedHistory="";lastStateSaveError="Бекапот не е вратен: "+e.getMessage();error(lastStateSaveError);return false;
+        }
     }
 
-    private void startRouteService(String tripId){
-        Intent i=new Intent(this,RouteTrackingService.class);
-        i.setAction(RouteTrackingService.ACTION_START);
-        i.putExtra("tripId",tripId==null?"":tripId);
-        if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
-    }
-    private void requestRouteStart(String tripId){
-        runOnUiThread(()->{
-            boolean noLocation=checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED&&
-               checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED;
-            boolean noNotifications=android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED;
-            if(noLocation||noNotifications){
-                pendingRouteTripId=tripId==null?"":tripId;
-                if(android.os.Build.VERSION.SDK_INT>=33)requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION,Manifest.permission.POST_NOTIFICATIONS},ROUTE_PERMISSION);
-                else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},ROUTE_PERMISSION);
-            }else startRouteService(tripId);
-        });
-    }
+    private void startRouteService(String tripId){ /* The current work-hours mode does not start GPS tracking. */ }
+    private void requestRouteStart(String tripId){ /* Historical routes remain available without location prompts. */ }
     private void stopRouteService(){
-        runOnUiThread(()->{
-            RouteTrackingService.finishSession(this);
-            stopService(new Intent(this,RouteTrackingService.class));
-            if(ready&&webView!=null)webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);
-        });
+        new Thread(()->{
+            RouteTrackingService.finishSession(getApplicationContext());
+            runOnUiThread(()->{stopService(new Intent(this,RouteTrackingService.class));if(ready&&webView!=null)webView.evaluateJavascript("window.onRouteNativeChanged&&onRouteNativeChanged()",null);});
+        },"wfag-route-stop").start();
     }
     public class LocalBridge {
+        @JavascriptInterface public String getNotificationHistory(){return NotificationHistory.json(MainActivity.this);}
+        @JavascriptInterface public boolean markNotificationRead(String id){return NotificationHistory.markRead(MainActivity.this,id);}
+        @JavascriptInterface public boolean markAllNotificationsRead(){return NotificationHistory.markRead(MainActivity.this,"");}
+        @JavascriptInterface public String getLastSaveError(){return lastStateSaveError;}
+        @JavascriptInterface public boolean serviceNotificationsEnabled(){return ServiceReminderReceiver.enabled(MainActivity.this);}
+
         @JavascriptInterface public boolean pickupNotificationsEnabled(){return PickupReminderReceiver.notificationsEnabled(MainActivity.this);}
         @JavascriptInterface public void requestPickupNotifications(){runOnUiThread(()->{
             PickupReminderReceiver.ensureChannel(MainActivity.this);
@@ -162,19 +198,29 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void attachDocument(String visitId,String mode){runOnUiThread(()->chooseDocument(visitId,mode));}
         @JavascriptInterface public void openDocument(String fileId){runOnUiThread(()->{try{File f=Documents.file(MainActivity.this,fileId);if(!f.isFile())throw new Exception();Uri uri=Uri.parse("content://"+getPackageName()+".documents/documents/"+fileId);Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,Documents.mime(fileId));i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Exception e){error("Документот не се отвори. За PDF, Word или Excel избери соодветна апликација.");}});}
-        @JavascriptInterface public void exportFullBackup(){runOnUiThread(()->{if(!archiveState.isEmpty()){error("Прво заврши го претходниот бекап.");return;}archiveState=readState();archiveGps=RouteTrackingService.stateJson(MainActivity.this);try{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");i.putExtra(Intent.EXTRA_TITLE,"WFAG_full_backup_"+new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.ROOT).format(new java.util.Date())+".zip");startActivityForResult(i,CREATE_ARCHIVE);}catch(Exception e){archiveState="";archiveGps="";error("Бекапот не се отвори.");}});}
+        @JavascriptInterface public void exportFullBackup(){runOnUiThread(()->{if(!archiveState.isEmpty()){error("Прво заврши го претходниот бекап.");return;}archiveState=readState();archiveGps="";try{Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/zip");i.putExtra(Intent.EXTRA_TITLE,"WFAG_full_backup_"+new java.text.SimpleDateFormat("yyyy-MM-dd",java.util.Locale.ROOT).format(new java.util.Date())+".zip");startActivityForResult(i,CREATE_ARCHIVE);}catch(Exception e){archiveState="";archiveGps="";error("Бекапот не се отвори.");}});}
         @JavascriptInterface public boolean documentsAvailable(String log){try{return Documents.available(MainActivity.this,new JSONObject(log),archiveStage());}catch(Exception e){return false;}}
+        @JavascriptInterface public boolean documentExists(String fileId){try{return Documents.file(MainActivity.this,fileId).isFile();}catch(Exception e){return false;}}
+        @JavascriptInterface public int missingDocumentCount(String log){
+            try{JSONArray docs=Documents.documentList(new JSONObject(log));java.util.HashSet<String> missing=new java.util.HashSet<>();
+                for(int i=0;i<docs.length();i++){JSONObject d=docs.getJSONObject(i);File f=Documents.file(MainActivity.this,d.getString("fileId"));if(!f.isFile()||f.length()!=d.optLong("bytes")||!Documents.hash(f).equalsIgnoreCase(d.optString("sha256")))missing.add(d.getString("fileId"));}return missing.size();
+            }catch(Exception e){return -1;}
+        }
         @JavascriptInterface public boolean hasStagedArchive(){return new File(archiveStage(),"state.json").isFile();}
         @JavascriptInterface public void discardArchive(){Documents.removeTree(archiveStage());}
         @JavascriptInterface public boolean finishArchiveRestore(){try{Documents.installArchive(MainActivity.this,archiveStage());Documents.removeTree(archiveStage());return true;}catch(Exception e){error("Враќањето не заврши: "+e.getMessage());return false;}}
+        @JavascriptInterface public boolean finishArchiveRestoreState(String text){return restoreArchiveState(text);}
         @JavascriptInterface public String loadState(){return readState();}
         @JavascriptInterface public boolean saveState(String text){return writeState(text);}
-        @JavascriptInterface public void exportText(String name,String text,String mime){requestSave(name,text.getBytes(StandardCharsets.UTF_8),mime);}
+        @JavascriptInterface public void exportText(String name,String text,String mime){
+            try{if("application/json".equals(mime)){JSONObject value=new JSONObject(text);if("workfashion-personal-time".equals(value.optString("appId"))){value.put("notificationHistory",NotificationHistory.forBackup(MainActivity.this));text=value.toString();}}requestSave(name,text.getBytes(StandardCharsets.UTF_8),mime);}
+            catch(Exception e){error("Бекапот не се подготви: "+e.getMessage());}
+        }
         @JavascriptInterface public void exportBytes(String name,String base64,String mime){try{requestSave(name,Base64.decode(base64,Base64.DEFAULT),mime);}catch(Exception e){error("Фајлот не се подготви.");}}
         @JavascriptInterface public void exportPdf(String name,String json){try{requestSave(name,PdfReport.create(new JSONObject(json)),"application/pdf");}catch(Exception e){error("PDF извештајот не се подготви: "+e.getMessage());}}
         @JavascriptInterface public void openBackup(){runOnUiThread(()->{try{Documents.removeTree(archiveStage());Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/json","text/plain","application/octet-stream","application/zip","application/x-zip-compressed"});i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_BACKUP);}catch(Exception e){error("Не се отвори изборот за бекап.");}});}
         @JavascriptInterface public void keepBeforeRestore(String text){try{if(text.length()<=MAX_BYTES){FileOutputStream out=new FileOutputStream(new File(getFilesDir(),"before-restore.json"));out.write(text.getBytes(StandardCharsets.UTF_8));out.close();}}catch(Exception ignored){}}
-        @JavascriptInterface public String getRouteLog(){return RouteTrackingService.stateJson(MainActivity.this);}
+        @JavascriptInterface public String getRouteLog(){return RouteTrackingService.displayStateJson(MainActivity.this);}
         @JavascriptInterface public void openRouteArchive(){runOnUiThread(()->{try{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,OPEN_ROUTE_ARCHIVE);}catch(Exception e){error("Изборот на GPS архивата не се отвори.");}});}
         @JavascriptInterface public void startRouteTracking(String tripId){requestRouteStart(tripId);}
         @JavascriptInterface public void stopRouteTracking(){stopRouteService();}
@@ -212,7 +258,7 @@ public class MainActivity extends Activity {
         throw new Exception("Документот за замена не е пронајден.");
     }
     private boolean documentResult(int request,int result,Intent data){
-        if(request==CREATE_ARCHIVE){String savedState=archiveState.isEmpty()?readState():archiveState,savedGps=archiveGps.isEmpty()?RouteTrackingService.stateJson(this):archiveGps;archiveState="";archiveGps="";if(result==RESULT_OK&&data!=null&&data.getData()!=null&&!savedState.isEmpty()){Uri uri=data.getData();new Thread(()->{try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new Exception();Documents.exportArchive(this,out,savedState,savedGps);error("Целосниот бекап со документи е зачуван.");}catch(Exception e){error("Бекапот НЕ е завршен: "+e.getMessage());}},"wfag-full-backup").start();}return true;}
+        if(request==CREATE_ARCHIVE){String savedState=archiveState.isEmpty()?readState():archiveState;archiveState="";archiveGps="";if(result==RESULT_OK&&data!=null&&data.getData()!=null&&!savedState.isEmpty()){Uri uri=data.getData();new Thread(()->{try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new Exception("Нема пристап до избраната датотека.");Documents.exportArchive(this,out,savedState,RouteTrackingService.stateJson(this));runOnUiThread(()->{if(webView!=null)webView.evaluateJavascript("window.onExportComplete&&onExportComplete('WFAG_full_backup.zip')",null);});}catch(Exception e){error(saveError(e,"Целосниот бекап НЕ е завршен."));}},"wfag-full-backup").start();}return true;}
         if(request!=PICK_DOCUMENT&&request!=CAPTURE_DOCUMENT&&request!=SCAN_DOCUMENT)return false;
         final String visit=documentVisit,replacing=replaceDocumentId;
         if(result!=RESULT_OK){if(!scanOutput.isEmpty())try{Documents.file(this,scanOutput).delete();}catch(Exception ignored){}documentVisit="";scanOutput="";replaceDocumentId="";rememberDocumentRequest();documentsChanged(visit,"Прикачувањето е откажано. Записот остана зачуван.");return true;}
@@ -236,7 +282,7 @@ public class MainActivity extends Activity {
                 new Thread(()->{try(OutputStream out=getContentResolver().openOutputStream(data.getData(),"wt")){
                     if(out==null)throw new Exception("Нема пристап до фајлот.");out.write(bytes);out.flush();
                     runOnUiThread(()->webView.evaluateJavascript("window.onExportComplete&&onExportComplete("+JSONObject.quote(name)+")",null));
-                }catch(Exception e){error("Фајлот не се зачува. Провери го просторот и избраната папка.");}},"wf-save").start();
+                }catch(Exception e){error(saveError(e,"Фајлот не се зачува. Избери друга датотека или папка."));}},"wf-save").start();
             }
         }else if(request==OPEN_ROUTE_ARCHIVE&&result==RESULT_OK&&data!=null&&data.getData()!=null){
             Uri uri=data.getData();
@@ -254,21 +300,23 @@ public class MainActivity extends Activity {
             },"wfag-import-gps").start();
         }else if(request==OPEN_BACKUP&&result==RESULT_OK&&data!=null&&data.getData()!=null){
             Uri uri=data.getData();new Thread(()->{
-                try(BufferedInputStream in=new BufferedInputStream(getContentResolver().openInputStream(uri));ByteArrayOutputStream b=new ByteArrayOutputStream()){
-                    if(in==null)throw new Exception();byte[] buffer=new byte[8192];int n;
+                try(InputStream source=getContentResolver().openInputStream(uri)){
+                    if(source==null)throw new Exception("Нема пристап до избраниот бекап.");
+                    try(BufferedInputStream in=new BufferedInputStream(source);ByteArrayOutputStream b=new ByteArrayOutputStream()){
+                    byte[] buffer=new byte[8192];int n;
                     in.mark(4);int first=in.read(),second=in.read();in.reset();
                     if(first=='P'&&second=='K'){String text=Documents.stageArchive(this,in,archiveStage());runOnUiThread(()->webView.evaluateJavascript("window.handleImport&&handleImport("+JSONObject.quote(text)+")",null));return;}
-                    while((n=in.read(buffer))!=-1){b.write(buffer,0,n);if(b.size()>MAX_BYTES)throw new Exception();}
-                    String text=new String(b.toByteArray(),StandardCharsets.UTF_8);
+                    while((n=in.read(buffer))!=-1){b.write(buffer,0,n);if(b.size()>MAX_BYTES)throw new Exception("JSON бекапот е поголем од 16 MB.");}
+                    String text=Documents.normalizeState(new String(b.toByteArray(),StandardCharsets.UTF_8));
                     runOnUiThread(()->webView.evaluateJavascript("window.handleImport&&handleImport("+JSONObject.quote(text)+")",null));
-                }catch(Exception e){Documents.removeTree(archiveStage());error("Бекапот не се прочита: "+e.getMessage());}
+                }}catch(Exception e){Documents.removeTree(archiveStage());error("Бекапот не се прочита: "+e.getMessage());}
             },"wf-import").start();
         }
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
         super.onRequestPermissionsResult(requestCode,permissions,grantResults);
         if(requestCode==99){
-            PickupReminderReceiver.refresh(this);
+            PickupReminderReceiver.refresh(this);ServiceReminderReceiver.refresh(this);
             if(ready&&webView!=null)webView.evaluateJavascript("if(typeof view!=='undefined'&&view==='pickups'&&document.getElementById('modal').hidden)render()",null);
             return;
         }
@@ -283,8 +331,8 @@ public class MainActivity extends Activity {
         if(!ready){super.onBackPressed();return;}
         webView.evaluateJavascript("window.onNativeBack?onNativeBack():false",value->{if(!"true".equals(value))super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();PickupReminderReceiver.refresh(this);if(ready&&webView!=null)webView.evaluateJavascript("if(typeof render==='function'&&document.getElementById('modal').hidden)render();window.onRouteNativeChanged&&onRouteNativeChanged()",null);}
-    @Override protected void onDestroy(){if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();}super.onDestroy();}
+    @Override protected void onResume(){super.onResume();PickupReminderReceiver.refresh(this);ServiceReminderReceiver.refresh(this);if(ready&&webView!=null)webView.evaluateJavascript("if(window.WFApp&&WFApp.syncNativeState)WFApp.syncNativeState();window.onNotificationHistoryChanged&&onNotificationHistoryChanged()",null);openPickupIntent();}
+    @Override protected void onDestroy(){NotificationHistory.forget(this);ready=false;if(webView!=null){webView.removeJavascriptInterface("Android");webView.destroy();webView=null;}super.onDestroy();}
 
     static class PdfReport {
         static final int WIDTH=595,HEIGHT=842,TEAL=Color.rgb(0,125,120),INK=Color.rgb(21,46,53),GRAY=Color.rgb(102,120,127);

@@ -41,11 +41,36 @@ const previousEditDay=editDay;editDay=function(date,type,range){previousEditDay(
 const previousStopMarkup=WFRoute.stopMarkup;WFRoute.setStopMarkup(function(stop,index){return previousStopMarkup(stop,index)+'<button type="button" class="btn light warehouse-route-action" data-warehouse-stop="'+esc(stop.id)+'">Достава / преземање / документи</button>';});
 function findStop(id){for(const s of WFRoute.state().sessions||[]){const stop=(s.stops||[]).find(p=>p.id===id);if(stop)return {stop,sessionId:s.id};}return null;}
 const previousBind=WFRoute.bind;WFRoute.setBind(function(){previousBind();document.querySelectorAll('[data-warehouse-stop]').forEach(b=>b.onclick=()=>{syncPlaces();const found=findStop(b.dataset.warehouseStop);if(found){const v=getLog().visits.find(v=>v.stopId===found.stop.id);openVisit(v&&v.id,{sessionId:found.sessionId},found.stop);}});});
-WFRoute.setPrompt(function(){if(!state||typeof Android==='undefined'||!Android.getRouteLog||!$('modal').hidden)return;const log=getLog();for(const s of WFRoute.state().sessions||[]){for(const stop of s.stops||[]){if(getLog().visits.some(v=>v.stopId===stop.id)||(snoozed.get(stop.id)||0)>Date.now())continue;if(!stop.pending&&(!stop.active||Number(stop.startAt)<log.promptFrom))continue;syncPlaces();openVisit(null,{sessionId:s.id},stop);return;}}});
+WFRoute.setPrompt(function(){if(!state||document.hidden||typeof Android==='undefined'||!Android.getRouteLog||!$('modal').hidden)return;if(!WFRoute.state().tracking)return;const log=getLog();for(const s of WFRoute.state().sessions||[]){for(const stop of s.stops||[]){if(getLog().visits.some(v=>v.stopId===stop.id)||(snoozed.get(stop.id)||0)>Date.now())continue;if(!stop.pending&&(!stop.active||Number(stop.startAt)<log.promptFrom))continue;syncPlaces();openVisit(null,{sessionId:s.id},stop);return;}}});
 window.onDocumentsChanged=function(visitId,message){try{if(load()){render();if(visitId)openVisit(visitId);}if(message)toast(message);}catch(e){toast(e.message);}};
 window.WFDocuments={openVisit,editWarehouse,getLog:()=>JSON.parse(JSON.stringify(getLog())),setFilters:f=>{section='visits';limit=40;filters=Object.assign({},filters,f);view='documents';render();},syncPlaces};
 const previousSettings=renderSettings;renderSettings=function(){previousSettings();const box=document.createElement('section');box.className='card';box.innerHTML='<h3>Магацини и документи</h3><p class="small muted">Користи целосен ZIP бекап за да ги пренесеш и скенираните документи. Стар JSON бекап не ги содржи датотеките.</p><button type="button" class="btn secondary full" id="settingsDocuments">Отвори евиденција</button>';$('app').appendChild(box);$('settingsDocuments').onclick=()=>{view='documents';render();};};
 const previousBackup=backup;backup=function(){if(typeof Android!=='undefined'&&Android.exportFullBackup)Android.exportFullBackup();else previousBackup();};
-const previousImport=handleImport;handleImport=function(text){try{const parsed=Pickups.preserveOnImport(state,Core.validate(JSON.parse(text)));const keep=state&&state.warehouseLog&&parsed.warehouseLog===undefined;if(keep)parsed.warehouseLog=JSON.parse(JSON.stringify(state.warehouseLog));if(parsed.warehouseLog&&typeof Android!=='undefined'&&Android.documentsAvailable&&!Android.documentsAvailable(JSON.stringify(parsed.warehouseLog))){throw Error('Недостасуваат приложените датотеки. Врати целосен ZIP бекап што ги содржи скеновите.');}if(typeof Android!=='undefined'&&Android.hasStagedArchive&&Android.hasStagedArchive()){if(!confirm('Врати го целосниот бекап? Ќе ги замени работните записи, поставките и евиденциите во бекапот. Сегашната состојба се чува пред враќањето.')){Android.discardArchive();return;}if(state)Android.keepBeforeRestore(JSON.stringify(state));if(!Android.finishArchiveRestore())throw Error('Документите не се вратија. Сегашните записи останаа зачувани.');const keepVehicle=state&&state.vehicleLog&&parsed.vehicleLog===undefined;if(keepVehicle)parsed.vehicleLog=JSON.parse(JSON.stringify(state.vehicleLog));commit(parsed,'Вратен целосен бекап со документи');closeModal();toast('Бекапот и документите се вратени.');}else previousImport(JSON.stringify(parsed));}catch(e){if(typeof Android!=='undefined'&&Android.discardArchive)Android.discardArchive();toast(e.message);}};window.handleImport=handleImport;
+const previousImport=handleImport;
+handleImport=function(text){
+ try{
+  const incoming=StateCompat.preserve(state,JSON.parse(text));
+  const parsed=Core.validate(Pickups.preserveOnImport(state,incoming));
+  const archive=typeof Android!=='undefined'&&Android.hasStagedArchive&&Android.hasStagedArchive();
+  const missing=parsed.warehouseLog&&typeof Android!=='undefined'&&Android.documentsAvailable&&!Android.documentsAvailable(JSON.stringify(parsed.warehouseLog));
+  if(archive){
+   if(!confirm('Врати го целосниот бекап? Ќе ги замени записите што се содржани во бекапот. Сегашната состојба се чува пред враќањето.')){Android.discardArchive();return;}
+   if(state)Android.keepBeforeRestore(JSON.stringify(state));
+   parsed.audit.push({at:new Date().toISOString(),text:'Вратен целосен бекап со документи'});parsed.audit=parsed.audit.slice(-10000);Core.validate(parsed);
+   if(Android.finishArchiveRestoreState){
+    if(!Android.finishArchiveRestoreState(JSON.stringify(parsed)))throw Error(Android.getLastSaveError?Android.getLastSaveError():'Бекапот не се врати.');
+    if(load())render();
+   }else{
+    if(!Android.finishArchiveRestore())throw Error('Документите не се вратија.');
+    commit(parsed,'Вратен целосен бекап со документи');
+   }
+   closeModal();toast('Бекапот и документите се вратени.');
+  }else{
+   const restored=previousImport(JSON.stringify(parsed));
+   if(restored&&missing)toast('Записите се вратени. За недостасувачките скенови е потребен целосен ZIP бекап.');
+  }
+  if(window.onNotificationHistoryChanged)window.onNotificationHistoryChanged();
+ }catch(e){if(typeof Android!=='undefined'&&Android.discardArchive)Android.discardArchive();toast(e.message);}
+};window.handleImport=handleImport;
 if(state){syncPlaces();render();}
 })();

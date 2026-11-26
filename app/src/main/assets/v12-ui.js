@@ -4,11 +4,15 @@
 
 let routeHistoryCount=30;
 let routeMode='list',routePromptStopId='';
+let routeSnapshot=null;
+function invalidateRouteSnapshot(){routeSnapshot=null;}
 function routeNativeState(){
+  if(routeSnapshot)return routeSnapshot;
   try{
-    if(typeof Android==='undefined'||!Android.getRouteLog)return {tracking:false,sessions:[],savedPlaces:[]};
+    if(typeof Android==='undefined'||!Android.getRouteLog)return routeSnapshot={tracking:false,sessions:[],savedPlaces:[]};
     const x=JSON.parse(Android.getRouteLog()||'{}');
-    x.sessions=Array.isArray(x.sessions)?x.sessions:[];x.savedPlaces=Array.isArray(x.savedPlaces)?x.savedPlaces:[];return x;
+    x.sessions=Array.isArray(x.sessions)?x.sessions:[];x.savedPlaces=Array.isArray(x.savedPlaces)?x.savedPlaces:[];
+    routeSnapshot=x;return x;
   }catch(e){return {tracking:false,sessions:[],savedPlaces:[]};}
 }
 function routeDate(ms){const d=new Date(Number(ms)||0),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
@@ -186,7 +190,7 @@ function bindRouteButtons(){
     const d=routeNativeState();
     if(d.tracking&&Android.stopRouteTracking)Android.stopRouteTracking();
     else if(Android.startRouteTracking)Android.startRouteTracking('manual_'+Date.now());
-    setTimeout(refreshRoutePanel,800);
+    invalidateRouteSnapshot();setTimeout(function(){invalidateRouteSnapshot();refreshRoutePanel();},800);
   };
 }
 function checkRoutePrompt(){
@@ -204,7 +208,7 @@ function checkRoutePrompt(){
   $('leaveRouteLocation').onclick=function(){Android.setRouteStop(stop.id,'',false);routePromptStopId='';closeModal();refreshRoutePanel();toast('Застанувањето остана како „Локација“.');};
 }
 const bindTripButtonsRouteBase=bindTripButtons;
-bindTripButtons=function(){bindTripButtonsRouteBase();bindRouteButtons();setTimeout(checkRoutePrompt,100);};
+bindTripButtons=function(){bindTripButtonsRouteBase();bindRouteButtons();};
 
 function periodLabel(p){
   return p.from.endsWith('-01')&&p.to===Core.monthBounds(p.from.slice(0,7))[1]?'Месечен · '+monthLabel(p.from.slice(0,7)):'Период '+Core.displayDate(p.from)+' – '+Core.displayDate(p.to);
@@ -222,9 +226,9 @@ tripListMarkup=function(trips,empty){
   empty=empty||'Нема запишани патувања.';
   if(!trips.length)return '<p class="trip-empty">'+esc(empty)+'</p>';
   return trips.map(function(t){
-    const ws=t.workStart||state.settings.start||'08:00';
+    const ws=Core.defaultWorkStart(state,t.date);
     return '<article class="trip-item"><div class="row"><strong>'+Core.displayDate(t.date)+' · '+esc(t.departure)+'</strong><span class="badge '+(t.pending&&!t.future?'trip-active':'')+'">'+tripStatus(t)+'</span></div>'+
-      '<div class="trip-times"><span><small>Почеток на работа</small><b>'+esc(ws)+'</b></span><span><small>Поаѓање</small><b>'+esc(t.departure)+'</b></span><span class="trip-arrow" aria-hidden="true">→</span><span><small>Пристигнување</small><b>'+esc(tripArrivalLabel(t))+'</b></span><span><small>На пат'+(t.planned?' · план':'')+'</small><b>'+Core.hh(t.planned?t.plannedMinutes:t.travel)+'</b></span></div>'+
+      '<div class="trip-times"><span><small>Почеток на работа</small><b>'+esc(ws)+'</b></span><span><small>Поаѓање</small><b>'+esc(t.departure)+'</b></span><span class="trip-arrow" aria-hidden="true">→</span><span><small>Пристигнување</small><b>'+esc(tripArrivalLabel(t))+'</b></span><span><small>На пат'+(t.planned?' · план':'')+'</small><b data-live-trip="'+esc(t.id)+'">'+Core.hh(t.planned?t.plannedMinutes:t.travel)+'</b></span></div>'+
       (t.note?'<p class="trip-note">'+esc(t.note)+'</p>':'')+
       '<div class="actions">'+(t.pending?'<button class="btn" data-trip-arrive="'+esc(t.id)+'">Пристигнав</button>':'')+'<button class="btn '+(t.pending?'light':'secondary')+'" data-trip-edit="'+esc(t.id)+'">'+icon('edit')+'Измени</button></div></article>';
   }).join('');
@@ -234,7 +238,7 @@ tripHomeMarkup=function(day){
   const now=new Date();
   const trips=(state.trips||[]).map(t=>Core.tripView(t,now)).filter(t=>t.date===day.date||t.pending&&!t.future).sort((a,b)=>a.departureAt-b.departureAt);
   const start=day.workStart||day.start||state.settings.start;
-  return '<section class="card trip-card"><div class="row"><div><h2>Службен пат</h2><span class="small muted">Почеток на работа '+esc(start)+' · '+Core.hh(day.travel)+' на пат</span></div><span class="trip-icon" aria-hidden="true">'+icon('clock')+'</span></div>'+
+  return '<section class="card trip-card"><div class="row"><div><h2>Службен пат</h2><span class="small muted" id="liveTravelSummary">Почеток на работа '+esc(start)+' · '+Core.hh(day.travel)+' на пат</span></div><span class="trip-icon" aria-hidden="true">'+icon('clock')+'</span></div>'+
     '<button class="btn full trip-start" id="goOnTrip" data-trip-new="'+day.date+'">'+icon('plus')+'Тргнувам на пат</button>'+
     tripListMarkup(trips,'Кога ќе тргнеш, избери дали работниот ден почнал во 08:00 или внеси друго време.')+'<div id="routePanel" data-from="'+day.date+'" data-to="'+day.date+'">'+routePanelMarkup(day.date,day.date)+'</div></section>';
 };
@@ -256,10 +260,9 @@ editTrip=function(id,date,arriving){
   const selected=old?old.date:date||now.date;
   if(!old&&selected<state.settings.trackStart){toast('Датумот е пред почетокот на евиденцијата.');return;}
   const minDate=old&&old.date<state.settings.trackStart?old.date:state.settings.trackStart;
-  const sameDay=(state.trips||[]).find(t=>t.date===selected&&t.id!==id&&t.workStart);
-  const standard='08:00';
-  let existingStart=old&&old.workStart?old.workStart:sameDay&&sameDay.workStart?sameDay.workStart:standard;
-  if(old&&!old.workStart&&Core.minutes(old.departure)<Core.minutes(existingStart))existingStart=old.departure;
+  const standard=state.settings.start||'08:00';
+  let existingStart=Core.defaultWorkStart(state,selected);
+  let startLocked=!!(state.records[selected]||(state.trips||[]).some(t=>t.date===selected)),formDate=selected;
   const standardChecked=existingStart===standard;
   const arrivalDate=arriving?now.date:old?old.arrivalDate:selected;
   const arrival=arriving?currentTime:old?old.arrival:'';
@@ -272,15 +275,18 @@ editTrip=function(id,date,arriving){
     '<label class="field" id="customWorkStartWrap" '+(standardChecked?'hidden':'')+'><span>Кога почнав со работа</span><input id="tripWorkStart" type="time" value="'+esc(existingStart)+'"></label>'+
     '<p class="small muted">Работните часови се бројат од ова време. Ако пристигнеш по 8 работни часа, остатокот оди во прекувремени.</p></div>'+
     '<div class="trip-form-section"><h3>Поаѓање на пат</h3><div class="grid"><label class="field"><span>Датум</span><input id="tripDate" type="date" min="'+minDate+'" max="2100-12-31" value="'+selected+'" required></label><label class="field"><span>Час</span><input id="tripDeparture" type="time" value="'+(old?old.departure:currentTime)+'" required></label></div><button class="link-btn" id="tripNowDeparture" type="button">Тргнувам сега</button></div>'+
-    '<div class="trip-form-section"><h3>Пристигнување</h3><div class="grid"><label class="field"><span>Датум</span><input id="tripArrivalDate" type="date" min="'+selected+'" max="2100-12-31" value="'+arrivalDate+'"></label><label class="field"><span>Час</span><input id="tripArrival" type="time" value="'+arrival+'"></label></div><button class="link-btn" id="tripNowArrival" type="button">Пристигнав сега</button><p class="small muted" style="margin:6px 0 0">Не мора да се вратиш во фирма. Со „Пристигнав“ завршува работното време за тој ден ако пристигнувањето е по редовниот крај. За пат преку полноќ избери го следниот датум.</p></div>'+
+    '<div class="trip-form-section"><h3>Пристигнување</h3><div class="grid"><label class="field"><span>Датум</span><input id="tripArrivalDate" type="date" min="'+selected+'" max="2100-12-31" value="'+arrivalDate+'"></label><label class="field"><span>Час</span><input id="tripArrival" type="time" value="'+arrival+'"></label></div><button class="link-btn" id="tripNowArrival" type="button">Пристигнав сега</button><p class="small muted" style="margin:6px 0 0">Не мора да се вратиш во фирма. Со „Пристигнав“ завршува работното време за тој ден со внесениот датум и час. За пат преку полноќ избери го следниот датум.</p></div>'+
     '<div id="tripDuration" class="trip-duration" aria-live="polite"></div>'+
     '<label class="field"><span>Дестинација / белешка</span><textarea id="tripNote" maxlength="500" placeholder="На пример: Велес – Скопје">'+esc(old?old.note:'')+'</textarea></label>'+
     '<div class="error-text" id="tripError" role="alert"></div><button class="btn full" id="tripSubmit" type="submit">Зачувај</button>'+
     (old?'<button class="btn danger full" id="deleteTrip" type="button" style="margin-top:12px">Избриши го патувањето</button>':'')+'</form>');
 
-  const workStart=function(){return $('workStartStandard').checked?standard:$('tripWorkStart').value;};
+  const workStart=function(){return startLocked?Core.defaultWorkStart(state,$('tripDate').value):$('workStartStandard').checked?standard:$('tripWorkStart').value;};
+  const startHint=document.createElement('p');startHint.className='note';$('customWorkStartWrap').parentElement.appendChild(startHint);
+  function syncStart(){const d=$('tripDate').value;if(d!==formDate){formDate=d;existingStart=Core.defaultWorkStart(state,d);$('tripWorkStart').value=existingStart;$('workStartStandard').checked=existingStart===standard;$('workStartCustom').checked=existingStart!==standard;}startLocked=!!(state.records[d]||(state.trips||[]).some(t=>t.date===d));['workStartStandard','workStartCustom','tripWorkStart'].forEach(id=>$(id).disabled=startLocked);startHint.hidden=!startLocked;startHint.textContent='Зачуван почеток на денот: '+Core.defaultWorkStart(state,d)+'. За корекција отвори „Измени го денот“. Пристигнувањето тука го затвора работниот ден.';}
   const input=function(){return {id:old?old.id:null,date:$('tripDate').value,workStart:workStart(),departure:$('tripDeparture').value,arrivalDate:$('tripArrivalDate').value,arrival:$('tripArrival').value,note:$('tripNote').value.trim()};};
   const update=function(){
+    syncStart();
     $('customWorkStartWrap').hidden=$('workStartStandard').checked;
     $('tripArrivalDate').min=$('tripDate').value;
     if(!$('tripArrival').value&&$('tripArrivalDate').value<$('tripDate').value)$('tripArrivalDate').value=$('tripDate').value;
@@ -292,9 +298,11 @@ editTrip=function(id,date,arriving){
       const t=Core.tripView(data);
       if(t.arrivalAt!==null&&t.arrivalAt<t.departureAt)throw Error('Пристигнувањето е пред поаѓањето.');
       const startAt=Core.timestamp(data.date,data.workStart);
+      if(!data.arrival&&data.date<Core.today())throw Error('Внеси го вистинското пристигнување за да се пресмета овој ден.');
       const endAt=data.arrival?t.arrivalAt:new Date().getTime();
-      const work=Math.max(0,Math.floor((endAt-startAt)/60000));
-      $('tripDuration').textContent=(data.arrival?'Работен ден до пристигнување: ':'Работното време се брои од '+data.workStart+' · досега ')+Core.hh(work)+(work>480?' · '+Core.hh(work-480)+' прекувремено':'');
+      const record=state.records[data.date],pause=record&&record.pause||0,paid=record&&has(record,'pausePaid')?record.pausePaid:state.settings.breaksIncluded;
+      const work=Math.max(0,Math.floor((endAt-startAt)/60000)-(paid?0:pause));
+      $('tripDuration').textContent=(data.arrival?'Работен ден до пристигнување: ':'Работното време се брои од '+data.workStart+' · досега ')+Core.hh(work);
       $('tripError').textContent='';
     }catch(e){$('tripDuration').textContent='Провери ги часовите.';$('tripError').textContent=e.message||'';}
   };
@@ -308,12 +316,10 @@ editTrip=function(id,date,arriving){
       const data=input();
       const result=Core.putTrip(state,data);
       commit(result.state,'Службен пат: '+Core.displayDate(result.trip.date)+' '+result.trip.departure+(result.trip.arrival?' – '+Core.displayDate(result.trip.arrivalDate)+' '+result.trip.arrival:' (на пат)'));
-      if(typeof Android!=='undefined'){
-        if(result.trip.arrival&&Android.stopRouteTracking)Android.stopRouteTracking();
-        else if(!result.trip.arrival&&Android.startRouteTracking)Android.startRouteTracking(result.trip.id);
-      }
+      // Work-hour entry is independent of optional GPS recording.
+      if(result.trip.arrival&&typeof Android!=='undefined'&&Android.stopRouteTracking)Android.stopRouteTracking();
       closeModal();
-      toast(result.trip.arrival?'Пристигнувањето е зачувано. GPS следењето е стопирано.':'Поаѓањето е зачувано. GPS рутата се следи.');
+      toast(result.trip.arrival?'Пристигнувањето е зачувано како крај на работниот ден.':'Поаѓањето е зачувано. Работниот ден продолжува до пристигнување.');
     }catch(error){$('tripError').textContent=error.message;}
   };
   if($('deleteTrip'))$('deleteTrip').onclick=function(){
@@ -330,18 +336,18 @@ function overtimeFoot(p,fallback){
 }
 
 renderHome=function(){
-  const now=new Date(),d=Core.today(now),r=Core.week(state,Core.weekStart(d),now).rows.find(x=>x.date===d),w=Core.week(state,Core.weekStart(d),now),b=Core.monthBounds(d.slice(0,7)),p=Core.period(state,b[0],b[1],now),l=Core.leave(state,Number(d.slice(0,4)),now);
+  const now=new Date(),d=Core.today(now),w=Core.week(state,Core.weekStart(d),now),r=w.rows.find(x=>x.date===d),b=Core.monthBounds(d.slice(0,7)),p=Core.period(state,b[0],b[1],now),l=Core.leave(state,Number(d.slice(0,4)),now);
   const onTrip=r.trips.some(t=>t.pending&&!t.future);
-  const status=onTrip?'На службен пат':r.type==='work'?(Core.parts(now).minuteOfDay<Core.minutes(r.start)?'Смената почнува во '+r.start:r.worked<r.planWork?'Работниот ден е во тек':'Работниот ден е завршен'):Core.TYPES[r.type];
+  const status=r.pendingTripReview?'Потребна проверка на времето':onTrip?'На службен пат':r.type==='work'?(Core.parts(now).minuteOfDay<Core.minutes(r.start)?'Смената почнува во '+r.start:r.worked<r.planWork?'Работниот ден е во тек':'Работниот ден е завршен'):Core.TYPES[r.type];
   $('app').innerHTML=header(state.settings.name?'Здраво, '+esc(state.settings.name.split(' ')[0]):'Твоето работно време',Core.displayDate(d)+' · '+['Недела','Понеделник','Вторник','Среда','Четврток','Петок','Сабота'][Core.weekday(d)])+
-    '<section class="card hero"><div class="hero-top"><span class="small">'+esc(status)+'</span>'+badge(r)+'</div><div class="clock">'+Core.hh(r.worked)+'</div><span class="muted small">реално работени часови денес'+(r.start?' · од '+r.start:'')+'</span><button class="btn hero-btn" data-day="'+d+'">'+icon('edit')+'Измени го денешниот ден</button></section>'+
+    '<section class="card hero"><div class="hero-top"><span class="small" id="liveWorkStatus">'+esc(status)+'</span>'+badge(r)+'</div><div class="clock" id="liveWorkClock">'+Core.hh(r.worked)+'</div><span class="muted small">реално работени часови денес'+(r.start?' · од '+r.start:'')+'</span><button class="btn hero-btn" data-day="'+d+'">'+icon('edit')+'Измени го денешниот ден</button></section>'+
     tripHomeMarkup(r)+
     '<div class="grid stats">'+stat('Работено месецов',Core.hh(p.worked),p.workDays+' работни '+dayWord(p.workDays),'accent')+stat('Прекувремено месецов',Core.hhSigned(p.overtime),'по кратки денови и слободни','warn')+stat('Вкупен биланс',Core.hhSigned(Core.balance(state,now)),'од почетокот на евиденцијата','accent')+stat('На пат / возење',Core.hh(p.travel),'овој месец')+stat('Годишен одмор',p.counts.vacation+' дена','евидентирано')+'</div>'+
     '<section class="card"><div class="row"><h3>Оваа недела</h3><strong>'+Core.hh(w.normal)+' / '+Core.hh(w.target)+'</strong></div><div class="progress"><span style="width:'+Math.min(100,w.normal/Math.max(1,w.target)*100)+'%"></span></div><div class="mini-row"><span class="muted">Нето по кратки и слободни денови</span><strong>'+Core.hhSigned(w.overtime)+'</strong></div><div class="mini-row"><span class="muted">Прекувремено – работа на празник</span><strong>'+Core.hh(w.holidayWork)+'</strong></div><div class="mini-row"><span class="muted">Други прекувремени (пред слободни)</span><strong>'+Core.hh(Math.max(0,w.grossOvertime-w.holidayWork))+'</strong></div><div class="mini-row"><span class="muted">Минус за кратки денови</span><strong>−'+Core.hh(w.shortfall)+'</strong></div><div class="mini-row"><span class="muted">Искористени слободни денови</span><strong>'+w.compDays+'</strong></div><p class="small muted" style="margin:8px 0 0">Работата во сабота, недела и на празник е целосно во прекувремените. Пократок завршен редовен работен ден одзема разлика до 8 часа. Рачен слободен работен ден одзема 8 часа. Се пресметуваат и старите записи.</p></section>'+
     '<section class="card"><div class="row"><div><h3>Автоматски распоред</h3><span class="small muted">Понеделник–петок · 08:00–16:00</span></div>'+icon('shield')+'</div><div class="note">Годишниот одмор и неработниот празник се евидентираат посебно. Во „работено“ влегуваат само реално работените часови.</div><div class="actions"><button id="homeAbsence" class="btn secondary">'+icon('plus')+'Одмор / отсуство</button><button id="homePdf" class="btn light">'+icon('report')+'PDF работно време</button></div></section>'+
     '<p class="small muted">Почеток на евиденцијата: '+Core.displayDate(state.settings.trackStart)+'.</p>';
   $('homeAbsence').onclick=function(){editDay(d,'vacation',true);};
-  $('homePdf').onclick=function(){exportWorkPdf(Core.period(state,b[0],b[1]));};
+  $('homePdf').onclick=function(){safeExport(()=>exportWorkPdf(Core.period(state,b[0],b[1])));};
 };
 
 renderHistory=function(){
@@ -355,7 +361,7 @@ renderHistory=function(){
   bindMonth();$('rangeButton').onclick=function(){editDay(Core.today(),'vacation',true);};
 };
 
-function workReportJson(p){
+function workReportJson(p){requireCompletePeriod(p);
   const title=periodLabel(p);
   const details=[
     'Прекувремено пред слободни денови: '+Core.hh(p.grossOvertime),
@@ -377,7 +383,7 @@ function workReportJson(p){
   };
 }
 
-function travelReportJson(p){
+function travelReportJson(p){requireCompletePeriod(p);
   return {
     company:state.settings.company,name:state.settings.name,title:'Работа и службен пат · '+periodLabel(p),from:p.from,to:p.to,generated:Core.displayDate(Core.today()),
     summary:[['Работни часови',Core.hh(p.worked)],['На пат / возење',Core.hh(p.travel)],['Работа без пат',Core.hh(p.workplace)],['Патувања',String(p.tripRows.length)]],
@@ -397,7 +403,7 @@ function travelReportJson(p){
 }
 
 
-function overtimeReportJson(p){
+function overtimeReportJson(p){requireCompletePeriod(p);
   const b=Core.overtimeBreakdown(state,p.from,p.to);
   const fullDays=['Недела','Понеделник','Вторник','Среда','Четврток','Петок','Сабота'];
   const rows=b.earned.map(function(r){
@@ -457,7 +463,7 @@ function exportTravelPdf(p){
   if(typeof Android!=='undefined')Android.exportPdf(name,JSON.stringify(data));else{window.lastTravelPdfReport=data;toast('PDF за работа и пат е подготвен.');}
 }
 
-exportRows=function(p){
+exportRows=function(p){requireCompletePeriod(p);
   const rows=[['Датум','Вид','Почеток','Крај','Работено (ч)','Редовно (ч)','Биланс на ден (ч)','На пат (ч)','Работа без пат (ч)','Пауза (ч)','Статус','Белешка','Поаѓање на пат','Пристигнување','Почеток на работа за пат']];
   p.rows.filter(r=>r.covered).forEach(r=>rows.push([Core.displayDate(r.date),Core.TYPES[r.type],r.start,r.end+(r.overnight?' (+1)':''),r.worked/60,r.regular/60,r.overtimeNet/60,r.travel/60,Math.max(0,r.worked-r.travel)/60,r.pause/60,r.future?'План':r.auto?'Автоматски':'Рачна измена',r.note,r.trips.map(t=>t.departure).join(' | '),r.trips.map(tripArrivalLabel).join(' | '),r.trips.map(t=>t.workStart||state.settings.start).join(' | ')]));
   rows.push(['ВКУПНО','','','',p.worked/60,p.regular/60,p.overtime/60,p.travel/60,p.workplace/60,p.pause/60,'Нето = дополнителни − кратки работни денови − слободни денови','','','','']);
@@ -616,7 +622,7 @@ const homeWithGPS=renderHome;
 renderHome=function(){
   homeWithGPS();
   const hero=document.querySelector('#app .hero');
-  if(hero){
+  if(hero&&routeNativeState().tracking){
     hero.insertAdjacentHTML('afterend','<div id="gpsDayHost">'+routeDayCardMarkup(true)+'</div>');
     bindGPSDayControls();
   }
@@ -638,11 +644,17 @@ function renderRoutes(){
   };
 }
 window.renderRoutes=renderRoutes;
+let routeRefreshQueued=false;
 window.onRouteNativeChanged=function(){
-  refreshRoutePanel();checkRoutePrompt();
+  invalidateRouteSnapshot();
+  if(document.hidden||routeRefreshQueued)return;
+  routeRefreshQueued=true;
+  setTimeout(function(){routeRefreshQueued=false;if(document.hidden)return;
+  refreshRoutePanel();if(routeNativeState().tracking)checkRoutePrompt();
   const host=$('gpsDayHost');
   if(host){host.innerHTML=routeDayCardMarkup(view==='home');bindGPSDayControls();}
   if(view==='routes')renderGPSAllHistory();
+  },500);
 };
 
 if(window.WFApp){
@@ -699,7 +711,7 @@ document.addEventListener('click',function(event){
   toast('Името е ажурирано во поврзаните патувања.');
 });
 
-setInterval(function(){refreshRoutePanel();checkRoutePrompt();},30000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden){invalidateRouteSnapshot();if(view==='routes'&&window.onRouteNativeChanged)window.onRouteNativeChanged();}});
 if(state)render();
-window.WFRoute={state:routeNativeState,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
+window.WFRoute={state:routeNativeState,invalidate:invalidateRouteSnapshot,stopMarkup:routeStopMarkup,bind:bindRouteButtons,setStopMarkup:fn=>{routeStopMarkup=fn;},setBind:fn=>{bindRouteButtons=fn;},setPrompt:fn=>{checkRoutePrompt=fn;},clearPrompt:()=>{routePromptStopId='';}};
 })();
