@@ -211,13 +211,30 @@ async function run(){
   const gps=await page.evaluate(()=>Number(localStorage.getItem('wfag-ui-gps-starts')));
   assert.equal(gps,0,'opening the app and entering work/travel must not start GPS');
   passed('no-automatic-gps-start',{calls:gps});
-  await page.setViewportSize({width:320,height:740});
-  const headerWidth=await page.locator('header.top').evaluate(el=>({scroll:el.scrollWidth,client:el.clientWidth}));
-  assert(headerWidth.scroll<=headerWidth.client+1,'bell and settings fit a narrow phone header');
-  await page.setViewportSize({width:390,height:844});
+  const mobileTripLayouts=[];
+  for(const width of [320,390]){
+   await page.setViewportSize({width,height:844});
+   const headerWidth=await page.locator('header.top').evaluate(el=>({scroll:el.scrollWidth,client:el.clientWidth}));
+   assert(headerWidth.scroll<=headerWidth.client+1,'bell and settings fit a narrow phone header');
+   const layout=await page.locator('.trip-times').first().evaluate(el=>{
+    const cells=[...el.children],clocks=[...el.querySelectorAll('b')];
+    return {columns:getComputedStyle(el).gridTemplateColumns.split(/\s+/).length,
+     rows:cells.map(cell=>cell.getBoundingClientRect().top),
+     clocks:clocks.map(clock=>{const range=document.createRange();range.selectNodeContents(clock);return {
+      text:clock.textContent,lines:[...new Set([...range.getClientRects()].map(rect=>Math.round(rect.top)))].length,
+      scroll:clock.scrollWidth,client:clock.clientWidth};})};
+   });
+   assert.equal(layout.columns,5,'work start, departure, arrow, arrival and duration each have their own column');
+   assert.equal(new Set(layout.rows.map(top=>Math.round(top))).size,1,'all five trip cells remain in one row');
+   for(const clock of layout.clocks){
+    assert.equal(clock.lines,1,'a same-day trip clock must not wrap its digits at '+width+'px: '+clock.text);
+    assert(clock.scroll<=clock.client+1,'trip clocks fit their column at '+width+'px: '+clock.text);
+   }
+   mobileTripLayouts.push({width,...layout});
+  }
   await page.locator('#notificationBell').click();
   assert.equal(await page.locator('#notificationBadge').isVisible(),false);
-  passed('phone-layout-and-final-inbox');
+  passed('phone-layout-and-final-inbox',{tripLayouts:mobileTripLayouts});
   assert.deepEqual(summary.javascriptErrors,[],'application must have no JavaScript errors');
   assert.deepEqual(summary.consoleErrors,[],'application must have no console errors');
   assert.deepEqual(summary.failedRequests,[],'all application assets must load');
